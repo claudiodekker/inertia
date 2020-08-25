@@ -4,6 +4,7 @@ import modal from './modal'
 import progress from './progress'
 
 export default {
+  Axios: null,
   saveScrollPositions: null,
   resolveComponent: null,
   updatePage: null,
@@ -12,7 +13,8 @@ export default {
   cancelToken: null,
   page: null,
 
-  init({ initialPage, resolveComponent, updatePage }) {
+  init({ axios, initialPage, resolveComponent, updatePage }) {
+    this.Axios = axios || Axios
     this.resolveComponent = resolveComponent
     this.updatePage = updatePage
 
@@ -60,7 +62,7 @@ export default {
       this.cancelToken.cancel(this.cancelToken)
     }
 
-    this.cancelToken = Axios.CancelToken.source()
+    this.cancelToken = this.Axios.CancelToken.source()
   },
 
   createVisitId() {
@@ -74,7 +76,7 @@ export default {
     this.saveScrollPositions()
     let visitId = this.createVisitId()
 
-    return Axios({
+    return this.Axios({
       method,
       url: url.toString(),
       data: method.toLowerCase() === 'get' ? {} : data,
@@ -97,7 +99,7 @@ export default {
         modal.show(response.data)
       }
     }).catch(error => {
-      if (Axios.isCancel(error)) {
+      if (this.Axios.isCancel(error)) {
         return
       } else if (error.response.status === 409 && error.response.headers['x-inertia-location']) {
         progress.stop()

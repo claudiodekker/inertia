@@ -7,6 +7,7 @@ let app = {}
 export default {
   name: 'Inertia',
   props: {
+    axios: Function,
     initialPage: {
       type: Object,
       required: true,
@@ -30,6 +31,7 @@ export default {
   created() {
     app = this
     Inertia.init({
+      axios: this.axios,
       initialPage: this.initialPage,
       resolveComponent: this.resolveComponent,
       updatePage: async (component, props, { preserveState }) => {
