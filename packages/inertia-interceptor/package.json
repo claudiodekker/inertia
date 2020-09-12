@@ -1,0 +1,28 @@
+{
+  "name": "@inertiajs/inertia-interceptor",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "The Inertia.js interception adapter",
+  "contributors": [
+    "Jonathan Reinink <jonathan@reinink.ca>",
+    "Claudio Dekker <claudio@dekker.io>"
+  ],
+  "source": "src/index.js",
+  "main": "dist/index.js",
+  "unpkg": "dist/index.umd.js",
+  "typings": "index.d.ts",
+  "scripts": {
+    "build": "npm run build:cjs && npm run build:umd",
+    "build:cjs": "microbundle --format cjs",
+    "build:umd": "microbundle --format umd --name InertiaReact --globals react=React,@inertiajs/inertia=Inertia",
+    "prepublishOnly": "npm run build",
+    "watch": "microbundle watch --format cjs"
+  },
+  "devDependencies": {
+    "eslint": "^6.1.0",
+    "microbundle": "^0.12.0"
+  },
+  "peerDependencies": {
+    "@inertiajs/inertia": "^0.2.3"
+  }
+}
