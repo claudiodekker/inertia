@@ -22,8 +22,8 @@ export default {
     // after which we'll resolve and update the page directly
     Inertia.on('visit', event => {
       const rootAddress = window.location.href.split('/').slice(0, 3).join('/')
-      const path = event.detail.url.toString().replace(rootAddress, '')
-      const method = event.detail.options.method
+      const path = event.detail.url.toString().replace(rootAddress, '').split('?')[0]
+      const method = event.detail.options.method || 'GET'
 
       // Check if the route is actually registered.
       // If it isn't, we won't intercept it.
