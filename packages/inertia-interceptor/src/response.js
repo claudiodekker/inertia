@@ -36,7 +36,7 @@ export default {
     return {
       component,
       props: resolvedProps,
-      url: url || window.location.href,
+      url,
       version: this.getVersion(),
     }
   },

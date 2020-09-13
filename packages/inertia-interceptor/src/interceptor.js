@@ -1,27 +1,10 @@
 import { Inertia } from '@inertiajs/inertia'
-import { default as Response } from './response'
 import { default as Route } from './route'
 
 export default {
-  routes: {},
-  parseEvent(event) {
-    const { url, options } = event.detail
-
-    return {
-      url: url.toString(),
-      method: options.method.toLowerCase(),
-      data: options.data,
-      event,
-    }
-  },
-
-  setup(element = null, component = null, props = {}, url = null) {
-    if (element && component) {
-      element.setAttribute('data-page', JSON.stringify(Response.render(
-        component,
-        props,
-        url,
-      )))
+  setup(element = null, endpoint = '/') {
+    if (element && endpoint) {
+      element.setAttribute('data-page', JSON.stringify(Route.visit('get', endpoint)))
     }
 
     Inertia.on('visit', event => {
@@ -35,6 +18,7 @@ export default {
       }
 
       event.preventDefault()
+
       Inertia.setPage(
         Route.visit(method, path, event),
         event.detail.options,
