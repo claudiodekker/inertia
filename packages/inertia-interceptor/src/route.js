@@ -47,10 +47,10 @@ export default {
     const response = action({ method, route, params, uri, event })
 
     // After all redirects are said and done, we'll make sure to
-    // set our resulting url to the current URI so it can be
-    // properly reflected in the browser's address bar.
+    // set our resulting url to the current URI, so that
+    // inertia can properly track what page we're on.
     if (response.url === null) {
-      response.url = uri
+      response.url = route + (params.toString() ? '?' + params.toString() : '')
     }
 
     return response
