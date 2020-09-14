@@ -26,7 +26,7 @@ export default {
       return true
     }
 
-    console.error(`[Interceptor] No route registered for [${method.toUpperCase()} ${route}].`, this.routes)
+    console.warn(`[Interceptor] No route registered for [${method.toUpperCase()} ${route}].`, this.routes)
     return false
   },
   invoke(method, uri, event = null) {
