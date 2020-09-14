@@ -39,7 +39,7 @@ export default {
       return false
     }
 
-    const response = action({ params, uri, event })
+    const response = action({ method, route, params, uri, event })
 
     // After all redirects are said and done, we'll make sure to
     // set our resulting url to the current URI so it can be
