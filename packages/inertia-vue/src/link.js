@@ -19,6 +19,10 @@ export default {
       type: Boolean,
       default: false,
     },
+    prefetch: {
+      type: Boolean,
+      default: true,
+    },
     preserveScroll: {
       type: Boolean,
       default: false,
@@ -34,7 +38,7 @@ export default {
     headers: {
       type: Object,
       default: () => ({}),
-    }
+    },
   },
   render(h, { props, data, children }) {
     return h('a', {
@@ -61,7 +65,30 @@ export default {
               preserveState: props.preserveState,
               only: props.only,
               headers: props.headers,
-            })
+            }).then(() => data.prefetcher = undefined)
+          }
+        },
+        mouseover: event => {
+          if (data.on && data.on.hover) {
+            data.on.hover(event)
+          }
+
+          if (!props.prefetch || data.prefetcher) {
+            return
+          }
+
+          data.prefetchTimer = setTimeout(() => {
+            if (props.method.toLowerCase() === 'get') {
+              Inertia.preload(props.href, { data: props.data, headers: props.headers })
+            }
+
+            data.prefetchTimer = undefined
+          }, 65)
+        },
+        mouseleave: () => {
+          if (data.prefetchTimer) {
+            clearTimeout(data.prefetchTimer)
+            data.prefetchTimer = undefined
           }
         },
       },

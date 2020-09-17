@@ -1,7 +1,7 @@
-import Axios from 'axios'
 import debounce from './debounce'
 import modal from './modal'
 import progress from './progress'
+import { default as request } from './request'
 
 export default {
   saveScrollPositions: null,
@@ -9,7 +9,6 @@ export default {
   updatePage: null,
   version: null,
   visitId: null,
-  cancelToken: null,
   page: null,
 
   init({ initialPage, resolveComponent, updatePage }) {
@@ -51,65 +50,46 @@ export default {
     return document.querySelectorAll('[scroll-region]')
   },
 
-  isInertiaResponse(response) {
-    return response && response.headers['x-inertia']
-  },
-
-  cancelActiveVisits() {
-    if (this.cancelToken) {
-      this.cancelToken.cancel(this.cancelToken)
-    }
-
-    this.cancelToken = Axios.CancelToken.source()
-  },
-
   createVisitId() {
     this.visitId = {}
     return this.visitId
   },
 
+  preload(url, {data = {}, headers = {}}) {
+    return request.preload(url, {
+      data,
+      headers: {
+        ... headers,
+        ...(this.version ? { 'X-Inertia-Version': this.version } : {}),
+      },
+    })
+  },
+
   visit(url, { method = 'get', data = {}, replace = false, preserveScroll = false, preserveState = false, only = [], headers = {}} = {}) {
     progress.start()
-    this.cancelActiveVisits()
     this.saveScrollPositions()
     let visitId = this.createVisitId()
 
-    return Axios({
-      method,
+    return request.visit({
+      method: method.toLowerCase(),
       url: url.toString(),
-      data: method.toLowerCase() === 'get' ? {} : data,
-      params: method.toLowerCase() === 'get' ? data : {},
-      cancelToken: this.cancelToken.token,
+      data,
       headers: {
         ...headers,
-        Accept: 'text/html, application/xhtml+xml',
-        'X-Requested-With': 'XMLHttpRequest',
-        'X-Inertia': true,
+        ...(this.version ? { 'X-Inertia-Version': this.version } : {}),
         ...(only.length ? {
           'X-Inertia-Partial-Component': this.page.component,
           'X-Inertia-Partial-Data': only.join(','),
         } : {}),
-        ...(this.version ? { 'X-Inertia-Version': this.version } : {}),
       },
-    }).then(response => {
-      if (this.isInertiaResponse(response)) {
-        return response.data
+    }).catch(response => {
+      console.log(response)
+      if (response.status === 409 && response.headers['x-inertia-location']) {
+        progress.stop()
+        return this.hardVisit(true, response.headers['x-inertia-location'])
       } else {
+        progress.stop()
         modal.show(response.data)
-      }
-    }).catch(error => {
-      if (Axios.isCancel(error)) {
-        return
-      } else if (error.response.status === 409 && error.response.headers['x-inertia-location']) {
-        progress.stop()
-        return this.hardVisit(true, error.response.headers['x-inertia-location'])
-      } else if (this.isInertiaResponse(error.response)) {
-        return error.response.data
-      } else if (error.response) {
-        progress.stop()
-        modal.show(error.response.data)
-      } else {
-        return Promise.reject(error)
       }
     }).then(page => {
       if (page) {
