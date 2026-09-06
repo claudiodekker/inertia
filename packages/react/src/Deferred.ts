@@ -29,8 +29,6 @@ const Deferred = ({ children, data, rescue, fallback }: DeferredProps) => {
   const layerId = useLayerId()
   const activeReloads = useRef(new Set<object>())
   const page = usePage()
-  const pageRef = useRef(page)
-  pageRef.current = page
   const pageProps = page.props
   const keys = useMemo(() => (Array.isArray(data) ? data : [data]), [data])
   const rescuedKeys = useMemo(() => new Set(page.rescuedProps), [page.rescuedProps])
@@ -39,7 +37,7 @@ const Deferred = ({ children, data, rescue, fallback }: DeferredProps) => {
     const removeStartListener = router.on('start', (e) => {
       const visit = e.detail.visit
 
-      if (partialReloadFillsDeferred(visit, { layerId, url: pageRef.current.url }, keys)) {
+      if (partialReloadFillsDeferred(visit, layerId, keys)) {
         activeReloads.current.add(visit)
         setReloading(true)
       }

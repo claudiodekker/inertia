@@ -7,18 +7,24 @@ export const state = ref(store.get())
 
 export const layerState = ref(new Map<string, LayoutSlot>())
 
-store.subscribe(() => {
-  state.value = store.get()
-  layerState.value = new Map(store.layerIds().map((id) => [id, store.getForLayer(id)]))
-})
+const sync = () => {
+  const snapshot = store.snapshot()
+
+  state.value = snapshot.base
+  layerState.value = new Map(Object.entries(snapshot.layers))
+}
+
+store.subscribe(sync)
 
 export const setLayoutProps = store.set
 
 export function resetLayoutProps(): void {
   store.reset()
-  state.value = store.get()
+  sync()
 }
 
-export function retainLayerLayoutProps(ids: string[]): void {
-  store.retainLayers(ids)
+export function swapLayoutProps(options: Parameters<typeof store.swap>[0]): void {
+  if (store.swap(options)) {
+    sync()
+  }
 }

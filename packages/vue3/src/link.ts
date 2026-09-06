@@ -242,7 +242,6 @@ const Link: InertiaLink = defineComponent({
     })
 
     const baseParams = computed(() => ({
-      layerId,
       data: data.value,
       method: method.value,
       replace: props.replace,
@@ -255,6 +254,7 @@ const Link: InertiaLink = defineComponent({
       async: props.async,
       component: resolvedComponent.value,
       pageProps: props.pageProps,
+      layerId,
     }))
 
     const visitParams = computed(() => ({

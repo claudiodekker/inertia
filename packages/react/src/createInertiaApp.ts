@@ -9,10 +9,9 @@ import {
   http as httpModule,
   InertiaAppSSRResponse,
   LoadingOption,
-  normalizeLoading,
   Page,
   PageProps,
-  resolveInitialPage,
+  resolveInitialApp,
   router,
   setupProgress,
   SharedPageProps,
@@ -23,6 +22,10 @@ import { renderToString } from 'react-dom/server'
 import App, { InertiaAppProps, type InertiaApp } from './App'
 import { config } from './index'
 import { LayerComponent, ReactComponent, ReactInertiaAppConfig } from './types'
+
+// Renders nothing beneath a cold-opened layer; declares no layouts.
+const Blank: ReactComponent = () => null
+Blank.layout = []
 
 export type SetupOptions<ElementType, SharedProps extends PageProps> = {
   el: ElementType
@@ -151,8 +154,6 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
       return ((module as { default?: ReactComponent }).default || module) as ReactComponent
     })
 
-  const resolveLoading = normalizeLoading<ReactComponent>(loading, { rendered: isValidElement })
-
   // SSR render function factory - when on server without page/render, return a render function
   // This is used by the Vite plugin's SSR transform
   if (isServer && !page && !render) {
@@ -163,7 +164,8 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
         page: initialPage,
         component: initialComponent,
         layers: initialLayers,
-      } = await resolveInitialPage(page, resolveComponent, resolveLoading)
+        resolveLoading,
+      } = await resolveInitialApp({ response: page, resolveComponent, loading, blank: Blank, rendered: isValidElement })
 
       const props: InertiaAppProps<SharedProps> = {
         initialPage,
@@ -206,9 +208,9 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   let head: string[] = []
 
   const reactApp = await Promise.all([
-    resolveInitialPage(initialResponse, resolveComponent, resolveLoading),
+    resolveInitialApp({ response: initialResponse, resolveComponent, loading, blank: Blank, rendered: isValidElement }),
     router.decryptHistory().catch(() => {}),
-  ]).then(([{ page: initialPage, component: initialComponent, layers: initialLayers }]) => {
+  ]).then(([{ page: initialPage, component: initialComponent, layers: initialLayers, resolveLoading }]) => {
     const props: InertiaAppProps<SharedProps> = {
       initialPage,
       initialComponent,

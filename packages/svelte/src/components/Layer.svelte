@@ -1,42 +1,42 @@
 <script lang="ts">
   import {
-    cancelLayer,
     layerDialogAttributes,
-    lockScroll,
-    observeExit,
-    raiseLayer,
+    mountLayerDialog,
     type LayerShellProps,
+    type MountedLayerDialog,
   } from '@inertiajs/core'
   import { onMount } from 'svelte'
   import type { Snippet } from 'svelte'
+  import type { HTMLAttributes } from 'svelte/elements'
 
-  let { close, done, children, ...shell }: LayerShellProps & { children: Snippet } = $props()
+  // Anything the app put on <Layer> that is not shell state lands on the dialog, so it can name and describe it.
+  let {
+    children,
+    open,
+    index,
+    isTop,
+    type,
+    close,
+    done,
+    ...rest
+  }: LayerShellProps & { children: Snippet } & HTMLAttributes<HTMLDialogElement> = $props()
+
+  const shell = $derived<LayerShellProps>({ open, index, isTop, type, close, done })
 
   let dialog: HTMLDialogElement | undefined = $state()
-
-  const exit = observeExit(
-    () => dialog,
-    () => done(),
-  )
+  let mounted: MountedLayerDialog | undefined
 
   onMount(() => {
-    raiseLayer(dialog!, shell.isTop)
+    mounted = mountLayerDialog(dialog!, shell)
 
-    const releaseScroll = lockScroll()
-
-    return () => {
-      exit.teardown()
-      releaseScroll()
-    }
+    return () => mounted?.unmount()
   })
 
-  const onCancel = (event: Event) => cancelLayer(event, { isTop: shell.isTop, close })
-
   $effect(() => {
-    exit.toggle(shell.open)
+    mounted?.update({ ...shell })
   })
 </script>
 
-<dialog bind:this={dialog} {...layerDialogAttributes(shell)} oncancel={onCancel}>
+<dialog bind:this={dialog} {...rest} {...layerDialogAttributes(shell)}>
   {@render children()}
 </dialog>

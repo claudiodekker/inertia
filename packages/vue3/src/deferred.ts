@@ -32,7 +32,7 @@ export default defineComponent({
       removeStartListener = router.on('start', (e) => {
         const visit = e.detail.visit
 
-        if (partialReloadFillsDeferred(visit, { layerId, url: page.url }, keys.value)) {
+        if (partialReloadFillsDeferred(visit, layerId, keys.value)) {
           activeReloads.add(visit)
           reloading.value = true
         }

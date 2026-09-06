@@ -3,18 +3,14 @@ import {
   emptyLayoutSlot,
   HeadManagerOnUpdateCallback,
   HeadManagerTitleCallback,
-  isPropsObject,
-  isPropsObjectOrCallback,
-  layerShellProps,
-  layerTransitionName,
-  layoutPageOf,
+  layoutProps,
   LayoutSlot,
   LoadingResolver,
-  normalizeLayouts,
   Page,
   PageHandler,
   PageProps,
   ResolvedLayer,
+  resolveLayouts,
   resolveServerHead,
   router,
   topPageOf,
@@ -35,7 +31,7 @@ import {
 import { flushSync } from 'react-dom'
 import HeadContext from './HeadContext'
 import Layer from './Layer'
-import { resetLayoutProps, retainLayerLayoutProps, store } from './layoutProps'
+import { store, swapLayoutProps } from './layoutProps'
 import PageContext from './PageContext'
 import { LayerComponent, LayoutFunction, ReactComponent, ReactPageHandlerArgs } from './types'
 import { layerContext } from './useLayer'
@@ -51,14 +47,6 @@ function isRenderFunction(value: unknown): boolean {
 
   const fn = value as Function
   return fn.length === 1 && typeof fn.prototype === 'undefined'
-}
-
-function isLayoutResolver(value: unknown): boolean {
-  return (
-    typeof value === 'function' &&
-    (value as Function).length <= 1 &&
-    typeof (value as Function).prototype === 'undefined'
-  )
 }
 
 let pendingInitialSwap: ReactPageHandlerArgs | null = null
@@ -103,56 +91,20 @@ function renderLayout(
   dynamicProps: LayoutSlot,
   defaultLayout?: (name: string, page: Page) => unknown,
 ): ReactNode {
-  let effectiveLayout: unknown
-  let callbackProps: Record<string, unknown> | null = null
-  const layoutValue = component.layout
-
-  if (isLayoutResolver(layoutValue)) {
-    const result = (layoutValue as Function)(page.props)
-
-    if (isValidElement(result)) {
-      return (layoutValue as LayoutFunction)(child)
-    }
-
-    if (isPropsObjectOrCallback(result, isComponent)) {
-      effectiveLayout = defaultLayout?.(page.component, page)
-      callbackProps = result as Record<string, unknown>
-    } else {
-      effectiveLayout = result
-    }
-  } else if (isPropsObject(layoutValue, isComponent)) {
-    effectiveLayout = defaultLayout?.(page.component, page)
-    callbackProps = layoutValue as unknown as Record<string, unknown>
-  } else {
-    effectiveLayout = layoutValue ?? defaultLayout?.(page.component, page)
-  }
-
-  let layouts = normalizeLayouts(
-    effectiveLayout,
+  const layouts = resolveLayouts(component.layout, page, defaultLayout, {
     isComponent,
-    layoutValue && !callbackProps ? isRenderFunction : undefined,
+    isRenderFunction,
+    rendersItself: isValidElement,
+  })
+
+  if (!Array.isArray(layouts)) {
+    return (component.layout as LayoutFunction)(child)
+  }
+
+  return layouts.reduceRight(
+    (childNode, layout) => createElement(layout.component, layoutProps(layout, page, dynamicProps), childNode),
+    child,
   )
-
-  if (callbackProps) {
-    layouts = layouts.map((l) => ({ ...l, props: { ...l.props, ...callbackProps } }))
-  }
-
-  if (layouts.length > 0) {
-    return layouts.reduceRight((childNode, layout) => {
-      return createElement(
-        layout.component,
-        {
-          ...page.props,
-          ...layout.props,
-          ...dynamicProps.shared,
-          ...(layout.name ? dynamicProps.named[layout.name] || {} : {}),
-        },
-        childNode,
-      )
-    }, child)
-  }
-
-  return child
 }
 
 function LayerLayout({
@@ -170,7 +122,7 @@ function LayerLayout({
 
   return renderLayout(
     layer.component,
-    layoutPageOf(layer),
+    layer.layoutPage,
     createElement(layer.component, { key: layer.renderKey, ...layer.page.props }),
     layerLayoutProps,
     defaultLayout,
@@ -237,13 +189,9 @@ export default function App<SharedProps extends PageProps = PageProps>({
         return
       }
 
-      if (!preserveState) {
-        resetLayoutProps()
-      }
-
       const nextLayers = layers ?? []
 
-      retainLayerLayoutProps(nextLayers.map((layer) => layer.id))
+      swapLayoutProps({ layers: nextLayers, preserveState })
 
       flushSync(() =>
         setCurrent((current) => ({
@@ -302,7 +250,7 @@ export default function App<SharedProps extends PageProps = PageProps>({
               props: current.page.props,
             })
           : null,
-        ...current.layers.map((layer, index) =>
+        ...current.layers.map((layer) =>
           createElement(
             layerContext.Provider,
             { key: layer.id, value: layer.id },
@@ -311,10 +259,10 @@ export default function App<SharedProps extends PageProps = PageProps>({
               { value: layer.page },
               createElement(
                 LayerComponent,
-                layerShellProps(layer, index, current.layers.length),
+                layer.shell,
                 createElement(
                   'div',
-                  { 'data-layer-id': layer.id, style: { viewTransitionName: layerTransitionName(layer.id) } },
+                  { ...layer.attributes, style: { viewTransitionName: layer.transitionName } },
                   createElement(LayerLayout, { layer, defaultLayout }),
                 ),
               ),

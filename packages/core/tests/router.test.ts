@@ -203,3 +203,38 @@ describe('clearing history', () => {
     expect(keysHeld()).toBe(false)
   })
 })
+
+describe('methods that never read `this` before layers', () => {
+  it('still work unbound, and address the base', async () => {
+    await hold(pageWith())
+
+    const { remember, restore, flash } = new Router('layer-1')
+
+    expect(() => remember({ note: 'x' }, 'note')).not.toThrow()
+    expect(restore('note')).toEqual({ note: 'x' })
+    expect(() => flash('message', 'Saved.')).not.toThrow()
+    expect(currentPage.get().flash).toEqual({ message: 'Saved.' })
+    expect(currentPage.get().rememberedState).toEqual({ note: { note: 'x' } })
+  })
+})
+
+describe('a pending optimistic callback', () => {
+  it('is consumed by the instance it was chained on, never by a visit from another', async () => {
+    await hold(pageWith({ props: { likes: 0 } }))
+    http.setClient({ request: () => new Promise(() => {}) })
+
+    const first = new Router()
+    const other = new Router('layer-1')
+
+    first.optimistic((props) => ({ likes: (props.likes as number) + 1 }))
+    other.visit('/users')
+    await new Promise((resolve) => setTimeout(resolve))
+
+    expect(currentPage.get().props.likes).toBe(0)
+
+    first.visit('/users')
+    await new Promise((resolve) => setTimeout(resolve))
+
+    expect(currentPage.get().props.likes).toBe(1)
+  })
+})

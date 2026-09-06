@@ -104,8 +104,6 @@ const isStructuredCloneable = (value: unknown): boolean => {
   return type !== 'function' && type !== 'symbol'
 }
 
-// Cloned as-is because they cannot hold a function. Error is the exception. Its
-// `cause` can, but walking it would strip the error type, which is worse.
 const isNativelyCloneable = (value: object): boolean =>
   value instanceof Date ||
   value instanceof RegExp ||
@@ -114,8 +112,6 @@ const isNativelyCloneable = (value: object): boolean =>
   ArrayBuffer.isView(value) ||
   (typeof Blob !== 'undefined' && value instanceof Blob)
 
-// Produces a value structuredClone() accepts. Functions and symbols are dropped
-// from objects, and become null in arrays so indices are preserved.
 export const toStructuredCloneable = <T>(value: T): T => {
   const seen = new WeakMap<object, unknown>()
 
@@ -168,8 +164,6 @@ export const toStructuredCloneable = <T>(value: T): T => {
       return result
     }
 
-    // Anything else is walked as own enumerable properties: structuredClone()
-    // discards prototypes anyway.
     const result: Record<string, unknown> = {}
     seen.set(node, result)
 

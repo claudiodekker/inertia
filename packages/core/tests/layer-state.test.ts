@@ -4,8 +4,8 @@ import { eventHandler } from '../src/eventHandler'
 import { history } from '../src/history'
 import { http } from '../src/http'
 import { useInfiniteScrollQueryString } from '../src/infiniteScroll/queryString'
-import { layerClosing } from '../src/layers'
 import { composeLayer, closeLayer, layerPageOf } from '../src/layers'
+import { layerClosing } from '../src/layers/closing'
 import { page as currentPage } from '../src/page'
 import { prefetchedRequests } from '../src/prefetched'
 import { Response } from '../src/response'
@@ -731,7 +731,8 @@ describe('remembered state per layer', () => {
 
     expect(history.restore('note', layerId)).toBe('typed')
     expect(history.restore('note')).toBeUndefined()
-    expect(currentPage.get().rememberedState).toEqual({ [layerId]: { note: 'typed' } })
+    expect(currentPage.get().layers![0].rememberedState).toEqual({ note: 'typed' })
+    expect(currentPage.get().rememberedState).toEqual({})
   })
 
   it('a remember/restore with no layer open keeps the top-level bag it always used', async () => {
@@ -760,11 +761,41 @@ describe('remembered state per layer', () => {
     expect(router.restore('note', layerId)).toBeUndefined()
   })
 
+  it('holds a remember raised mid-unwind until the browser has answered the step back', async () => {
+    await hold(pageWith())
+    const layerId = await openLayer(true)
+
+    const log: { kind: 'go' | 'replace'; page?: Page }[] = []
+    vi.spyOn(window.history, 'go').mockImplementation(() => log.push({ kind: 'go' }) as unknown as void)
+    vi.spyOn(window.history, 'replaceState').mockImplementation((state) => {
+      log.push({ kind: 'replace', page: (state as { page: Page }).page })
+    })
+
+    const closed = layerClosing.close(layerId)
+    await vi.waitFor(() => expect(log.some((entry) => entry.kind === 'go')).toBe(true))
+
+    router.remember('during', 'note')
+
+    eventHandler.init()
+    listeners.get('popstate')!({ state: { page: pageWith() } } as PopStateEvent)
+    await closed
+    await history.processQueue()
+
+    const afterStepBack = log.slice(log.findIndex((entry) => entry.kind === 'go'))
+
+    expect(afterStepBack.flatMap((entry) => entry.page?.layers ?? [])).toEqual([])
+    expect(router.restore('note')).toBe('during')
+  })
+
   it("a restored page keeps the layer's bag, so reopening it finds the state", async () => {
     const layerId = 'layer-1'
     const restored = pageWith({
-      layers: [editLayer() as unknown as Page['layers'] extends Array<infer L> ? L : never],
-      rememberedState: { [layerId]: { note: 'typed' } },
+      layers: [
+        editLayer({
+          id: layerId,
+          rememberedState: { note: 'typed' },
+        } as Partial<Page>) as unknown as Page['layers'] extends Array<infer L> ? L : never,
+      ],
     })
 
     currentPage.init({

@@ -9,9 +9,7 @@ import { getPageFromElement } from './elements'
 // Shared queue among all instances to ensure URL updates are processed sequentially
 const queue = new Queue<Promise<void>>()
 
-// The url each tier is accumulating pages into, until the queue drains and writes it. Keyed by
-// tier, so a layer paginating never accumulates into the page beneath it nor writes that url.
-const syncing = new Map<string, { initial: URL; payload: URL; absolute: boolean }>()
+const syncing = new Map<string | undefined, { initial: URL; payload: URL; absolute: boolean }>()
 
 /**
  * As users scroll through infinite content, this system updates the URL to reflect
@@ -26,7 +24,7 @@ export const useInfiniteScrollQueryString = (options: {
 }) => {
   let enabled = true
 
-  const tier = options.layerId ?? ''
+  const tier = options.layerId
 
   const queuePageUpdate = (page: string) => {
     queue

@@ -1,3 +1,5 @@
+import { reloadUrlOf } from './layers'
+import { page } from './page'
 import { ActiveVisit, PendingVisit } from './types'
 import { hrefToUrl, isSameUrlWithoutQueryOrHash } from './url'
 
@@ -29,14 +31,13 @@ export const partialReloadRequestsSomeProps = (visit: VisitFilter, props: string
   return props.some((prop) => partialReloadRequestsProp(visit, prop))
 }
 
-// Whether a visit is the one filling in a tier's deferred props. Two tiers can sit on the same url
-// waiting on the same prop, so the tier has to match as well.
+// Two tiers can sit on the same url waiting on the same prop, so the tier has to match as well.
 export const partialReloadFillsDeferred = (
   visit: PendingVisit,
-  tier: { layerId?: string; url: string },
+  layerId: string | undefined,
   props: string[],
 ): boolean =>
   visit.preserveState === true &&
-  visit.layerId === tier.layerId &&
-  isSameUrlWithoutQueryOrHash(visit.url, hrefToUrl(tier.url)) &&
+  visit.layerId === layerId &&
+  isSameUrlWithoutQueryOrHash(visit.url, hrefToUrl(reloadUrlOf(page.get(), layerId, window.location.href))) &&
   partialReloadRequestsSomeProps(visit, props)

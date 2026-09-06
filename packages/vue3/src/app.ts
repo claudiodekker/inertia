@@ -4,17 +4,13 @@ import {
   HeadManager,
   HeadManagerOnUpdateCallback,
   HeadManagerTitleCallback,
-  isPropsObject,
-  isPropsObjectOrCallback,
-  layerShellProps,
-  layerTransitionName,
-  layoutPageOf,
+  layoutProps,
   LayoutSlot,
   LoadingResolver,
-  normalizeLayouts,
   Page,
   PageProps,
   ResolvedLayer,
+  resolveLayouts,
   resolveServerHead,
   router,
   SharedPageProps,
@@ -31,6 +27,7 @@ import {
   InjectionKey,
   inject,
   markRaw,
+  onUnmounted,
   Plugin,
   PropType,
   provide,
@@ -41,12 +38,7 @@ import {
   toRef,
 } from 'vue'
 import Layer from './Layer'
-import {
-  layerState as layerPropsForLayers,
-  retainLayerLayoutProps,
-  state as layoutPropsState,
-  resetLayoutProps,
-} from './layoutProps'
+import { layerState as layerPropsForLayers, state as layoutPropsState, swapLayoutProps } from './layoutProps'
 import remember from './remember'
 import { VuePageHandlerArgs } from './types'
 import useForm from './useForm'
@@ -162,7 +154,6 @@ const App: InertiaApp = defineComponent({
     layer: {
       type: [Object, Function] as PropType<Component>,
       required: false,
-      default: Layer,
     },
     resolveLoading: {
       type: Function as PropType<LoadingResolver>,
@@ -181,7 +172,7 @@ const App: InertiaApp = defineComponent({
     titleCallback,
     onHeadUpdate,
     defaultLayout,
-    layer,
+    layer: LayerShell = Layer,
     resolveLoading,
     serverHead,
   }: InertiaAppProps) {
@@ -206,11 +197,7 @@ const App: InertiaApp = defineComponent({
         resolveComponent: resolveComponent!,
         resolveLoading,
         swapComponent: async (options: VuePageHandlerArgs) => {
-          if (!options.preserveState) {
-            resetLayoutProps()
-          }
-
-          retainLayerLayoutProps((options.layers ?? []).map((layer) => layer.id))
+          swapLayoutProps(options)
 
           component.value = options.component ? markRaw(options.component) : undefined
           page.value = options.page
@@ -226,8 +213,13 @@ const App: InertiaApp = defineComponent({
         headManager.updateServerHead(resolveServerHead(event.detail.page, serverHead))
       }
 
-      router.on('navigate', syncServerHead)
-      router.on('clientVisit', syncServerHead)
+      const removeNavigateListener = router.on('navigate', syncServerHead)
+      const removeClientVisitListener = router.on('clientVisit', syncServerHead)
+
+      onUnmounted(() => {
+        removeNavigateListener()
+        removeClientVisitListener()
+      })
     }
 
     const baseLayoutProps = () => (isServer ? emptyLayoutSlot : layoutPropsState.value)
@@ -244,63 +236,20 @@ const App: InertiaApp = defineComponent({
         return (component.layout as Function)(h, child)
       }
 
-      let effectiveLayout: unknown
-      let callbackProps: Record<string, unknown> | null = null
-      const layoutValue = component.layout
+      const layouts = resolveLayouts(component.layout, page, defaultLayout, { isComponent, isRenderFunction })
 
-      if (
-        typeof layoutValue === 'function' &&
-        (layoutValue as Function).length <= 1 &&
-        typeof (layoutValue as Function).prototype === 'undefined'
-      ) {
-        const result = (layoutValue as Function)(page.props)
-
-        if (isPropsObjectOrCallback(result, isComponent)) {
-          effectiveLayout = defaultLayout?.(page.component, page)
-          callbackProps = result as Record<string, unknown>
-        } else {
-          effectiveLayout = result
-        }
-      } else if (isPropsObject(layoutValue, isComponent)) {
-        effectiveLayout = defaultLayout?.(page.component, page)
-        callbackProps = layoutValue as Record<string, unknown>
-      } else {
-        effectiveLayout = layoutValue ?? defaultLayout?.(page.component, page)
+      if (!Array.isArray(layouts) || layouts.length === 0) {
+        return child
       }
 
-      if (effectiveLayout) {
-        let layouts = normalizeLayouts(
-          effectiveLayout,
-          isComponent,
-          component.layout && !callbackProps ? isRenderFunction : undefined,
-        )
+      const slot = dynamicProps()
 
-        if (callbackProps) {
-          layouts = layouts.map((l) => ({ ...l, props: { ...l.props, ...callbackProps } }))
-        }
+      return layouts.reduceRight((childNode, layout) => {
+        const layoutComponent = layout.component as DefineComponent
+        layoutComponent.inheritAttrs = !!layoutComponent.inheritAttrs
 
-        if (layouts.length > 0) {
-          const slot = dynamicProps()
-
-          return layouts.reduceRight((childNode, layout) => {
-            const layoutComponent = layout.component as DefineComponent
-            layoutComponent.inheritAttrs = !!layoutComponent.inheritAttrs
-
-            return h(
-              layoutComponent,
-              {
-                ...page.props,
-                ...layout.props,
-                ...slot.shared,
-                ...(layout.name ? slot.named[layout.name] || {} : {}),
-              },
-              () => childNode,
-            )
-          }, child)
-        }
-      }
-
-      return child
+        return h(layoutComponent, layoutProps(layout, page, slot), () => childNode)
+      }, child)
     }
 
     const renderTier = (component: DefineComponent, props: PageProps, key: number | undefined) => {
@@ -324,32 +273,25 @@ const App: InertiaApp = defineComponent({
       return wrapInLayout(component.value, page.value!, child, baseLayoutProps)
     }
 
-    // Always a fragment, even with an empty stack. A root that switches between a single vnode and
-    // a fragment fails isSameVNodeType, so opening the first layer would remount the page beneath
-    // and lose its scroll position, form state and playing media.
+    // Always a fragment, even with an empty stack: a root that flips between a single vnode and
+    // a fragment fails isSameVNodeType, and the page beneath would remount when the first layer opens.
     return () => {
       const stack = layers.value ?? []
-      const LayerShell = layer ?? Layer
 
       return [
         renderBase(),
-        ...stack.map((layer, index) => {
-          const layoutPage = layoutPageOf(layer)
+        ...stack.map((layer) => {
           const content = () =>
             wrapInLayout(
               layer.component,
-              layoutPage,
-              renderTier(layer.component, layoutPage.props, layer.renderKey),
+              layer.layoutPage,
+              renderTier(layer.component, layer.page.props, layer.renderKey),
               () => layerLayoutProps(layer.id),
             )
 
           return h(LayerPageProvider, { key: layer.id, page: layer.page, layerId: layer.id }, () =>
-            h(LayerShell, layerShellProps(layer, index, stack.length), () =>
-              h(
-                'div',
-                { 'data-layer-id': layer.id, style: { viewTransitionName: layerTransitionName(layer.id) } },
-                content(),
-              ),
+            h(LayerShell, layer.shell, () =>
+              h('div', { ...layer.attributes, style: { viewTransitionName: layer.transitionName } }, content()),
             ),
           )
         }),

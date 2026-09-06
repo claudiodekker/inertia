@@ -4,8 +4,7 @@ import {
   exposeInterceptors,
   getInitialPageFromDOM,
   http as httpModule,
-  normalizeLoading,
-  resolveInitialPage,
+  resolveInitialApp,
   resolveServerHead,
   router,
   setupProgress,
@@ -19,6 +18,7 @@ import {
 } from '@inertiajs/core'
 import { hydrate, mount } from 'svelte'
 import App, { type InertiaAppProps } from './components/App.svelte'
+import Blank from './components/Blank.svelte'
 import { config } from './index'
 import type { ComponentResolver, LayerComponent, ResolvedComponent, SvelteInertiaAppConfig } from './types'
 
@@ -118,11 +118,11 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
 
   const resolveComponent = (name: string, page?: Page) => Promise.resolve(resolve!(name, page))
 
-  // The renderer reads `component.default`, so a bare component is wrapped the way a module arrives.
-  const resolveLoading = normalizeLoading<ResolvedComponent>(loading, {
-    normalize: (value) =>
-      (value && typeof value === 'object' && 'default' in value ? value : { default: value }) as ResolvedComponent,
-  })
+  const normalize = (value: unknown) =>
+    (value && typeof value === 'object' && 'default' in value ? value : { default: value }) as ResolvedComponent
+
+  // Renders nothing beneath a cold-opened layer; declares no layouts.
+  const blank: ResolvedComponent = { default: Blank, layout: [] }
 
   // SSR render function factory - when on server without page, return a render function
   // This is used by the Vite plugin's SSR transform
@@ -132,7 +132,8 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
         page: initialPage,
         component: initialComponent,
         layers: initialLayers,
-      } = await resolveInitialPage(page, resolveComponent, resolveLoading)
+        resolveLoading,
+      } = await resolveInitialApp({ response: page, resolveComponent, loading, blank, normalize })
 
       const props: InertiaAppProps<SharedProps> = {
         initialPage,
@@ -173,10 +174,12 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
 
   const initialResponse = page || getInitialPageFromDOM<Page<SharedProps>>(id)!
 
-  const [{ page: initialPage, component: initialComponent, layers: initialLayers }] = await Promise.all([
-    resolveInitialPage(initialResponse, resolveComponent, resolveLoading),
-    router.decryptHistory().catch(() => {}),
-  ])
+  const [{ page: initialPage, component: initialComponent, layers: initialLayers, resolveLoading }] = await Promise.all(
+    [
+      resolveInitialApp({ response: initialResponse, resolveComponent, loading, blank, normalize }),
+      router.decryptHistory().catch(() => {}),
+    ],
+  )
 
   const serverHeadManager =
     !isServer && serverHead

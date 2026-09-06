@@ -1,31 +1,30 @@
 import { cloneDeep } from 'es-toolkit'
-import { get, set } from 'es-toolkit/compat'
 import { eventHandler } from './eventHandler'
 import { fireNavigateEvent } from './events'
 import { history } from './history'
+import { interceptors } from './interceptors'
 import {
   addressOf,
   dropHistoryEntry,
-  isLayerResponse,
+  isBlankBase,
   layerAt,
-  layerClosing,
   layersOf,
   loadingBase,
-  openLayerFor,
+  mapLayers,
   recordHistoryEntry,
-  registryClose,
-  resolveLayers,
   tierOf,
-  withLiveOwners,
+  withBrowserHash,
   withTier,
-  withoutFlash,
+  withoutAbandonedMarks,
 } from './layers'
+import { registryClose } from './layers/handles'
+import { resolveLayers } from './layers/render'
+import { continueWalk } from './layers/walk'
 import { prefetchedRequests } from './prefetched'
 import { Scroll } from './scroll'
 import {
   Component,
   FlashData,
-  Layer,
   LoadingResolver,
   Page,
   PageEvent,
@@ -34,23 +33,18 @@ import {
   ResolvedLayer,
   RouterInitParams,
   ScrollRegion,
+  Tier,
   Visit,
 } from './types'
 import { hrefToUrl, isSameUrlWithoutHash } from './url'
 
-const baseTier = 'base'
-
-const tiersOf = (page: Page): [string, Layer][] => [
-  ...layersOf(page).map((layer): [string, Layer] => [layer.id, layer]),
-  [baseTier, page],
+const tiersOf = (page: Page): [string | undefined, Tier][] => [
+  ...layersOf(page).map((layer): [string, Tier] => [layer.id, layer]),
+  [undefined, page],
 ]
 
-// The groups a tier arrived owing, held from the write that carries them until one lands: a write
-// a newer one supersedes never gets that far, and leaves them for the write that does.
-const pendingDeferred = new Map<string, Pick<Layer, 'deferredProps' | 'component' | 'url'>>()
+const pendingDeferred = new Map<string | undefined, Pick<Tier, 'deferredProps' | 'component' | 'url'>>()
 
-// A write aimed at one tier carries every other tier along untouched, groups and all, so only the
-// groups a write brings are recorded. The document's own page brings its own.
 const recordDeferredProps = (page: Page, onScreen?: Page): void => {
   const carried = new Map(onScreen ? tiersOf(onScreen).map(([key, tier]) => [key, tier.deferredProps]) : [])
 
@@ -80,17 +74,26 @@ const announceDeferredProps = (page: Page): void => {
 
     pendingDeferred.delete(key)
 
-    // The tier moved on while the write was out, so what it was owing is not what it wants now.
     if (owed.component !== tier.component || owed.url !== tier.url) {
       continue
     }
 
-    eventHandler.fireInternalEvent('loadDeferredProps', {
-      deferredProps: owed.deferredProps,
-      layerId: key === baseTier ? undefined : key,
-    })
+    eventHandler.fireInternalEvent('loadDeferredProps', { deferredProps: owed.deferredProps, layerId: key })
   }
 }
+
+const withLiveOwners = (page: Page, baseId: string): Page => {
+  const open = new Set(layersOf(page).map((layer) => layer.id))
+
+  return mapLayers(page, (layer) =>
+    layer.owner !== null && !open.has(layer.owner) ? { ...layer, owner: baseId } : layer,
+  )
+}
+
+const withoutFlash = (page: Page): Page => ({
+  ...mapLayers(page, (layer) => ({ ...layer, flash: {} })),
+  flash: {},
+})
 
 let baseSequence = 0
 
@@ -107,8 +110,6 @@ interface SetOptions {
   visitId?: string
 }
 
-// What `write` settled on its way to installing the page: whether the entry was taken over, and the
-// scroll it read off the document before the swap tore the regions down.
 interface InstallOptions extends SetOptions {
   replace: boolean
   scrollRegions: ScrollRegion[]
@@ -131,9 +132,7 @@ class CurrentPage {
   protected isFirstPageLoad = true
   protected cleared = false
   protected historyQuotaExceeded = false
-  protected historyEntryDropped = false
-  // Optimistic baselines per prop, under the tier that owns them. '' is the base.
-  protected optimisticBaselines: Map<string, Partial<Page['props']>> = new Map()
+  protected optimisticBaselines: Map<string | undefined, Partial<Page['props']>> = new Map()
   protected pendingOptimistics: {
     id: number
     layerId?: string
@@ -159,11 +158,26 @@ class CurrentPage {
       this.historyQuotaExceeded = true
     })
 
-    eventHandler.on('historyEntryDropped', () => {
-      this.historyEntryDropped = true
-    })
-
     return this
+  }
+
+  protected commit(page: Page, { announceAll = false }: { announceAll?: boolean } = {}): void {
+    const previous = announceAll ? [] : layersOf(this.page)
+    const next = layersOf(page)
+    const before = new Set(previous.map((layer) => layer.id))
+    const after = new Set(next.map((layer) => layer.id))
+
+    this.page = page
+
+    const departed = previous.filter((layer) => !after.has(layer.id))
+
+    this.dropLayerOptimisticState(departed.map((layer) => layer.id))
+    departed.forEach((layer) => interceptors.fireLayerEvent({ type: 'closed', layer }))
+    next
+      .filter((layer) => !before.has(layer.id))
+      .forEach((layer) => interceptors.fireLayerEvent({ type: 'opened', layer }))
+
+    this.fireEventsFor('commit')
   }
 
   public set(page: Page, options: SetOptions = {}): Promise<void> {
@@ -177,11 +191,10 @@ class CurrentPage {
     recordDeferredProps(page, initialRender ? undefined : this.page)
 
     if (!preservesBase) {
-      // A write in flight is enough to invalidate the base for anything composing onto it.
       this.baseGeneration++
     }
 
-    layerClosing.reconcile(page)
+    page = withoutAbandonedMarks(this.page, page)
 
     this.componentId = {}
 
@@ -189,7 +202,6 @@ class CurrentPage {
 
     if (page.clearHistory) {
       history.clear()
-      // Spent on a copy, so the flag rides into neither this entry nor the stack composing onto it.
       page = { ...page, clearHistory: false }
     }
 
@@ -203,8 +215,7 @@ class CurrentPage {
     })
   }
 
-  // Writes the page's history entry, then installs it. The entry goes first, so anything reading the
-  // address while the components swap in sees the one they are landing on.
+  // The history entry is written before the swap, so anything reading the address mid-swap sees the new one.
   protected write(
     page: Page,
     component: Component | undefined,
@@ -220,8 +231,6 @@ class CurrentPage {
 
     page = withLiveOwners(page, this.baseId)
 
-    layerClosing.release(page)
-
     page.rememberedState ??= {}
 
     const isServer = typeof window === 'undefined'
@@ -236,18 +245,24 @@ class CurrentPage {
     // Clear flash data from the page object, we don't want it when navigating back/forward...
     const pageForHistory = withoutFlash(page)
 
-    return new Promise<void>((resolve) =>
-      replace ? history.replaceState(pageForHistory, resolve) : history.pushState(pageForHistory, resolve),
-    ).then(() => this.install(page, component, layers, { ...options, replace, scrollRegions, scrollRegionLayers }))
+    return new Promise<boolean>((resolve) =>
+      replace ? history.replaceState(pageForHistory, () => resolve(true)) : history.pushState(pageForHistory, resolve),
+    ).then((written) =>
+      // An entry the browser refused to write is not one a close should step back over.
+      this.install(written ? page : dropHistoryEntry(page), component, layers, {
+        ...options,
+        replace,
+        scrollRegions,
+        scrollRegionLayers,
+      }),
+    )
   }
 
-  // Whether the write takes over the entry on screen rather than pushing one of its own.
   protected takesOverTheEntry(page: Page, replace: boolean, isServer: boolean): boolean {
     if (replace) {
       return true
     }
 
-    // A layer open is a step of its own, so it pushes even where the address has not moved.
     if (layersOf(page).some((layer) => !layer.standalone && !layerAt(this.page, layer.id))) {
       return false
     }
@@ -255,19 +270,12 @@ class CurrentPage {
     return isSameUrlWithoutHash(hrefToUrl(addressOf(page)), !isServer ? window.location : new URL(page.url))
   }
 
-  // The entry is written, so this is now the page on screen: it is announced, and then handed to the
-  // adapter to render.
   protected install(
     page: Page,
     component: Component | undefined,
     layers: ResolvedLayer[] | undefined,
     { preserveState = false, viewTransition = false, initialRender = false, ...options }: InstallOptions,
   ): Promise<void> | void {
-    if (this.historyEntryDropped) {
-      this.historyEntryDropped = false
-      page = dropHistoryEntry(page)
-    }
-
     const isNewComponent = !this.isTheSame(page)
 
     if (!isNewComponent && Object.keys(page.props.errors || {}).length > 0) {
@@ -275,7 +283,7 @@ class CurrentPage {
       viewTransition = false
     }
 
-    this.page = page
+    this.commit(page, { announceAll: initialRender })
     this.cleared = false
 
     if (this.hasOnceProps()) {
@@ -322,6 +330,8 @@ class CurrentPage {
     if (!replace) {
       fireNavigateEvent(page, { cached, visitId })
     }
+
+    continueWalk()
   }
 
   public setQuietly(
@@ -335,13 +345,12 @@ class CurrentPage {
     page = withLiveOwners(page, this.baseId)
 
     this.baseGeneration++
-    layerClosing.reconcile(page)
-    layerClosing.release(page)
+    page = withoutAbandonedMarks(this.page, page)
 
     return this.resolve(page.component, page).then(async (component) => {
       const layers = await this.resolveLayers(page)
 
-      this.page = page
+      this.commit(page)
       this.cleared = false
       history.setCurrent(page)
       return this.swap({ component, layers, page, preserveState, viewTransition: false })
@@ -368,7 +377,6 @@ class CurrentPage {
     return this.baseId
   }
 
-  // A base the landing page still stands on keeps its id, and with it the handles hung off it.
   protected takesBaseAway(page: Page, preserveState: boolean): boolean {
     return !layersOf(page).some((open) => layerAt(this.page, open.id)) && !(preserveState && this.isTheSame(page))
   }
@@ -382,7 +390,7 @@ class CurrentPage {
   }
 
   public merge(data: Partial<Page>): void {
-    this.page = { ...this.page, ...data }
+    this.commit({ ...this.page, ...data })
   }
 
   public setPropsQuietly(props: Page['props'], layerId?: string): Promise<unknown> {
@@ -402,13 +410,16 @@ class CurrentPage {
     this.page = withTier(this.page, layerId, { flash })
 
     if (layerId) {
-      // The onFlash callback lands on the composite's own flash, where a layer's has no business.
       this.rerender()
 
       return
     }
 
     this.onFlashCallback?.(flash)
+  }
+
+  public setUrlHash(hash: string): void {
+    this.page = withBrowserHash(this.page, hash)
   }
 
   public remember(data: Page['rememberedState']): void {
@@ -449,14 +460,16 @@ class CurrentPage {
     })
   }
 
-  public resolve(component: string, page?: Page): Promise<Component | undefined> {
-    if (component !== '') {
+  public resolve(component: string, page?: Page): Promise<Component> {
+    if (!isBlankBase({ component })) {
       return Promise.resolve(this.resolveComponent(component, page))
     }
 
-    const base = page === undefined ? undefined : loadingBase(page)
-
-    return Promise.resolve(base === undefined ? undefined : this.resolveLoading?.(base, page!))
+    return Promise.resolve(
+      page === undefined || this.resolveLoading === undefined
+        ? undefined
+        : this.resolveLoading(loadingBase(page) ?? page.url, page),
+    )
   }
 
   protected resolveLayers(page: Page): Promise<ResolvedLayer[] | undefined> {
@@ -464,11 +477,7 @@ class CurrentPage {
       return Promise.resolve(undefined)
     }
 
-    return resolveLayers(
-      page,
-      (name, layerPage) => this.resolve(name, layerPage),
-      (id) => layerClosing.isClosing(id),
-    )
+    return resolveLayers(page, (name, layerPage) => this.resolve(name, layerPage))
   }
 
   public nextOptimisticId(): number {
@@ -476,14 +485,14 @@ class CurrentPage {
   }
 
   protected baselineOf(layerId?: string): Partial<Page['props']> {
-    return this.optimisticBaselines.get(layerId ?? '') ?? {}
+    return this.optimisticBaselines.get(layerId) ?? {}
   }
 
   public setBaseline(key: string, value: unknown, layerId?: string): void {
     const baseline = this.baselineOf(layerId)
 
     if (!(key in baseline)) {
-      this.optimisticBaselines.set(layerId ?? '', { ...baseline, [key]: value })
+      this.optimisticBaselines.set(layerId, { ...baseline, [key]: value })
     }
   }
 
@@ -491,7 +500,7 @@ class CurrentPage {
     const baseline = this.baselineOf(layerId)
 
     if (key in baseline) {
-      this.optimisticBaselines.set(layerId ?? '', { ...baseline, [key]: value })
+      this.optimisticBaselines.set(layerId, { ...baseline, [key]: value })
     }
   }
 
@@ -580,34 +589,6 @@ class CurrentPage {
 
   public fireEventsFor(event: PageEvent): void {
     this.listeners.filter((listener) => listener.event === event).forEach((listener) => listener.callback())
-  }
-
-  public mergeOncePropsIntoResponse(
-    response: Page,
-    { force = false, layerId }: { force?: boolean; layerId?: string } = {},
-  ): void {
-    const isLayer = isLayerResponse(response)
-    const open = isLayer ? openLayerFor(this.page, response, layerId) : undefined
-
-    if (isLayer && !open) {
-      return
-    }
-
-    const onceBag = open?.onceProps ?? this.page.onceProps
-    const props = open?.props ?? this.page.props
-
-    Object.entries(response.onceProps ?? {}).forEach(([key, onceProp]) => {
-      const existingOnceProp = onceBag?.[key]
-
-      if (existingOnceProp === undefined) {
-        return
-      }
-
-      if (force || get(response.props, onceProp.prop) === undefined) {
-        set(response.props, onceProp.prop, get(props, existingOnceProp.prop))
-        response.onceProps![key].expiresAt = existingOnceProp.expiresAt
-      }
-    })
   }
 }
 

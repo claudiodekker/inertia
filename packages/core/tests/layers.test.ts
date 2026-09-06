@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   addressOf,
-  capturedBaseIsValid,
   closeLayer,
   composeColdLayer,
   composeLayer,
@@ -9,23 +8,24 @@ import {
   dropHistoryEntry,
   encryptsHistory,
   entriesToUnwind,
-  insertLayerBeneath,
   isLayerResponse,
   layerPageOf,
-  layoutPageOf,
   loadingBase,
+  markClosing,
   nextLayerId,
-  normalizeLoading,
   openLayerFor,
   promoteDeepestLayer,
   promoteLayer,
   recordHistoryEntry,
-  resolveInitialPage,
   withAddressHash,
 } from '../src/layers'
+import { layerDialogAttributes } from '../src/layers/dialog'
+import { insertLayerBeneath } from '../src/layers/landing'
+import { layerIdOf, normalizeLoading as normalize, resolveLayers } from '../src/layers/render'
+import { resolveInitialPage } from '../src/layers/walk'
 import { createLayoutPropsStore } from '../src/layout'
 import { page as currentPage } from '../src/page'
-import { LayerState, Page, ResolvedLayer } from '../src/types'
+import { LayerState, LoadingOption, Page } from '../src/types'
 import { pageWith } from './support/layers'
 
 describe('isLayerResponse', () => {
@@ -416,9 +416,7 @@ describe('resolveInitialPage', () => {
     expect(page.component).toBe('')
     expect(page.url).toBe('/users')
     expect(component).toBeUndefined()
-    expect(layers).toEqual([
-      expect.objectContaining({ key: 'Users/Edit', component: { name: 'Users/Edit' }, isClosing: false }),
-    ])
+    expect(layers).toEqual([expect.objectContaining({ id: 'layer-1', component: { name: 'Users/Edit' } })])
   })
 
   it('renders a layer that declares no base as an ordinary page', async () => {
@@ -526,21 +524,26 @@ describe('loadingBase', () => {
 
 describe('normalizeLoading', () => {
   const page = pageWith()
+  const blank = { render: () => null }
+  const normalizeLoading = (
+    loading: LoadingOption | undefined,
+    options: { rendered?: (value: unknown) => boolean } = {},
+  ) => normalize(loading, { blank, ...options })
 
-  it('is undefined when no option was given', () => {
-    expect(normalizeLoading(undefined)).toBeUndefined()
+  it('resolves the blank when no option was given', async () => {
+    await expect(normalizeLoading(undefined)('/users', page)).resolves.toBe(blank)
   })
 
   it('resolves a component as itself', async () => {
     const component = { render: () => null }
 
-    await expect(normalizeLoading(component)!('/users', page)).resolves.toBe(component)
+    await expect(normalizeLoading(component)('/users', page)).resolves.toBe(component)
   })
 
   it('resolves a module to the component it carries', async () => {
     const component = { render: () => null }
 
-    await expect(normalizeLoading({ default: component })!('/users', page)).resolves.toBe(component)
+    await expect(normalizeLoading({ default: component })('/users', page)).resolves.toBe(component)
   })
 
   it('hands a resolver the url and the page, and resolves what it returns', async () => {
@@ -552,20 +555,20 @@ describe('normalizeLoading', () => {
       return component
     })
 
-    await expect(resolver!('/users', page)).resolves.toBe(component)
+    await expect(resolver('/users', page)).resolves.toBe(component)
     expect(seen).toEqual(['/users', page])
   })
 
   it('unwraps the module a resolver imports', async () => {
     const component = { render: () => null }
 
-    await expect(normalizeLoading(() => Promise.resolve({ default: component }))!('/users', page)).resolves.toBe(
+    await expect(normalizeLoading(() => Promise.resolve({ default: component }))('/users', page)).resolves.toBe(
       component,
     )
   })
 
-  it('resolves nothing when the resolver declines', async () => {
-    await expect(normalizeLoading(() => undefined)!('/users', page)).resolves.toBeUndefined()
+  it('resolves the blank when the resolver declines', async () => {
+    await expect(normalizeLoading(() => undefined)('/users', page)).resolves.toBe(blank)
   })
 
   it('resolves a component that throws when called as itself', async () => {
@@ -573,7 +576,7 @@ describe('normalizeLoading', () => {
       throw new Error('not a resolver')
     }
 
-    await expect(normalizeLoading(component)!('/users', page)).resolves.toBe(component)
+    await expect(normalizeLoading(component)('/users', page)).resolves.toBe(component)
   })
 
   it('resolves a component whose call the rendered check recognises as itself', async () => {
@@ -581,7 +584,7 @@ describe('normalizeLoading', () => {
 
     const resolver = normalizeLoading(component, { rendered: (value) => (value as { vnode?: boolean }).vnode === true })
 
-    await expect(resolver!('/users', page)).resolves.toBe(component)
+    await expect(resolver('/users', page)).resolves.toBe(component)
   })
 })
 
@@ -689,12 +692,11 @@ describe('layerPageOf', () => {
     expect(layerPageOf(page, above).url).toBe('/users/9/notes')
   })
 
-  it('carries the full stack as layers', () => {
-    const base = composeLayer(pageWith(), pageWith({ component: 'A', layer: { key: 'A' } }), 'layer-1')
+  it("carries the stack as structure only, never another tier's props", () => {
+    const base = composeLayer(pageWith(), pageWith({ component: 'A', url: '/a', layer: { key: 'A' } }), 'layer-1')
     const page = layerPageOf(base, layer())
 
-    expect(page.layers).toEqual(base.layers)
-    expect(page.layers!.map((open) => open.id)).toEqual(['layer-1'])
+    expect(page.layers).toEqual([{ id: 'layer-1', key: 'A', component: 'A', url: '/a' }])
   })
 
   it('takes encryptHistory from the layer, never from the page beneath it', () => {
@@ -739,37 +741,81 @@ describe('layerPageOf', () => {
   })
 })
 
-describe('layoutPageOf', () => {
-  const resolved = (overrides: Partial<ResolvedLayer> = {}): ResolvedLayer =>
-    ({
-      id: 'layer-1',
-      key: 'Users/Edit',
-      component: {},
-      page: pageWith({
+describe('resolveLayers, the layout page', () => {
+  const resolve = (name: string) => ({ name })
+  const withUrl = (url: string | null): Page =>
+    composeLayer(
+      pageWith(),
+      pageWith({
         component: 'Users/Edit',
         url: '/users/5/edit',
+        layer: { key: 'Users/Edit' },
         props: { user: { id: 5 }, errors: { name: 'required' } },
       }),
-      url: '/users/5/edit',
-      base: '/users',
-      encryptHistory: false,
-      standalone: false,
-      entries: 1,
-      owner: null,
-      isClosing: false,
-      ...overrides,
-    }) as ResolvedLayer
+      'layer-1',
+      { url },
+    )
 
-  it('leaves the url empty for a layer with no url of its own, so it never reaches the address', () => {
-    const page = layoutPageOf(resolved({ url: null }))
+  it('leaves the url empty for a layer with no url of its own, so it never reaches the address', async () => {
+    const [layer] = await resolveLayers(withUrl(null), resolve)
 
-    expect(page.component).toBe('Users/Edit')
-    expect(page.props).toEqual({ user: { id: 5 }, errors: { name: 'required' } })
-    expect(page.url).toBe('')
+    expect(layer.layoutPage.component).toBe('Users/Edit')
+    expect(layer.layoutPage.props).toEqual({ user: { id: 5 }, errors: { name: 'required' } })
+    expect(layer.layoutPage.url).toBe('')
+    // The layer's own code still reads the address beneath it.
+    expect(layer.page.url).toBe('/users')
   })
 
-  it('keeps the layer url when the layer has one', () => {
-    expect(layoutPageOf(resolved()).url).toBe('/users/5/edit')
+  it('keeps the layer url when the layer has one', async () => {
+    const [layer] = await resolveLayers(withUrl('/users/5/edit'), resolve)
+
+    expect(layer.layoutPage.url).toBe('/users/5/edit')
+  })
+
+  it('derives the shell props from the layer and its place on the stack', async () => {
+    const stack = composeLayer(
+      withUrl('/users/5/edit'),
+      pageWith({ component: 'Teams/Show', url: '/teams/1', layer: { key: 'Teams/Show' } }),
+      'layer-2',
+    )
+
+    const layers = await resolveLayers(markClosing(stack, 'layer-2'), resolve)
+
+    expect(layers.map((layer) => layer.shell)).toEqual([
+      expect.objectContaining({ open: true, index: 0, isTop: false, type: 'routed' }),
+      expect.objectContaining({ open: false, index: 1, isTop: true, type: 'routed' }),
+    ])
+    expect(layers.map((layer) => layer.transitionName)).toEqual(['inertia-layer-layer-1', 'inertia-layer-layer-2'])
+    expect(layers.map((layer) => layer.attributes)).toEqual([
+      { 'data-layer-id': 'layer-1' },
+      { 'data-layer-id': 'layer-2' },
+    ])
+  })
+
+  it('reads a layer id back off the wrapper carrying its attributes', async () => {
+    const [layer] = await resolveLayers(withUrl('/users/5/edit'), resolve)
+    // The stub document has no DOM tree, so the wrapper answers `closest` for its own attribute only.
+    const wrapper = {
+      closest: (selector: string) =>
+        selector === `[${Object.keys(layer.attributes)[0]}]`
+          ? { getAttribute: (name: string) => layer.attributes[name as keyof typeof layer.attributes] }
+          : null,
+    } as unknown as Element
+
+    expect(layerIdOf(wrapper)).toBe('layer-1')
+    expect(layerIdOf({ closest: () => null } as unknown as Element)).toBeUndefined()
+  })
+
+  it('invents no accessible name, leaving the app to give the dialog one', async () => {
+    const [layer] = await resolveLayers(withUrl('/users/5/edit'), resolve)
+
+    expect(layerDialogAttributes(layer.shell)).not.toHaveProperty('aria-label')
+  })
+
+  it('marks a local layer as one for the shell', async () => {
+    const [layer] = await resolveLayers(composeLocalLayer(pageWith(), 'Prompt', {}, 'layer-1', 'base-1'), resolve)
+
+    expect(layer.shell.type).toBe('local')
   })
 })
 
@@ -814,6 +860,48 @@ describe('createLayoutPropsStore, per-layer slots', () => {
 
     expect(store.get()).toEqual({ shared: {}, named: {} })
     expect(store.getForLayer('layer-3')).toEqual({ shared: { kept: 'y' }, named: {} })
+  })
+
+  it('swap drops the base slot unless state is preserved, and every layer slot no longer on the stack', () => {
+    const store = createLayoutPropsStore()
+
+    store.set({ base: 'chrome' })
+    store.set({ fromLayer: 'panel' }, 'layer-1')
+    store.set({ other: 'x' }, 'layer-2')
+
+    store.swap({ layers: [{ id: 'layer-2' }], preserveState: true })
+
+    expect(store.get()).toEqual({ shared: { base: 'chrome' }, named: {} })
+    expect(store.layerIds()).toEqual(['layer-2'])
+
+    store.swap({ layers: [{ id: 'layer-2' }], preserveState: false })
+
+    expect(store.get()).toEqual({ shared: {}, named: {} })
+    expect(store.getForLayer('layer-2')).toEqual({ shared: { other: 'x' }, named: {} })
+
+    store.swap({ preserveState: true })
+
+    expect(store.layerIds()).toEqual([])
+  })
+
+  it('snapshot holds every tier at once', () => {
+    const store = createLayoutPropsStore()
+
+    store.set({ base: 'chrome' })
+    store.set('header', { title: 'Settings' }, 'layer-1')
+
+    expect(store.snapshot()).toEqual({
+      base: { shared: { base: 'chrome' }, named: {} },
+      layers: { 'layer-1': { shared: {}, named: { header: { title: 'Settings' } } } },
+    })
+  })
+
+  it('setFor still names a slot, as it did before layers', () => {
+    const store = createLayoutPropsStore()
+
+    store.setFor('header', { title: 'Settings' })
+
+    expect(store.get()).toEqual({ shared: {}, named: { header: { title: 'Settings' } } })
   })
 })
 
@@ -1073,58 +1161,6 @@ describe('encryptsHistory', () => {
   })
 })
 
-describe('capturedBaseIsValid', () => {
-  const loginPage = pageWith({ component: 'Auth/Login', url: '/login' })
-  const stackWith = (key: string, id = 'layer-1'): Page =>
-    composeLayer(pageWith(), pageWith({ component: key, layer: { key: key } }), id)
-
-  const validity = (overrides: Partial<Parameters<typeof capturedBaseIsValid>[0]> = {}): boolean =>
-    capturedBaseIsValid({
-      captured: { page: loginPage, generation: 7 },
-      live: { page: loginPage, generation: 7 },
-      dispatchedUrl: new URL('http://localhost/login'),
-      layer: { url: '/users/5/edit', key: 'Users/Edit' },
-      ...overrides,
-    })
-
-  it('holds when the visit was dispatched toward the layer', () => {
-    expect(validity({ dispatchedUrl: new URL('http://localhost/users/5/edit') })).toBe(true)
-  })
-
-  it('holds when the layer is already open', () => {
-    expect(validity({ live: { page: stackWith('Users/Edit'), generation: 7 } })).toBe(true)
-  })
-
-  it('holds when the layer it was dispatched from is still open', () => {
-    const stack = stackWith('Teams/Show')
-
-    expect(validity({ captured: { page: stack, generation: 7 }, live: { page: stack, generation: 7 } })).toBe(true)
-  })
-
-  it('fails once the layer it was dispatched from has been closed', () => {
-    expect(validity({ captured: { page: stackWith('Teams/Show'), generation: 7 } })).toBe(false)
-  })
-
-  it('fails when the layer it was dispatched from has been closed and another opened', () => {
-    expect(
-      validity({
-        captured: { page: stackWith('Teams/Show'), generation: 7 },
-        live: { page: stackWith('Teams/Members', 'layer-2'), generation: 7 },
-      }),
-    ).toBe(false)
-  })
-
-  it('fails for a layer returned through a login page', () => {
-    expect(validity()).toBe(false)
-  })
-
-  it('fails once the base it captured has been replaced, whatever else holds', () => {
-    expect(
-      validity({ dispatchedUrl: new URL('http://localhost/users/5/edit'), live: { page: loginPage, generation: 8 } }),
-    ).toBe(false)
-  })
-})
-
 describe('promoteLayer', () => {
   const response = pageWith({
     component: 'Users/Edit',
@@ -1174,6 +1210,12 @@ describe('closeLayer', () => {
     const closed = closeLayer(stack('/a', '/b', '/c'), 'layer-2')
 
     expect(closed.layers!.map((layer) => layer.id)).toEqual(['layer-1'])
+  })
+
+  it('keeps a base remember key named after the layer it closes', () => {
+    const page = { ...stack('/a'), rememberedState: { 'layer-1': 'mine' } }
+
+    expect(closeLayer(page, 'layer-1').rememberedState).toEqual({ 'layer-1': 'mine' })
   })
 
   it('leaves the stack alone when the layer is not on it', () => {

@@ -18,7 +18,6 @@ export function resolveServerHead(page: Page, serverHead?: ServerHeadOption): st
     return []
   }
 
-  // The top layer's head wins, exactly as a <Head> in a layer does.
   const headPage = topPageOf(page)
 
   const elements =
@@ -155,8 +154,7 @@ export default function createHeadManager(
     const serverHead = states[serverHeadProviderId] || []
 
     const open = stack()
-    // Ordered by the stack, so the top layer's title wins. A provider naming no layer ranks below
-    // every layer, which is where the base belongs.
+    // Ranked by the stack so the top layer's title wins; a provider naming no layer ranks below every layer.
     const rankOf = (id: string): number => open.findIndex((layer) => layer.id === providers[id])
 
     const providerHead = Object.keys(states)

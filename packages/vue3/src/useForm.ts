@@ -9,7 +9,6 @@ import {
   OptimisticCallback,
   Progress,
   RequestPayload,
-  router,
   UrlMethodPair,
   UseFormArguments,
   UseFormSubmitArguments,
@@ -156,7 +155,7 @@ export default function useForm<TForm extends FormDataType<TForm>>(
     setRememberExcludeKeys,
     resetBeforeSubmit,
     finishProcessing,
-    layerId,
+    layer,
   } = useFormState<TForm>({
     data,
     rememberKey,
@@ -179,7 +178,6 @@ export default function useForm<TForm extends FormDataType<TForm>>(
       resetDefaultsCalledInOnSuccess()
 
       const _options: VisitOptions = {
-        layerId,
         ...options,
         onCancelToken: (token) => {
           cancelToken = token
@@ -235,9 +233,9 @@ export default function useForm<TForm extends FormDataType<TForm>>(
       const transformedData = getTransform()(form.data()) as RequestPayload
 
       if (method === 'delete') {
-        router.delete(url, { ..._options, data: transformedData })
+        layer.delete(url, { ..._options, data: transformedData })
       } else {
-        router[method](url, transformedData, _options)
+        layer[method](url, transformedData, _options)
       }
     },
 

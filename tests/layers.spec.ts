@@ -15,6 +15,13 @@ test('a layer response renders over the page already displayed', async ({ page }
   await expect(page.locator('#layer-count')).toHaveText('1')
 })
 
+test('passes an attribute the app put on the shell through to the dialog, so it can name it', async ({ page }) => {
+  await page.goto('/layers/base')
+  await clickAndWaitForResponse(page, 'Open panel', '/layers/panel/first')
+
+  await expect(page.locator('dialog[data-layer-index="0"]')).toHaveAttribute('aria-label', 'Layers/Panel')
+})
+
 test("usePage() inside a layer reads the layer's own page, not the page beneath it", async ({ page }) => {
   await page.goto('/layers/base')
 

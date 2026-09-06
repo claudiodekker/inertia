@@ -6,8 +6,9 @@ import { history } from '../src/history'
 import { http } from '../src/http'
 import { HttpNetworkError, HttpResponseError } from '../src/httpErrors'
 import { InitialVisit } from '../src/initialVisit'
-import { layerClosing } from '../src/layers'
-import { composeLayer, maxLayerChain, resolveInitialPage } from '../src/layers'
+import { composeLayer } from '../src/layers'
+import { layerClosing } from '../src/layers/closing'
+import { maxLayerChain, resolveInitialPage } from '../src/layers/walk'
 import { page as currentPage } from '../src/page'
 import { prefetchedRequests } from '../src/prefetched'
 import { Router } from '../src/router'
@@ -268,6 +269,22 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     await vi.waitFor(() => expect(held.has('/users')).toBe(true))
 
     expect(cancelled).toBe(false)
+  })
+
+  it('sends one hop for a base while a landing on the blank it is for arrives', async () => {
+    await hold(loginPage)
+    const requested = answering({ '/login': layerAt('/users/5/edit', 'Users/Edit', '/users') })
+
+    await openCold()
+    await waitingForTheHop()
+
+    const [top] = currentPage.get().layers!
+    router.reload({ layerId: top.id, only: ['user'] })
+    await vi.waitFor(() => expect(held.has('/users/5/edit')).toBe(true))
+    await answer('/users/5/edit', layerAt('/users/5/edit', 'Users/Edit', '/users'))
+
+    expect(requested.filter((path) => path === '/users')).toHaveLength(1)
+    expect(currentPage.get().component).toBe('')
   })
 
   it('stops when the base it is sent for is already on the stack', async () => {
@@ -1224,6 +1241,22 @@ describe('the walk a cold layer sends for the base beneath it', () => {
 
       expect(currentPage.get().layers![0].url).toBe('/users/5/edit#profile')
       expect(currentPage.get().url).toBe('/users')
+    })
+
+    it('keeps the hash the browser is on when the router is initialised without the app factory', async () => {
+      window.location.href = 'http://localhost/users#profile'
+
+      currentPage.init({
+        initialPage: pageWith(),
+        resolveComponent: (name) => ({ name }) as never,
+        swapComponent: async () => {},
+      })
+
+      InitialVisit.handle()
+
+      await new Promise((resolve) => setTimeout(resolve))
+
+      expect(currentPage.get().url).toBe('/users#profile')
     })
 
     it('renders a layer that declares no base as an ordinary page', async () => {

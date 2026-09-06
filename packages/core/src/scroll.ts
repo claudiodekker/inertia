@@ -1,5 +1,6 @@
 import { requestAnimationFrame } from './domUtils'
 import { history } from './history'
+import { layerIdOf } from './layers/render'
 import { ScrollRegion } from './types'
 
 const isServer = typeof window === 'undefined'
@@ -18,13 +19,9 @@ export class Scroll {
   }
 
   public static getScrollRegionLayers(): (string | null)[] | undefined {
-    const tiers = Array.from(this.regions()).map((region) => this.tierOf(region))
+    const tiers = Array.from(this.regions()).map((region) => layerIdOf(region) ?? null)
 
     return tiers.some((tier) => tier !== null) ? tiers : undefined
-  }
-
-  protected static tierOf(region: Element): string | null {
-    return region.closest('[data-layer-id]')?.getAttribute('data-layer-id') ?? null
   }
 
   protected static regions(): NodeListOf<Element> {
@@ -90,8 +87,6 @@ export class Scroll {
       return
     }
 
-    // A region takes the next saved position of its own tier. An entry written before layers
-    // existed carries no tiers, and lines up by index as it always did.
     const savedByTier = new Map<string | null, ScrollRegion[]>()
 
     scrollRegionLayers?.forEach((tier, index) => {
@@ -99,7 +94,9 @@ export class Scroll {
     })
 
     this.regions().forEach((region: Element, index: number) => {
-      const scrollPosition = scrollRegionLayers ? savedByTier.get(this.tierOf(region))?.shift() : scrollRegions[index]
+      const scrollPosition = scrollRegionLayers
+        ? savedByTier.get(layerIdOf(region) ?? null)?.shift()
+        : scrollRegions[index]
 
       if (!scrollPosition) {
         return

@@ -9,7 +9,8 @@ import {
 import { http } from './http'
 import { HttpCancelledError, HttpResponseError } from './httpErrors'
 import { interceptors } from './interceptors'
-import { closeUnlandedLayer, layerAt } from './layers'
+import { layerAt } from './layers'
+import { attemptEnded } from './layers/landing'
 import { page as currentPage } from './page'
 import { RequestParams } from './requestParams'
 import { Response } from './response'
@@ -122,10 +123,6 @@ export class Request {
           return
         }
 
-        // A request that never brought a response back leaves nothing to open the layer it was
-        // aimed at, so the attempt is spent here as it is on every other terminal path.
-        closeUnlandedLayer(currentPage.get(), this.requestParams.all().layerId)
-
         if (this.requestParams.all().onNetworkError(error) === false) {
           return
         }
@@ -164,6 +161,8 @@ export class Request {
 
     this.requestHasFinished = true
 
+    attemptEnded(currentPage.get(), this.requestParams.all().layerId)
+
     fireFinishEvent(this.requestParams.all())
     this.requestParams.onFinish()
   }
@@ -177,8 +176,6 @@ export class Request {
     this.cancelToken.abort()
 
     this.requestParams.markAsCancelled({ cancelled, interrupted })
-
-    closeUnlandedLayer(currentPage.get(), this.requestParams.all().layerId)
 
     this.fireFinishEvents()
   }
@@ -204,22 +201,19 @@ export class Request {
       headers['X-Inertia-Version'] = page.version
     }
 
-    // A request names its own tier's once keys in the except header, never a union with another's.
-    // A visit opening a layer has no tier of its own yet, so it names none.
+    // Once keys are the request's own tier's only; a visit opening a layer has no tier yet, so it names none.
     const { layerId } = this.requestParams.all()
     const tier = layerId === undefined ? page : layerAt(page, layerId)
-    const onceProps = tier
-      ? Object.entries(tier.onceProps || {})
-          .filter(([, onceProp]) => {
-            if (get(tier.props, onceProp.prop) === undefined) {
-              // The prop could deferred and not be loaded yet
-              return false
-            }
+    const onceProps = Object.entries(tier?.onceProps || {})
+      .filter(([, onceProp]) => {
+        if (get(tier?.props, onceProp.prop) === undefined) {
+          // The prop could deferred and not be loaded yet
+          return false
+        }
 
-            return !onceProp.expiresAt || onceProp.expiresAt > Date.now()
-          })
-          .map(([key]) => key)
-      : []
+        return !onceProp.expiresAt || onceProp.expiresAt > Date.now()
+      })
+      .map(([key]) => key)
 
     if (onceProps.length > 0) {
       headers['X-Inertia-Except-Once-Props'] = onceProps.join(',')

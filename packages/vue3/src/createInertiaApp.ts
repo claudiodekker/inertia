@@ -9,18 +9,30 @@ import {
   http as httpModule,
   InertiaAppSSRResponse,
   LoadingOption,
-  normalizeLoading,
   Page,
   PageProps,
-  resolveInitialPage,
+  resolveInitialApp,
   router,
   setupProgress,
   SharedPageProps,
 } from '@inertiajs/core'
-import { Component, createApp, createSSRApp, DefineComponent, h, isVNode, Plugin, App as VueApp } from 'vue'
+import {
+  Component,
+  createApp,
+  createSSRApp,
+  defineComponent,
+  DefineComponent,
+  h,
+  isVNode,
+  Plugin,
+  App as VueApp,
+} from 'vue'
 import App, { InertiaApp, InertiaAppProps, plugin } from './app'
 import { config } from './index'
 import { LayerComponent, VueInertiaAppConfig } from './types'
+
+// Renders nothing beneath a cold-opened layer; declares no layouts.
+const Blank = defineComponent({ name: 'InertiaBlank', layout: [], render: () => null })
 
 type ComponentResolver = (
   name: string,
@@ -140,8 +152,6 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   const resolveComponent = (name: string, page?: Page) =>
     Promise.resolve(resolve!(name, page)).then((module) => module.default || module)
 
-  const resolveLoading = normalizeLoading<DefineComponent>(loading, { rendered: isVNode })
-
   // SSR render function factory - when on server without page/render, return a render function
   // This is used by the Vite plugin's SSR transform
   if (isServer && !page && !render) {
@@ -152,7 +162,8 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
         page: initialPage,
         component: initialComponent,
         layers: initialLayers,
-      } = await resolveInitialPage(page, resolveComponent, resolveLoading)
+        resolveLoading,
+      } = await resolveInitialApp({ response: page, resolveComponent, loading, blank: Blank, rendered: isVNode })
 
       const props: InertiaAppProps<SharedProps> = {
         initialPage,
@@ -197,9 +208,9 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   let head: string[] = []
 
   const vueApp = await Promise.all([
-    resolveInitialPage(initialResponse, resolveComponent, resolveLoading),
+    resolveInitialApp({ response: initialResponse, resolveComponent, loading, blank: Blank, rendered: isVNode }),
     router.decryptHistory().catch(() => {}),
-  ]).then(([{ page: initialPage, component: initialComponent, layers: initialLayers }]) => {
+  ]).then(([{ page: initialPage, component: initialComponent, layers: initialLayers, resolveLoading }]) => {
     const props: InertiaAppProps<SharedProps> = {
       initialPage,
       initialComponent,

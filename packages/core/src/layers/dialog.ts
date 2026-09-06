@@ -1,24 +1,22 @@
-// The `<dialog>` mechanics behind the shipped Layer, kept here so all three adapters share them and
-// an app replacing the `layer` option can build on them.
+import type { LayerShellProps, MountedLayerDialog } from '../types'
 
-import type { LayerShellProps } from './types'
+interface LayerExit {
+  toggle(open: boolean): void
+  teardown(): void
+}
 
 const exitTimeout = 2000
 
-// What the shipped Layer puts on its dialog, including the marks `raiseLayer` reads back below.
 export const layerDialogAttributes = (shell: Omit<LayerShellProps, 'close' | 'done'>) => ({
   open: true,
   'data-layer-index': shell.index,
   'data-layer-top': String(shell.isTop),
   'data-layer-closing': String(!shell.open),
   'data-layer-type': shell.type,
-  'aria-label': shell.label,
 })
 
-// Chromium groups the close watchers of dialogs shown without user activation, so one Escape can
-// reach every dialog in the group. Only the top layer answers it; the rest cannot refuse (their
-// cancel is not cancelable), so they are re-shown once the browser has closed them.
-export function cancelLayer(event: Event, shell: Pick<LayerShellProps, 'isTop' | 'close'>): void {
+// Chromium sends one Escape to every dialog shown without user activation, so only the top layer answers.
+function cancelLayer(event: Event, shell: Pick<LayerShellProps, 'isTop' | 'close'>): void {
   event.preventDefault()
 
   if (shell.isTop) {
@@ -43,8 +41,7 @@ export function cancelLayer(event: Event, shell: Pick<LayerShellProps, 'isTop' |
 let scrollLocks = 0
 let unlocked: { overflow: string; scrollbarGutter: string } | null = null
 
-// Locks the document's scroll, ref-counted across a stack, and returns its own release.
-export function lockScroll(): () => void {
+function lockScroll(): () => void {
   const root = document.documentElement
 
   if (scrollLocks++ === 0) {
@@ -70,9 +67,7 @@ export function lockScroll(): () => void {
   }
 }
 
-// Puts a dialog on top of the browser's own stack. One already in the top layer has to leave it
-// first: Chromium re-orders it in place, WebKit and Firefox leave it where it was, which sends
-// Escape to whichever layer entered the top layer last rather than the one on top of the stack.
+// A dialog already in the top layer has to leave it first: Chromium re-orders it in place, WebKit and Firefox do not.
 function showModal(dialog: HTMLDialogElement): void {
   if (dialog.matches(':modal')) {
     dialog.close()
@@ -82,7 +77,7 @@ function showModal(dialog: HTMLDialogElement): void {
   dialog.showModal()
 }
 
-export function raiseLayer(dialog: HTMLDialogElement, isTop: boolean): void {
+function raiseLayer(dialog: HTMLDialogElement, isTop: boolean): void {
   if (!dialog.matches(':modal')) {
     showModal(dialog)
   }
@@ -91,8 +86,6 @@ export function raiseLayer(dialog: HTMLDialogElement, isTop: boolean): void {
     return
   }
 
-  // A layer inserted beneath open ones mounts after them, so its showModal lands above dialogs it
-  // belongs under. Re-showing each of those, bottom to top, keeps the stack the right way up.
   const index = Number(dialog.dataset.layerIndex)
 
   document
@@ -104,13 +97,7 @@ export function raiseLayer(dialog: HTMLDialogElement, isTop: boolean): void {
     })
 }
 
-export interface LayerExit {
-  /** The layer's `open` changed: false runs its exit, true abandons one already under way. */
-  toggle(open: boolean): void
-  teardown(): void
-}
-
-export function observeExit(dialog: () => HTMLDialogElement | null | undefined, done: () => void): LayerExit {
+function observeExit(dialog: () => HTMLDialogElement | null | undefined, done: () => void): LayerExit {
   let exiting = false
   let stop: (() => void) | null = null
 
@@ -128,8 +115,6 @@ export function observeExit(dialog: () => HTMLDialogElement | null | undefined, 
 
         const el = dialog()
 
-        // An abandoned close whose exit already ran left the dialog closed, and only re-showing
-        // it puts the layer back on screen.
         if (el && !el.matches(':modal')) {
           raiseLayer(el, el.dataset.layerTop === 'true')
         }
@@ -157,16 +142,12 @@ export function observeExit(dialog: () => HTMLDialogElement | null | undefined, 
         if (!finished) {
           finished = true
           teardown()
-          // Closing is what hands focus back to whatever opened the layer, and only a dialog still
-          // in the document can. Too late on unmount: React tears effects down after removing it.
+          // Only a dialog still in the document can hand focus back; on unmount React has already removed it.
           el.close()
           done()
         }
       }
 
-      // The subtree counts: a shell that slides a panel inside the dialog animates that, not the
-      // dialog. One that fills forwards stays listed once it has ended, and an endless one, a
-      // spinner say, is not something an exit can wait for.
       const finishWhenIdle = () =>
         requestAnimationFrame(() => {
           const running = el
@@ -193,6 +174,35 @@ export function observeExit(dialog: () => HTMLDialogElement | null | undefined, 
       }
 
       requestAnimationFrame(finishWhenIdle)
+    },
+  }
+}
+
+export function mountLayerDialog(dialog: HTMLDialogElement, shell: LayerShellProps): MountedLayerDialog {
+  let current = shell
+
+  const exit = observeExit(
+    () => dialog,
+    () => current.done(),
+  )
+  const onCancel = (event: Event) => cancelLayer(event, current)
+
+  raiseLayer(dialog, shell.isTop)
+
+  const releaseScroll = lockScroll()
+
+  dialog.addEventListener('cancel', onCancel)
+  exit.toggle(shell.open)
+
+  return {
+    update(shell) {
+      current = shell
+      exit.toggle(shell.open)
+    },
+    unmount() {
+      dialog.removeEventListener('cancel', onCancel)
+      exit.teardown()
+      releaseScroll()
     },
   }
 }

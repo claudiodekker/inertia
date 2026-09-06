@@ -29,7 +29,7 @@ export default function LayerWrapper({
       type={type}
       close={close}
       done={done}
-      label={layer.id ? page.component : 'unresolved'}
+      aria-label={layer.id ? page.component : 'unresolved'}
     >
       {children}
     </Layer>

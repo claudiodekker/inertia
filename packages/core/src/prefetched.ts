@@ -1,5 +1,7 @@
 import { cloneDeep } from 'es-toolkit'
 import { get } from 'es-toolkit/compat'
+import { responseTarget } from './layers'
+import { mergeOncePropsInto } from './layers/merge'
 import { objectsAreEqual } from './objectUtils'
 import { page as currentPage } from './page'
 import { Response } from './response'
@@ -73,7 +75,7 @@ class PrefetchedRequests {
 
       const pageResponse = response.getPageResponse()
 
-      currentPage.mergeOncePropsIntoResponse(pageResponse)
+      mergeOncePropsInto(pageResponse, responseTarget(currentPage.get(), pageResponse)?.state)
 
       this.cached.push({
         params: { ...params },
@@ -208,7 +210,6 @@ class PrefetchedRequests {
 
       response.mergeParams({ ...consumedParams, onPrefetched: () => {} })
 
-      // The visit replaying this was dispatched from the page on screen, not the one it came from.
       response.setCapturedBase(capturedBase)
 
       // If this was a one-time cache, remove it
@@ -282,7 +283,7 @@ class PrefetchedRequests {
         'component',
         'pageProps',
         'cached',
-        'fabricatedLayer',
+        'claims',
         'layerId',
         'layerOwner',
       ],
@@ -294,7 +295,7 @@ class PrefetchedRequests {
       prefetched.response.then((response) => {
         const pageResponse = response.getPageResponse()
 
-        currentPage.mergeOncePropsIntoResponse(pageResponse, { force: true })
+        mergeOncePropsInto(pageResponse, responseTarget(currentPage.get(), pageResponse)?.state, true)
 
         for (const [group, deferredProps] of Object.entries(pageResponse.deferredProps ?? {})) {
           const remaining = deferredProps.filter((prop) => get(pageResponse.props, prop) === undefined)

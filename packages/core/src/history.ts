@@ -1,7 +1,16 @@
 import { isEqual } from 'es-toolkit'
 import { decryptHistory, encryptHistory, historySessionStorageKeys } from './encryption'
 import { eventHandler } from './eventHandler'
-import { addressOf, encryptsHistory, layerClosing, mapLayers, promoteDeepestLayer } from './layers'
+import {
+  addressOf,
+  encryptsHistory,
+  isBlankBase,
+  mapLayers,
+  promoteDeepestLayer,
+  rememberedStateOf,
+  withTier,
+  withoutClosingLayers,
+} from './layers'
 import { toStructuredCloneable } from './objectUtils'
 import { page as currentPage } from './page'
 import Queue from './queue'
@@ -17,6 +26,8 @@ class History {
   public scrollRegions = 'scrollRegions' as const
   public preserveUrl = false
   protected current: Partial<Page> = {}
+  // Set while the browser steps back for a close, so a write raised mid-unwind waits. Always settles.
+  protected unwinding: Promise<unknown> | null = null
   // We need initialState for `restore`
   protected initialState: Partial<Page> | null = null
 
@@ -25,39 +36,36 @@ class History {
       return
     }
 
-    const current = currentPage.get().rememberedState ?? {}
+    // Composed from whatever is current, so it waits out an unwind.
+    if (this.unwinding) {
+      this.unwinding.then(() => this.remember(data, key, layerId))
+      return
+    }
 
-    this.replaceState({
-      ...currentPage.getWithoutFlashData(),
-      rememberedState: layerId
-        ? { ...current, [layerId]: { ...(current[layerId] ?? {}), [key]: data } }
-        : { ...current, [key]: data },
-    })
+    const current = rememberedStateOf(currentPage.get(), layerId)
+
+    this.replaceState(
+      withTier(currentPage.getWithoutFlashData(), layerId, { rememberedState: { ...current, [key]: data } }),
+    )
   }
 
   public restore(key: string, layerId?: string): unknown {
-    if (!isServer) {
-      const current = this.current[this.rememberedState] as Record<string, unknown> | undefined
-      const initial = this.initialState?.[this.rememberedState] as Record<string, unknown> | undefined
-
-      if (layerId) {
-        const stored = (current?.[layerId] ?? {}) as Record<string, unknown>
-        const storedInitial = (initial?.[layerId] ?? {}) as Record<string, unknown>
-
-        return stored[key] !== undefined ? stored[key] : storedInitial[key]
-      }
-
-      return current?.[key] !== undefined ? current?.[key] : initial?.[key]
+    if (isServer) {
+      return
     }
+
+    const stored = rememberedStateOf(this.current, layerId)
+
+    return stored[key] !== undefined ? stored[key] : rememberedStateOf(this.initialState ?? {}, layerId)[key]
   }
 
-  public pushState(page: Page, cb: (() => void) | null = null): void {
+  public pushState(page: Page, cb: ((written: boolean) => void) | null = null): void {
     if (isServer) {
       return
     }
 
     if (this.preserveUrl) {
-      cb && cb()
+      cb && cb(true)
       return
     }
 
@@ -67,7 +75,7 @@ class History {
       return this.getPageData(page).then((data) => {
         // Defer history.pushState to the next event loop tick to prevent timing conflicts.
         // Ensure any previous history.replaceState completes before pushState is executed.
-        const doPush = () => this.doPushState({ page: data }, addressOf(page)).then(() => cb?.())
+        const doPush = () => this.doPushState({ page: data }, addressOf(page)).then((written) => cb?.(written))
 
         if (isChromeIOS) {
           return new Promise((resolve) => {
@@ -85,15 +93,15 @@ class History {
       structuredClone(page)
       return page
     } catch {
-      // Props contain non-serializable data (e.g., Proxies, functions), which
-      // the browser cannot store in history. Drop what it cannot carry.
+      // Props contain non-serializable data (e.g., Proxies, functions).
+      // Drop what the browser cannot store in history.
       return toStructuredCloneable(page)
     }
   }
 
   protected getPageData(page: Page): Promise<Page | ArrayBuffer> {
-    const open = layerClosing.withoutClosingLayers(page)
-    const entry = open.component === '' ? promoteDeepestLayer(open) : open
+    const open = withoutClosingLayers(page)
+    const entry = isBlankBase(open) ? promoteDeepestLayer(open) : open
     const pageWithClonedProps = this.clonePageProps(entry)
 
     return new Promise((resolve) => {
@@ -229,10 +237,21 @@ class History {
     })
   }
 
-  // Steps back over the entries a closing stack stands on, behind the writes queued ahead of it:
-  // under encryption those are async, and stepping early would cross the wrong entry.
-  public back(entries: number): void {
-    queue.add(() => Promise.resolve().then(() => window.history.go(-entries)))
+  // Queued behind earlier writes, which are async under encryption, and holding the queue until the browser answers.
+  public back(entries: number, answered: Promise<unknown>): void {
+    const settled = answered.then(() => {
+      if (this.unwinding === settled) {
+        this.unwinding = null
+      }
+    })
+
+    this.unwinding = settled
+
+    queue.add(() =>
+      Promise.resolve()
+        .then(() => window.history.go(-entries))
+        .then(() => answered.then(() => {})),
+    )
   }
 
   protected isHistoryThrottleError(error: unknown): error is Error & { name: 'SecurityError' } {
@@ -295,16 +314,15 @@ class History {
       documentScrollPosition?: ScrollRegion
     },
     url: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     return this.withThrottleProtection(() => {
       try {
         window.history.pushState(data, '', url)
       } catch (error) {
         if (this.isHistoryThrottleError(error)) {
           console.error(error.message)
-          eventHandler.fireInternalEvent('historyEntryDropped', url)
 
-          return
+          return false
         }
 
         if (!this.isQuotaExceededError(error)) {
@@ -313,7 +331,9 @@ class History {
 
         eventHandler.fireInternalEvent('historyQuotaExceeded', url)
       }
-    })
+
+      return true
+    }).then((written) => written !== false)
   }
 
   public getState<T>(key: keyof Page, defaultValue?: T): any {
@@ -321,6 +341,11 @@ class History {
   }
 
   public deleteState(key: keyof Page) {
+    if (this.unwinding) {
+      this.unwinding.then(() => this.deleteState(key))
+      return
+    }
+
     if (this.current[key] !== undefined) {
       delete this.current[key]
       this.replaceState(this.current as Page)

@@ -15,5 +15,5 @@ const layer = useLayer()
 </script>
 
 <template>
-  <Layer v-bind="$props" :label="layer.id ? page.component : 'unresolved'"><slot /></Layer>
+  <Layer v-bind="$props" :aria-label="layer.id ? page.component : 'unresolved'"><slot /></Layer>
 </template>

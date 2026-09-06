@@ -1,47 +1,23 @@
-import {
-  LayerExit,
-  LayerShellProps,
-  cancelLayer,
-  layerDialogAttributes,
-  lockScroll,
-  observeExit,
-  raiseLayer,
-} from '@inertiajs/core'
-import { createElement, ReactNode, useEffect, useRef } from 'react'
+import { LayerShellProps, MountedLayerDialog, layerDialogAttributes, mountLayerDialog } from '@inertiajs/core'
+import { createElement, HTMLAttributes, ReactNode, useEffect, useRef } from 'react'
 
-export default function Layer({ close, done, children, ...shell }: LayerShellProps & { children?: ReactNode }) {
+export default function Layer(props: LayerShellProps & { children?: ReactNode } & HTMLAttributes<HTMLDialogElement>) {
+  // Anything the app put on <Layer> that is not shell state lands on the dialog, so it can name and describe it.
+  const { children, open, index, isTop, type, close, done, ...rest } = props as typeof props & Record<string, unknown>
+  const shell: LayerShellProps = { open, index, isTop, type, close, done }
+
   const dialog = useRef<HTMLDialogElement>(null)
-  const doneRef = useRef(done)
-  doneRef.current = done
-
-  const exit = useRef<LayerExit>(null)
-  exit.current ??= observeExit(
-    () => dialog.current,
-    () => doneRef.current(),
-  )
+  const mounted = useRef<MountedLayerDialog>(null)
 
   useEffect(() => {
-    raiseLayer(dialog.current!, shell.isTop)
+    mounted.current = mountLayerDialog(dialog.current!, shell)
 
-    const releaseScroll = lockScroll()
-
-    return () => {
-      exit.current!.teardown()
-      releaseScroll()
-    }
+    return () => mounted.current?.unmount()
   }, [])
 
   useEffect(() => {
-    exit.current!.toggle(shell.open)
-  }, [shell.open])
+    mounted.current?.update(shell)
+  }, [open, index, isTop, type, close, done])
 
-  return createElement(
-    'dialog',
-    {
-      ref: dialog,
-      ...layerDialogAttributes(shell),
-      onCancel: (event: Event) => cancelLayer(event, { isTop: shell.isTop, close }),
-    },
-    children,
-  )
+  return createElement('dialog', { ref: dialog, ...rest, ...layerDialogAttributes(shell) }, children)
 }

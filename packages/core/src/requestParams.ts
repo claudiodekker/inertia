@@ -84,8 +84,8 @@ export class RequestParams {
     return this.params.walk === true
   }
 
-  public fabricatedLayer() {
-    return this.params.fabricatedLayer === true
+  public claims() {
+    return this.params.claims === true
   }
 
   public onCancelToken(cb: VoidFunction) {
@@ -146,7 +146,6 @@ export class RequestParams {
     }
 
     if (this.isPartial()) {
-      // A partial names its own tier's component, so the server answers that route's partial.
       headers['X-Inertia-Partial-Component'] = tierOf(currentPage.get(), this.params.layerId).component
     }
 

@@ -19,7 +19,10 @@ export {
   createLayoutPropsStore,
   isPropsObject,
   isPropsObjectOrCallback,
+  layoutProps,
   normalizeLayouts,
+  resolveLayouts,
+  type DefaultLayout,
   type LayoutCallbackReturn,
   type LayoutDefinition,
   type LayoutPropsStore,
@@ -28,17 +31,11 @@ export {
   emptyLayoutSlot,
 } from './layout'
 export { createLayerApi, type LayerApi } from './router'
-export { cancelLayer, layerDialogAttributes, lockScroll, observeExit, raiseLayer, type LayerExit } from './layerDialog'
-export {
-  layerShellProps,
-  layerTransitionName,
-  layoutPageOf,
-  normalizeLoading,
-  resolveInitialPage,
-  topPageOf,
-  type LayerHandle,
-} from './layers'
+export { layerDialogAttributes, mountLayerDialog } from './layers/dialog'
+export { topPageOf } from './layers'
+export { layerIdOf } from './layers/render'
 export { shouldIntercept, shouldNavigate } from './navigationEvents'
+export { resolveInitialApp } from './layers/walk'
 export {
   isPathOrSubPath,
   partialReloadFillsDeferred,

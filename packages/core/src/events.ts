@@ -12,8 +12,8 @@ export const fireBeforeEvent: GlobalEventTrigger<'before'> = (visit) => {
   return fireEvent('before', { cancelable: true, detail: { visit } })
 }
 
-export const fireErrorEvent: GlobalEventTrigger<'error'> = (errors, { page, visitId } = {}) => {
-  return fireEvent('error', { detail: { errors, page, visitId } })
+export const fireErrorEvent: GlobalEventTrigger<'error'> = (errors, { page, visitId, stack = page } = {}) => {
+  return fireEvent('error', { detail: { errors, page, visitId, stack } })
 }
 
 export const fireNetworkErrorEvent: GlobalEventTrigger<'networkError'> = (error) => {
@@ -48,8 +48,8 @@ export const fireStartEvent: GlobalEventTrigger<'start'> = (visit) => {
   return fireEvent('start', { detail: { visit } })
 }
 
-export const fireSuccessEvent: GlobalEventTrigger<'success'> = (page, { visitId } = {}) => {
-  return fireEvent('success', { detail: { page, url: addressOf(page), visitId } })
+export const fireSuccessEvent: GlobalEventTrigger<'success'> = (page, { visitId, stack = page } = {}) => {
+  return fireEvent('success', { detail: { page, url: addressOf(page), visitId, stack } })
 }
 
 export const firePrefetchedEvent: GlobalEventTrigger<'prefetched'> = (response, visit) => {

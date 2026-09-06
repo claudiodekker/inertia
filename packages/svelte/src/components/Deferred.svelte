@@ -27,7 +27,7 @@
     const removeStartListener = router.on('start', (e) => {
       const visit = e.detail.visit
 
-      if (partialReloadFillsDeferred(visit, { layerId: currentLayerId, url: page.url }, keys)) {
+      if (partialReloadFillsDeferred(visit, currentLayerId, keys)) {
         activeReloads.add(visit)
         reloading = true
       }

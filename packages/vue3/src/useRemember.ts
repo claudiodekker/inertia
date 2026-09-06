@@ -1,7 +1,6 @@
-import { router } from '@inertiajs/core'
 import { cloneDeep } from 'es-toolkit'
-import { inject, isReactive, reactive, ref, Ref, watch } from 'vue'
-import { layerIdKey } from './useLayer'
+import { isReactive, reactive, ref, Ref, watch } from 'vue'
+import useLayer from './useLayer'
 
 export default function useRemember<T extends object>(
   data: T & { __rememberable?: boolean; __remember?: Function; __restore?: Function },
@@ -11,8 +10,8 @@ export default function useRemember<T extends object>(
     return data
   }
 
-  const layerId = inject(layerIdKey, undefined)
-  const restored = router.restore(key, layerId)
+  const layer = useLayer()
+  const restored = layer.restore(key)
   const type = isReactive(data) ? reactive : ref
   const hasCallbacks = typeof data.__remember === 'function' && typeof data.__restore === 'function'
   const remembered = type(
@@ -22,7 +21,7 @@ export default function useRemember<T extends object>(
   watch(
     remembered,
     (newValue) => {
-      router.remember(cloneDeep(hasCallbacks ? data.__remember!() : newValue), key, layerId)
+      layer.remember(cloneDeep(hasCallbacks ? data.__remember!() : newValue), key)
     },
     { immediate: true, deep: true },
   )

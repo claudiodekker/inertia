@@ -105,7 +105,6 @@ const Link = forwardRef<unknown, InertiaLinkProps>(
 
     const baseParams = useMemo<VisitOptions>(
       () => ({
-        layerId,
         data: _data,
         method: _method,
         preserveScroll,
@@ -118,9 +117,9 @@ const Link = forwardRef<unknown, InertiaLinkProps>(
         async,
         component: resolvedComponent,
         pageProps,
+        layerId,
       }),
       [
-        layerId,
         _data,
         _method,
         preserveScroll,
@@ -133,6 +132,7 @@ const Link = forwardRef<unknown, InertiaLinkProps>(
         async,
         resolvedComponent,
         pageProps,
+        layerId,
       ],
     )
 

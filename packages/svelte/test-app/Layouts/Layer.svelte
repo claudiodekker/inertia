@@ -18,6 +18,6 @@
   const layer = useLayer()
 </script>
 
-<Layer {open} {index} {isTop} {type} {close} {done} label={layer.id ? page.component : 'unresolved'}>
+<Layer {open} {index} {isTop} {type} {close} {done} aria-label={layer.id ? page.component : 'unresolved'}>
   {@render children()}
 </Layer>

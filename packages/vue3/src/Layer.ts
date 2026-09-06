@@ -1,11 +1,4 @@
-import {
-  cancelLayer,
-  layerDialogAttributes,
-  lockScroll,
-  observeExit,
-  raiseLayer,
-  type LayerShellProps,
-} from '@inertiajs/core'
+import { layerDialogAttributes, mountLayerDialog, type LayerShellProps, type MountedLayerDialog } from '@inertiajs/core'
 import { defineComponent, h, onBeforeUnmount, onMounted, PropType, ref, watch } from 'vue'
 
 export default defineComponent({
@@ -16,35 +9,20 @@ export default defineComponent({
     isTop: { type: Boolean, required: true },
     type: { type: String as PropType<LayerShellProps['type']>, required: true },
     close: { type: Function as PropType<() => void>, required: true },
-    done: { type: Function, required: true },
-    label: { type: String, required: false },
+    done: { type: Function as PropType<() => void>, required: true },
   },
   setup(props, { slots }) {
     const dialog = ref<HTMLDialogElement | null>(null)
-    const exit = observeExit(
-      () => dialog.value,
-      () => props.done(),
-    )
-    let releaseScroll: (() => void) | null = null
+    let mounted: MountedLayerDialog | null = null
 
     onMounted(() => {
-      raiseLayer(dialog.value!, props.isTop)
-      releaseScroll = lockScroll()
-      exit.toggle(props.open)
+      mounted = mountLayerDialog(dialog.value!, props)
     })
 
-    onBeforeUnmount(() => {
-      exit.teardown()
-      releaseScroll?.()
-    })
+    watch(props, () => mounted?.update(props))
 
-    watch(
-      () => props.open,
-      (open) => exit.toggle(open),
-    )
+    onBeforeUnmount(() => mounted?.unmount())
 
-    const onCancel = (event: Event) => cancelLayer(event, props)
-
-    return () => h('dialog', { ref: dialog, ...layerDialogAttributes(props), onCancel }, slots.default?.())
+    return () => h('dialog', { ref: dialog, ...layerDialogAttributes(props) }, slots.default?.())
   },
 })

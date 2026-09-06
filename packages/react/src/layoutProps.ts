@@ -8,6 +8,4 @@ export function resetLayoutProps(): void {
   store.reset()
 }
 
-export function retainLayerLayoutProps(ids: string[]): void {
-  store.retainLayers(ids)
-}
+export const swapLayoutProps = store.swap

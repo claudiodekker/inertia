@@ -3,15 +3,15 @@ import { router } from '../src'
 import { eventHandler } from '../src/eventHandler'
 import { history } from '../src/history'
 import { http } from '../src/http'
-import { layerClosing } from '../src/layers'
-import { createLayerHandle, registryClose, registryHas, registryRead, registryWrite } from '../src/layers'
-import { addressOf, composeLayer } from '../src/layers'
+import { addressOf, composeLayer, layerAt } from '../src/layers'
+import { layerClosing } from '../src/layers/closing'
+import { createLayerHandle, registryClose, registryHas, registryRead, registryWrite } from '../src/layers/handles'
 import { page as currentPage } from '../src/page'
 import { prefetchedRequests } from '../src/prefetched'
 import { Router, createLayerApi } from '../src/router'
 import { LayerState, Page, ResolvedLayer, VisitOptions } from '../src/types'
 import { listeners, veto } from './support/browser'
-import { editLayer, hold, holding, marked, pageWith, respondWith, settled } from './support/layers'
+import { editLayer, hold, holding, marked, pageWith, respondWith, settled, topLayerId } from './support/layers'
 
 describe('router.layer: the routed handle', () => {
   const client = http.getClient()
@@ -22,7 +22,7 @@ describe('router.layer: the routed handle', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -285,7 +285,7 @@ describe('layer events', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -457,7 +457,7 @@ describe('closing a layer that has a handle', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -742,7 +742,7 @@ describe('layer handles across restores and navigations', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -904,7 +904,7 @@ describe('the handle of a layer open that never lands', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -1224,7 +1224,7 @@ describe('a layer open answered by an interstitial', () => {
 
   afterEach(async () => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     await settled()
     vi.restoreAllMocks()
   })
@@ -1342,7 +1342,7 @@ describe('local layers: router.layer({ component, props })', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -1507,7 +1507,7 @@ describe('closing a layer', () => {
       },
     })
 
-  const markClose = async (id?: string): Promise<void> => {
+  const markClose = async (id = topLayerId()): Promise<void> => {
     layerClosing.close(id)
 
     await settled()
@@ -1518,12 +1518,13 @@ describe('closing a layer', () => {
 
     const exits = (currentPage.get().layers ?? []).map((layer) => layerClosing.closed(layer.id))
 
-    await history.processQueue()
+    // The step back is issued behind the writes ahead of it; the queue then holds until the browser answers.
+    await settled()
 
     return exits
   }
 
-  const reportExit = async (id?: string) => {
+  const reportExit = async (id = topLayerId()) => {
     layerClosing.closed(id)
 
     await history.processQueue()
@@ -1534,7 +1535,7 @@ describe('closing a layer', () => {
   }
 
   afterEach(() => {
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     standing('/users')
     vi.restoreAllMocks()
   })
@@ -1710,7 +1711,7 @@ describe('closing a layer', () => {
     })
 
     history.pushState(pageWith({ url: '/elsewhere' }), null)
-    history.back(1)
+    history.back(1, Promise.resolve())
     await history.processQueue()
 
     expect(order).toEqual(['write', 'back'])
@@ -1751,7 +1752,13 @@ describe('closing a layer', () => {
     await closeFully('layer-1')
 
     expect(go).toHaveBeenCalledWith(-2)
-    expect(layerClosing.isUnwinding()).toBe(true)
+
+    // The step back is still owed by the browser, so the close is not over.
+    let unwound = false
+    history.processQueue().then(() => (unwound = true))
+    await settled()
+
+    expect(unwound).toBe(false)
   })
 
   it('leaves the page the stack was opened over in place', async () => {
@@ -1773,7 +1780,8 @@ describe('closing a layer', () => {
     const go = vi.spyOn(window.history, 'go')
     const pushState = vi.spyOn(history, 'pushState')
 
-    await closeFully()
+    await router.close()
+    await history.processQueue()
 
     expect(go).not.toHaveBeenCalled()
     expect(pushState).not.toHaveBeenCalled()
@@ -1818,7 +1826,7 @@ describe('closing a layer', () => {
     expect(restored.layers).toEqual([expect.objectContaining({ id: 'layer-1', standalone: true })])
   })
 
-  it('closeAbove waits for the layers it marked, not for a close still refreshing', async () => {
+  it('a dismissal waits for the layers it marked, not for a close still refreshing', async () => {
     const client = http.getClient()
     openOver(pageWith(), { url: null }, { url: null }, { url: null })
 
@@ -1833,7 +1841,7 @@ describe('closing a layer', () => {
     expect(currentPage.get().layers!.map((layer) => layer.id)).toEqual(['layer-1', 'layer-2'])
 
     let closedAbove = false
-    const above = layerClosing.closeAbove('layer-1').then(() => (closedAbove = true))
+    const above = layerClosing.dismiss('layer-2').then(() => (closedAbove = true))
 
     await settled()
     answerRefresh!({ status: 200, data: pageWith() as unknown as string, headers: { 'x-inertia': 'true' } })
@@ -1855,7 +1863,7 @@ describe('closing a layer', () => {
       await markClose()
 
       expect(currentPage.get().layers!.map((layer) => layer.id)).toEqual(['layer-1'])
-      expect(swapped!.map((layer) => layer.isClosing)).toEqual([true])
+      expect(swapped!.map((layer) => !layer.shell.open)).toEqual([true])
     })
 
     it('marks every layer above the one being closed', async () => {
@@ -1863,7 +1871,7 @@ describe('closing a layer', () => {
 
       await markClose('layer-2')
 
-      expect(swapped!.map((layer) => layer.isClosing)).toEqual([false, true, true])
+      expect(swapped!.map((layer) => !layer.shell.open)).toEqual([false, true, true])
     })
 
     it('leaves history alone until the exit has run', async () => {
@@ -1956,7 +1964,7 @@ describe('closing a layer', () => {
         { preservesBase: true },
       )
 
-      expect(swapped!.map((layer) => layer.isClosing)).toEqual([false])
+      expect(swapped!.map((layer) => !layer.shell.open)).toEqual([false])
 
       await layerClosing.closed('layer-1')
 
@@ -1979,7 +1987,7 @@ describe('closing a layer', () => {
         { preservesBase: true },
       )
 
-      expect(swapped!.map((layer) => layer.isClosing)).toEqual([true])
+      expect(swapped!.map((layer) => !layer.shell.open)).toEqual([true])
       expect(currentPage.get().layers![0].props).toEqual({ users: ['ada'] })
 
       await layerClosing.closed('layer-1')
@@ -2007,7 +2015,7 @@ describe('closing a layer', () => {
       await currentPage.set({ ...currentPage.get(), props: { users: ['ada'] } }, { preservesBase: true })
 
       expect(currentPage.get().layers!.map((layer) => layer.id)).toEqual(['layer-1', 'layer-2'])
-      expect(swapped!.map((layer) => layer.isClosing)).toEqual([false, true])
+      expect(swapped!.map((layer) => !layer.shell.open)).toEqual([false, true])
     })
 
     it('does nothing on a page that has no stack at all', async () => {
@@ -2021,8 +2029,9 @@ describe('closing a layer', () => {
       const go = vi.spyOn(window.history, 'go')
       const pushState = vi.spyOn(history, 'pushState')
 
-      await markClose()
-      await layerClosing.closed()
+      await router.close()
+      await settled()
+      await router.closed()
 
       expect(go).not.toHaveBeenCalled()
       expect(pushState).not.toHaveBeenCalled()
@@ -2044,6 +2053,34 @@ describe('closing a layer', () => {
       expect(go).toHaveBeenCalledTimes(1)
     })
 
+    it('runs a close issued inside the window once the browser has answered the step back', async () => {
+      openOver(pageWith(), { url: '/users/5/edit', entries: 1 }, { url: '/users/5/edit/notes', entries: 1 })
+      standing('/users/5/edit/notes')
+      const go = vi.spyOn(window.history, 'go')
+      eventHandler.init()
+      const [beneath] = currentPage.get().layers!
+
+      await closeFully()
+      const second = layerClosing.close(beneath.id)
+      await settled()
+
+      expect(go).toHaveBeenCalledTimes(1)
+      expect(layerAt(currentPage.get(), beneath.id)?.closing).toBeUndefined()
+
+      listeners.get('popstate')!({ state: { page: { ...pageWith(), layers: [beneath] } } } as PopStateEvent)
+      await vi.waitFor(() => expect(layerAt(currentPage.get(), beneath.id)?.closing).toBe(true))
+
+      layerClosing.closed(beneath.id)
+      await settled()
+
+      expect(go).toHaveBeenCalledTimes(2)
+
+      listeners.get('popstate')!({ state: { page: pageWith() } } as PopStateEvent)
+      await second
+
+      expect(currentPage.get().layers).toBeUndefined()
+    })
+
     it('resolves an exit only once the browser has restored what was beneath', async () => {
       openOver(pageWith(), { url: '/users/5/edit', entries: 1 })
       standing('/users/5/edit')
@@ -2052,7 +2089,7 @@ describe('closing a layer', () => {
 
       await markClose()
       let resolved = false
-      const exit = layerClosing.closed().then(() => {
+      const exit = router.closed().then(() => {
         resolved = true
       })
       await history.processQueue()
@@ -2082,8 +2119,8 @@ describe('closing a layer', () => {
       const stillHoldingTheLayer = currentPage.get()
 
       await markClose()
-      const exit = layerClosing.closed()
-      await history.processQueue()
+      const exit = router.closed()
+      await settled()
 
       expect(go).toHaveBeenCalledWith(-1)
 
@@ -2172,7 +2209,7 @@ describe('closing through the router', () => {
     })
 
   afterEach(() => {
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -2246,7 +2283,7 @@ describe('the layer registry', () => {
   afterEach(() => {
     registryClose('layer-1')
     registryClose('layer-2')
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     standing('/users')
     vi.restoreAllMocks()
   })

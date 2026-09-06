@@ -541,7 +541,7 @@ describe('the address the events report', () => {
     expect(detailOf(fired, 'navigate').url).toBe('/users/5')
   })
 
-  it("gives inertia:success the layer's address, while the page it carries keeps its own url", async () => {
+  it('gives inertia:success the layer it landed in, address and page alike', async () => {
     initWith(pageWith())
     await currentPage.setQuietly(pageWith())
     const fired = recordEvents()
@@ -549,7 +549,33 @@ describe('the address the events report', () => {
     await visitAnswering(pageWith({ component: 'Users/Edit', url: '/users/5/edit', layer: { key: 'Users/Edit' } }))
 
     expect(detailOf(fired, 'success').url).toBe('/users/5/edit')
-    expect(detailOf(fired, 'success').page.url).toBe('/users')
+    expect(detailOf(fired, 'success').page.url).toBe('/users/5/edit')
+    expect(detailOf(fired, 'success').stack.layers[0].props).toEqual({ users: [] })
+  })
+
+  it("hands onSuccess the layer's own props, not the page's beneath it", async () => {
+    initWith(pageWith())
+    await currentPage.setQuietly(pageWith())
+
+    http.setClient({
+      request: async () => ({
+        status: 200,
+        data: pageWith({
+          component: 'Users/Edit',
+          url: '/users/5/edit',
+          props: { user: { id: 5 } },
+          layer: { key: 'Users/Edit' },
+        }) as unknown as string,
+        headers: { 'x-inertia': 'true' },
+      }),
+    })
+
+    const landed = await new Promise<Page>((resolve) => {
+      new Router().visit('http://localhost/users/5/edit', { onSuccess: (page) => resolve(page) })
+    })
+
+    expect(landed.component).toBe('Users/Edit')
+    expect(landed.props).toEqual(expect.objectContaining({ user: { id: 5 } }))
   })
 
   it("gives inertia:success the page's own url when there are no layers", async () => {

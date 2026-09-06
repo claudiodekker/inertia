@@ -311,7 +311,7 @@ test.describe('SSR layers', () => {
     const response = await page.request.get('/ssr/layer')
     const html = await response.text()
 
-    expect(html).toContain('<dialog open')
+    expect(html).toMatch(/<dialog[^>]*\sopen[\s=>]/)
     expect(html).toContain('data-layer-index="0"')
     expect(html).toContain('SSR layer')
     expect(html).not.toContain('SSR layer base')
@@ -366,7 +366,7 @@ test.describe('SSR layers', () => {
     const response = await page.request.get('/ssr-auto/layer')
     const html = await response.text()
 
-    expect(html).toContain('<dialog open')
+    expect(html).toMatch(/<dialog[^>]*\sopen[\s=>]/)
     expect(html).toContain('data-layer-index="0"')
     expect(html).toContain('SSR layer')
   })
@@ -376,7 +376,7 @@ test.describe('SSR layers', () => {
   }) => {
     const response = await page.request.get('/ssr/layer')
     const html = await response.text()
-    expect(html).toContain('<dialog open')
+    expect(html).toMatch(/<dialog[^>]*\sopen[\s=>]/)
 
     consoleMessages.listen(page)
 

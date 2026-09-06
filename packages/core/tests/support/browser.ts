@@ -1,14 +1,11 @@
-// Composing a layer is browser work: the visit fires DOM events, writes history and resets scroll.
-// Loaded as a vitest setup file, so the globals stand before any module that reads them at import.
+// Vitest setup file, so these globals stand before any module that reads them at import.
 
 const session = new Map<string, string>()
 
-// `eventHandler.init()` registers its listeners here, so keeping them lets a test drive popstate
-// through the handler the browser would rather than reaching past it.
+// Keeps what `eventHandler.init()` registers, so a test can drive popstate through the real handler.
 export const listeners = new Map<string, EventListener>()
 
-// The stub has no listeners of its own, so a test that needs a cancelable event cancelled says so
-// here: `dispatchEvent` returning false is exactly what a listener calling preventDefault does.
+// The stub has no listeners, so a test cancels an event by naming its type here.
 export const veto = { types: new Set<string>() }
 
 globalThis.window = {
@@ -19,8 +16,7 @@ globalThis.window = {
   addEventListener: (type: string, listener: EventListener) => listeners.set(type, listener),
   requestAnimationFrame: () => 0,
   setTimeout: () => 0,
-  // Encrypting an entry is real crypto against a real session store, so an encrypted stack can be
-  // read back rather than only asserted to be unreadable.
+  // Real crypto against a real session store, so an encrypted stack can be read back.
   crypto: globalThis.crypto,
   sessionStorage: {
     getItem: (key: string) => session.get(key) ?? null,

@@ -19,7 +19,6 @@ export type InfiniteScrollPageIdentifier = string | number | null
 export type InfiniteScrollOnCompleteDetails = { page: InfiniteScrollPageIdentifier; completed: boolean }
 
 export const useInfiniteScrollData = (options: {
-  /** @internal */
   layerId?: string
   getPropName: () => string
   onBeforeUpdate: () => void

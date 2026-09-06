@@ -1,5 +1,6 @@
 import {
   isUrlMethodPair,
+  layerIdOf,
   mergeDataIntoQueryString,
   resolveUrlMethodPairComponent,
   router,
@@ -171,7 +172,8 @@ function link(
     }
 
     baseParams = {
-      layerId: params.layerId,
+      // An action cannot read component context, so the layer it sits in is read off the stack's markup.
+      layerId: params.layerId ?? layerIdOf(node),
       data,
       method,
       replace: params.replace || false,

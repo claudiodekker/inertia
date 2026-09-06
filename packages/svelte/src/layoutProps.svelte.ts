@@ -9,31 +9,32 @@ export const storeState = $state({
 
 export const layerState = $state<Record<string, LayoutSlot>>({})
 
-store.subscribe(() => {
-  const snapshot = store.get()
-  storeState.shared = snapshot.shared
-  storeState.named = snapshot.named
+const sync = () => {
+  const snapshot = store.snapshot()
 
-  const known = new Set(store.layerIds())
-  for (const id of known) {
-    layerState[id] = store.getForLayer(id)
-  }
+  storeState.shared = snapshot.base.shared
+  storeState.named = snapshot.base.named
+
   for (const id of Object.keys(layerState)) {
-    if (!known.has(id)) {
+    if (!(id in snapshot.layers)) {
       delete layerState[id]
     }
   }
-})
+
+  Object.assign(layerState, snapshot.layers)
+}
+
+store.subscribe(sync)
 
 export const setLayoutProps = store.set
 
 export function resetLayoutProps(): void {
   store.reset()
-  const snapshot = store.get()
-  storeState.shared = snapshot.shared
-  storeState.named = snapshot.named
+  sync()
 }
 
-export function retainLayerLayoutProps(ids: string[]): void {
-  store.retainLayers(ids)
+export function swapLayoutProps(options: Parameters<typeof store.swap>[0]): void {
+  if (store.swap(options)) {
+    sync()
+  }
 }

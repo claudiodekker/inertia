@@ -14,21 +14,13 @@
 </script>
 
 <script lang="ts">
-  import {
-    emptyLayoutSlot,
-    isPropsObjectOrCallback,
-    isPropsObject,
-    layerShellProps,
-    layerTransitionName,
-    layoutPageOf,
-    normalizeLayouts,
-  } from '@inertiajs/core'
+  import { emptyLayoutSlot, layoutProps, resolveLayouts } from '@inertiajs/core'
   import type { LayoutSlot } from '@inertiajs/core'
   import { router } from '@inertiajs/core'
   import type { Component } from 'svelte'
-  import { layerState, resetLayoutProps, retainLayerLayoutProps, storeState } from '../layoutProps.svelte'
+  import { layerState, storeState, swapLayoutProps } from '../layoutProps.svelte'
   import { setPage } from '../page.svelte'
-  import type { LayoutType, LayoutResolver } from '../types'
+  import type { LayoutResolver } from '../types'
   import Layer from './Layer.svelte'
   import LayerPageContext from './LayerPageContext.svelte'
   import Render, { h, type RenderProps } from './Render.svelte'
@@ -86,11 +78,7 @@
         // script block runs (necessary for async: true).
         setPage(args.page)
 
-        if (!args.preserveState) {
-          resetLayoutProps()
-        }
-
-        retainLayerLayoutProps((args.layers ?? []).map((layer) => layer.id))
+        swapLayoutProps(args)
 
         component = args.component
         page = args.page
@@ -137,6 +125,7 @@
     page: Page,
     key: number | null = null,
     dynamicProps: () => LayoutSlot = baseLayoutProps,
+    layoutPage: Page = page,
   ): RenderProps {
     const child = h(component.default, page.props, [], key)
 
@@ -144,97 +133,43 @@
       return (component.layout as LayoutResolver)(h, child)
     }
 
-    let effectiveLayout: LayoutType | undefined
-    let callbackProps: Record<string, unknown> | null = null
-    const layoutValue = component.layout
+    const layouts = resolveLayouts(component.layout, layoutPage, defaultLayout, {
+      isComponent,
+      isRenderFunction,
+      rendersItself: isRenderFunction,
+    })
 
-    if (
-      typeof layoutValue === 'function' &&
-      (layoutValue as Function).length <= 1 &&
-      typeof (layoutValue as Function).prototype === 'undefined'
-    ) {
-      const result = (layoutValue as Function)(page.props)
-
-      if (isPropsObjectOrCallback(result, isComponent)) {
-        effectiveLayout = defaultLayout?.(page.component, page) as LayoutType | undefined
-        callbackProps = result as Record<string, unknown>
-      } else {
-        effectiveLayout = result as LayoutType | undefined
-      }
-    } else if (isPropsObject(layoutValue, isComponent)) {
-      effectiveLayout = defaultLayout?.(page.component, page) as LayoutType | undefined
-      callbackProps = layoutValue as Record<string, unknown>
-    } else {
-      effectiveLayout = (layoutValue ?? defaultLayout?.(page.component, page)) as LayoutType | undefined
+    if (!Array.isArray(layouts)) {
+      return (layouts.renders as LayoutResolver)(h, child)
     }
 
-    return effectiveLayout
-      ? resolveLayout(
-          effectiveLayout,
-          child,
-          page.props,
-          key,
-          !!component.layout && !callbackProps,
-          callbackProps,
-          dynamicProps,
-        )
-      : child
-  }
+    const slot = dynamicProps()
 
-  function resolveLayout(
-    layout: LayoutType,
-    child: RenderProps,
-    pageProps: PageProps,
-    key: number | null,
-    isFromPage: boolean = true,
-    callbackProps: Record<string, unknown> | null = null,
-    dynamicProps: () => LayoutSlot = baseLayoutProps,
-  ): RenderProps {
-    if (isFromPage && isRenderFunction(layout)) {
-      return (layout as LayoutResolver)(h, child)
-    }
-
-    let layouts = normalizeLayouts(layout, isComponent, isFromPage ? isRenderFunction : undefined)
-
-    if (callbackProps) {
-      layouts = layouts.map((l) => ({ ...l, props: { ...l.props, ...callbackProps } }))
-    }
-
-    if (layouts.length > 0) {
-      const slot = dynamicProps()
-
-      return layouts.reduceRight((child, layout) => {
-        return {
-          ...h(
-            layout.component,
-            {
-              ...pageProps,
-              ...layout.props,
-              ...slot.shared,
-              ...(layout.name ? slot.named[layout.name] || {} : {}),
-            },
-            [child],
-            key,
-          ),
-          name: layout.name,
-        }
-      }, child)
-    }
-
-    return child
+    return layouts.reduceRight(
+      (child, layout) => ({
+        ...h(layout.component, layoutProps(layout, layoutPage, slot), [child], key),
+        name: layout.name,
+      }),
+      child,
+    )
   }
 
   function wrapLayerLayout(layer: ResolvedLayer<ResolvedComponent>): RenderProps {
-    return resolveRenderProps(layer.component, layoutPageOf(layer), layer.renderKey, layerLayoutProps(layer.id))
+    return resolveRenderProps(
+      layer.component,
+      layer.page,
+      layer.renderKey,
+      layerLayoutProps(layer.id),
+      layer.layoutPage,
+    )
   }
 </script>
 
-<!-- The stack starts on the same line as the page. A line break between them renders as a
-     whitespace text node, which every app would then carry whether it uses layers or not. -->
-{#if renderProps}<Render {...renderProps} />{/if}{#each layers as layer, index (layer.id)}
+<!-- The stack starts on the page's line; a line break between them renders as a whitespace text node. -->
+{#if renderProps}<Render {...renderProps} />{/if}{#each layers as layer (layer.id)}
   <LayerPageContext page={layer.page} layerId={layer.id}>
-    <LayerComponent {...layerShellProps(layer, index, layers.length)}>
-      <div data-layer-id={layer.id} style:view-transition-name={layerTransitionName(layer.id)}>
+    <LayerComponent {...layer.shell}>
+      <div {...layer.attributes} style:view-transition-name={layer.transitionName}>
         <Render {...wrapLayerLayout(layer)} />
       </div>
     </LayerComponent>

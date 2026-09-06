@@ -3,7 +3,6 @@ import { router } from '../src'
 import { eventHandler } from '../src/eventHandler'
 import { history } from '../src/history'
 import { http } from '../src/http'
-import { layerClosing } from '../src/layers'
 import {
   addressOf,
   closeLayer,
@@ -14,11 +13,13 @@ import {
   isLayerResponse,
   layerPageOf,
   nextLayerId,
+  responseTarget,
 } from '../src/layers'
+import { layerClosing } from '../src/layers/closing'
+import { mergeProps } from '../src/layers/merge'
 import { page as currentPage } from '../src/page'
 import { prefetchedRequests } from '../src/prefetched'
 import { RequestParams } from '../src/requestParams'
-import { Response } from '../src/response'
 import { Router } from '../src/router'
 import { Scroll } from '../src/scroll'
 import {
@@ -80,12 +81,25 @@ describe('resolving a page with layers', () => {
     const composed = composeLayer(pageWith(), response, 'layer-1')
     const args = await swapArgsFor(composed)
 
+    const layerPage = layerPageOf(composed, composed.layers![0])
+
     expect(args.layers).toEqual([
       {
-        ...composed.layers![0],
+        id: 'layer-1',
+        renderKey: composed.layers![0].renderKey,
         component: { name: 'Users/Edit' },
-        isClosing: false,
-        page: layerPageOf(composed, composed.layers![0]),
+        page: layerPage,
+        layoutPage: layerPage,
+        attributes: { 'data-layer-id': 'layer-1' },
+        transitionName: 'inertia-layer-layer-1',
+        shell: {
+          open: true,
+          index: 0,
+          isTop: true,
+          type: 'routed',
+          close: expect.any(Function),
+          done: expect.any(Function),
+        },
       },
     ])
   })
@@ -597,61 +611,22 @@ describe('a client visit aimed at a layer', () => {
 })
 
 describe('a response that refreshes the base', () => {
-  class ExposedResponse extends Response {
-    public refreshes(pageResponse: Page): boolean {
-      return this.refreshesBase(pageResponse)
-    }
-
-    public merge(pageResponse: Page): void {
-      this.mergeProps(pageResponse)
-    }
-  }
-
-  const responseFor = (visit: Partial<ActiveVisit>) => {
+  const paramsFor = (visit: Partial<ActiveVisit>): RequestParams => {
     currentPage.init({
       initialPage: pageWith(),
       resolveComponent: (name) => ({ name }) as never,
       swapComponent: async () => {},
     })
 
-    const params = { only: [], except: [], reset: [], ...visit } as unknown as ActiveVisit
-
-    return new ExposedResponse(RequestParams.create(params), {} as HttpResponse, pageWith(), {
-      page: pageWith(),
-      generation: currentPage.generation(),
-    })
+    return RequestParams.create({ only: [], except: [], reset: [], ...visit } as unknown as ActiveVisit)
   }
 
-  it('a reload of the same component refreshes it', () => {
-    expect(responseFor({ reload: true } as Partial<ActiveVisit>).refreshes(pageWith())).toBe(true)
-  })
-
-  it('a reload redirected to another component does not', () => {
-    const redirected = pageWith({ component: 'Auth/Login', url: '/login' })
-
-    expect(responseFor({ reload: true } as Partial<ActiveVisit>).refreshes(redirected)).toBe(false)
-  })
-
-  it('a visit to another url of the same component does not', () => {
-    const elsewhere = pageWith({ url: '/users?page=2' })
-
-    expect(responseFor({}).refreshes(elsewhere)).toBe(false)
-  })
-
-  it('a partial reload of the same component still refreshes it', () => {
-    expect(responseFor({ only: ['users'] }).refreshes(pageWith())).toBe(true)
-  })
-
-  it('a partial reload of another url of the same component does not', () => {
-    expect(responseFor({ only: ['users'] }).refreshes(pageWith({ url: '/users?search=x' }))).toBe(false)
-  })
-
   it('does not merge a plain reload into the props already held', () => {
-    const response = responseFor({ reload: true } as Partial<ActiveVisit>)
+    const params = paramsFor({ reload: true } as Partial<ActiveVisit>)
     const pageResponse = pageWith({ props: { users: [{ id: 1 }] } })
 
     currentPage.merge({ props: { users: [], stale: true } as Page['props'] })
-    response.merge(pageResponse)
+    mergeProps(pageResponse, responseTarget(currentPage.get(), pageResponse)!.state, params)
 
     expect(pageResponse.props).toEqual({ users: [{ id: 1 }] })
   })
@@ -1121,7 +1096,7 @@ describe('a layer response that names an earlier level', () => {
   }
 
   afterEach(() => {
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
   })
 
   it('closes the layers above the one it lands on, rewriting that layer where it stands', async () => {
@@ -1238,6 +1213,8 @@ describe('an open layer across a partial or reload', () => {
 
   const openCold = async (layerProps: Page['props'] = { user: { id: 5 } }): Promise<void> => {
     await hold(pageWith())
+    // The blank base sends the walk for its base as it lands; the hop stays out for the rest of the test.
+    holding()
     await currentPage.set(
       composeColdLayer(editLayer({ layer: { base: '/users' }, props: layerProps }), nextLayerId(pageWith())),
       {
@@ -1687,6 +1664,7 @@ describe('per-layer optimistic updates', () => {
 
   it('drops a closed layer optimistic state instead of rolling it into the base', async () => {
     await hold(pageWith({ props: { users: [], todos: [10] } }))
+    holding()
     await currentPage.set(
       composeColdLayer(
         pageWith({
@@ -2085,6 +2063,7 @@ describe('a reload or partial issued from inside a layer', () => {
 
   it('discards a response whose standalone layer closed, rather than reopening it over the page', async () => {
     await hold(pageWith())
+    holding()
     const id = nextLayerId(currentPage.get())
     await currentPage.set(composeColdLayer(editLayer({ layer: { key: 'Users/Edit', base: '/users' } }), id), {
       preservesBase: true,
@@ -2148,7 +2127,7 @@ describe('an instant visit that opens a layer or is made from one', () => {
 
   afterEach(() => {
     http.setClient(client)
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -2409,7 +2388,7 @@ describe('a close: true response runs the close flow instead of installing', () 
 
   afterEach(async () => {
     await queueSettled()
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
     vi.restoreAllMocks()
   })
 
@@ -2631,7 +2610,7 @@ describe('a submit answered by the tier the layer stands on', () => {
 
   afterEach(async () => {
     await new Promise((resolve) => setTimeout(resolve))
-    layerClosing.settleUnwind()
+    layerClosing.unwound()
   })
 
   it('keeps a local layer up and gives it the errors the server handed back', async () => {

@@ -3,14 +3,9 @@ import debounce from './debounce'
 import { fireNavigateEvent } from './events'
 import { history } from './history'
 import { router } from './index'
-import {
-  layerClosing,
-  layerDismissedByRestore,
-  layersOf,
-  recordHistoryEntry,
-  restoreKeepsBase,
-  withAddressHash,
-} from './layers'
+import { isBlankBase, layersOf, recordHistoryEntry, withAddressHash } from './layers'
+import { layerClosing } from './layers/closing'
+import { recoverBlankBase } from './layers/walk'
 import { page as currentPage } from './page'
 import { Scroll } from './scroll'
 import { GlobalEvent, GlobalEventNames, GlobalEventResult, InternalEvent, LayerState, Page } from './types'
@@ -57,7 +52,6 @@ class EventHandler {
   }
 
   public onMissingHistoryItem() {
-    layerClosing.settleUnwind()
     // At this point, the user has probably cleared the state
     // Mark the current page as cleared so that we don't try to write anything to it.
     currentPage.clear()
@@ -87,12 +81,14 @@ class EventHandler {
   }
 
   protected handlePopstateEvent(event: PopStateEvent): void {
-    const state = event.state || null
+    this.restoreFromPopstate(event.state || null)
+      .catch(() => this.onMissingHistoryItem())
+      .finally(() => layerClosing.unwound())
+  }
 
+  protected async restoreFromPopstate(state: { page: Page } | null): Promise<void> {
     if (state === null) {
-      // An entry the browser wrote itself, usually for an in-page anchor. It stands between the
-      // stack and the entry beneath it, so closing a layer has one more step to take back.
-      layerClosing.settleUnwind()
+      // An entry the browser wrote itself (an in-page anchor), so a closing layer has one more step to take back.
       history.replaceState(withAddressHash(recordHistoryEntry(currentPage.getWithoutFlashData()), window.location.hash))
       Scroll.reset()
 
@@ -103,79 +99,37 @@ class EventHandler {
       return this.onMissingHistoryItem()
     }
 
-    history
-      .decrypt(state.page)
-      .then((data) => this.restoreEntry(data))
-      .catch(() => {
-        this.onMissingHistoryItem()
-      })
+    return this.restoreEntry(await history.decrypt(state.page))
   }
 
-  // The entry the browser went back to. Every path out of here settles the unwind a close is waiting
-  // on, `onMissingHistoryItem` included: a step the browser has already answered must never leave the
-  // close waiting out its timeout. The one exception is the restore that installs a page, which
-  // settles once that page is on screen rather than before.
-  protected restoreEntry(data: Page): void {
+  protected restoreEntry(data: Page): Promise<void> | void {
     if (currentPage.get().version !== data.version) {
-      this.onMissingHistoryItem()
-
-      return
+      return this.onMissingHistoryItem()
     }
 
-    // A close's unwind steps back onto the page that is staying, so anything in flight for it
-    // belongs to the page coming back. A genuine back navigates away, and takes its requests.
-    const unwindingOntoTheSamePage = layerClosing.isUnwinding() && currentPage.isTheSame(data)
+    const restore = layerClosing.restoring(data)
 
-    if (!unwindingOntoTheSamePage) {
+    if (!restore.sameStack) {
       // Cancel ongoing requests except prefetch requests
       router.cancelAll({ prefetch: false })
     }
 
-    if (layerClosing.unwindLandsItself()) {
-      // The close installs the page beneath itself, so the restore leaves the screen to it.
-      layerClosing.settleUnwind()
-
+    if (restore.landsItself) {
       return
     }
 
-    if (data.component === '') {
-      // A blank base the walk never filled in, which is re-asked for rather than restored.
-      layerClosing.settleUnwind()
-      router.visit(data.url, { replace: true, preserveScroll: true, preserveState: true })
-
-      return
+    if (isBlankBase(data)) {
+      return recoverBlankBase(data.url)
     }
 
-    // Deliberately not returned: the write and everything it fires are the restore's own business,
-    // and a failure in them is not a missing history item.
-    this.restorePage(data, unwindingOntoTheSamePage)
+    return restore.install().then(() => {
+      Scroll.restore(history.getScrollRegions())
+      fireNavigateEvent(currentPage.get())
+
+      this.loadDeferredPropsFor(data)
+    })
   }
 
-  protected restorePage(data: Page, unwindingOntoTheSamePage: boolean): Promise<void> {
-    // Back over a single layer dismisses it, so it leaves like every other dismissal: marked,
-    // given its exit, taken off once the shell reports.
-    const dismissed = layerClosing.isUnwinding() ? undefined : layerDismissedByRestore(currentPage.get(), data)
-    const dismissal =
-      dismissed && !layerClosing.isClosing(dismissed.id)
-        ? layerClosing.close(dismissed.id, { absorbed: true })
-        : Promise.resolve()
-
-    // The restore lands on the page already on screen, so remounting it would throw its state away.
-    const landsOnThePageOnScreen = unwindingOntoTheSamePage || !!dismissed || restoreKeepsBase(currentPage.get(), data)
-
-    return dismissal
-      .then(() => currentPage.setQuietly(data, { preserveState: landsOnThePageOnScreen }))
-      .then(() => {
-        layerClosing.settleUnwind()
-        Scroll.restore(history.getScrollRegions())
-        fireNavigateEvent(currentPage.get())
-
-        this.loadDeferredPropsFor(data)
-      })
-  }
-
-  // What each tier arrived owing and still has not been given: a restore brings back the props the
-  // entry was stored with, which for a deferred group is nothing.
   protected loadDeferredPropsFor(data: Page): void {
     for (const tier of [data, ...layersOf(data)]) {
       const pendingDeferred: Record<string, string[]> = {}
