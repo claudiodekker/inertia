@@ -588,12 +588,14 @@ describe("an instant visit that opens a layer or is made from one", () => {
     scopeOf(app).router.visit("/users/9/edit", instant);
     await settled();
 
-    expect(app.views()[0].page).toMatchObject({
-      props: { errors: {} },
-      onceProps: {},
-      rescuedProps: [],
-      flash: {},
-    });
+    const swapped = app.views()[0].page;
+
+    expect(swapped.props).toEqual({ errors: {} });
+    expect(swapped.deferredProps).toEqual({});
+    expect(swapped.onceProps).toEqual({});
+    expect(swapped.scrollProps).toEqual({});
+    expect(swapped.rescuedProps).toEqual([]);
+    expect(swapped.flash).toEqual({});
   });
 
   it("remakes the layer component for the record it is heading to", async () => {
@@ -671,6 +673,105 @@ describe("an instant visit that opens a layer or is made from one", () => {
     const { app } = await stood();
 
     app.router.visit("/users/9/edit", instant);
+    await settled();
+
+    expect((await app.basePage()).component).toBe("Users/Edit");
+    expect(app.layers()).toEqual([]);
+  });
+
+  it("lands a response keyed differently on the placeholder rather than beside it", async () => {
+    const { app, next } = await stood({ layer: { key: "panel:first" } });
+    const [layer] = app.layers();
+
+    scopeOf(app).router.visit("/layers/panel/second", {
+      component: "Layers/Panel",
+    });
+    app.core.http.setClient({
+      request: () => next.answer().then(inertia),
+    });
+    await settled();
+
+    next.release(
+      page("Layers/Panel", "/layers/panel/second", {
+        layer: { key: "panel:second" },
+        props: { name: "second", errors: {} },
+      }),
+    );
+    await settled();
+
+    expect(app.layers()).toEqual([
+      {
+        id: layer.id,
+        key: "panel:second",
+        component: "Layers/Panel",
+        url: "/layers/panel/second",
+        type: "routed",
+      },
+    ]);
+    expect(app.views()[0].page.props).toEqual({ name: "second", errors: {} });
+  });
+
+  it("puts the placeholder up as a layer, leaving the page it opens on where it is", async () => {
+    const next = held();
+    const app = await scenario(index(), {
+      "/users/5/edit": () => next.answer(),
+    });
+
+    app.router.layer("/users/5/edit", { component: "Users/Edit" });
+    await settled();
+
+    expect(await app.basePage()).toMatchObject({
+      component: "Users/Index",
+      url: "/users",
+    });
+    expect(app.layers().map((layer) => [layer.component, layer.url])).toEqual([
+      ["Users/Edit", "/users/5/edit"],
+    ]);
+    expect(app.entry().layers!.map((layer) => layer.owner)).toEqual([null]);
+  });
+
+  it("lands the response on the placeholder an open put up, under the id it created", async () => {
+    const next = held();
+    const app = await scenario(index(), {
+      "/users/5/edit": () => next.answer(),
+    });
+
+    const handle = app.router.layer("/users/5/edit", {
+      component: "Users/Edit",
+    });
+    await settled();
+
+    const fabricated = app.layers()[0];
+
+    next.release(edit());
+    await settled();
+
+    expect((await app.basePage()).component).toBe("Users/Index");
+    expect(app.layers()).toEqual([
+      {
+        id: fabricated.id,
+        key: "Users/Edit",
+        component: "Users/Edit",
+        url: "/users/5/edit",
+        type: "routed",
+      },
+    ]);
+    expect(fabricated.id).toBe(handle.id);
+    expect(handle.state).toBe("open");
+    expect(app.views()[0].page.props).toEqual({ user: { id: 5 }, errors: {} });
+  });
+
+  it("falls back to fabricating a page when the layer it names has already closed", async () => {
+    const { app } = await stood();
+    const gone = scopeOf(app);
+    const closing = gone.close();
+
+    exitShells(app);
+    await closing;
+    await settled();
+    app.core.http.setClient({ request: () => new Promise(() => {}) });
+
+    gone.router.visit("/users/9/edit", instant);
     await settled();
 
     expect((await app.basePage()).component).toBe("Users/Edit");
