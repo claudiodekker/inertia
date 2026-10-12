@@ -469,9 +469,11 @@ function opening(id: LayerId, key: string, owner: Owner, overrides: Partial<Laye
 // ---------------------------------------------------------------------------------------------------
 
 /**
- * Made before the base history write: an install the stack asked for, a visit the stack follows, the
- * initial commit and a replace of the same page keep the stack; a prompt pins it; anything else drops
- * it. The gate holds the stack's paint until the base swaps, so both change in one frame.
+ * Made before the base history write. The stack is kept by an install it asked for, a visit it follows,
+ * the initial commit, the answer to a partial or a reload that stays on the component (or fills a blank),
+ * and a client replace of the same page. A prompt pins it. Anything else drops it: the answer to a
+ * navigation does so even when it lands on the very same page. The gate holds the stack's paint until
+ * the base swaps, so both change in one frame.
  */
 function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
   return run(s, (t, fx) => {
@@ -513,7 +515,11 @@ function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
       return pinned(t, fx, e, op)
     }
 
-    if (e.mode === 'replace' && e.sameAsLive) {
+    if (e.answer === 'refresh' && (e.against !== 'other' || t.base.blank)) {
+      return { ...t, base: { blank: false, gen: t.base.gen + (e.against === 'same' ? 0 : 1) }, walk: null }
+    }
+
+    if (e.answer === null && e.mode === 'replace' && (e.against === 'same' || e.against === 'moved')) {
       return t
     }
 

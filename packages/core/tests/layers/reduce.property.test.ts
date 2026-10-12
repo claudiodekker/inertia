@@ -105,7 +105,8 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
                 ? null
                 : visit(fresh('v')),
         mode: bit(0) ? 'push' : 'replace',
-        sameAsLive: bit(1),
+        against: (['same', 'moved', 'elsewhere', 'other'] as const)[b % 4],
+        answer: ([null, 'refresh', 'navigation'] as const)[b % 3],
         interstitial: b % 5 === 0,
         initial: b % 17 === 0,
       }

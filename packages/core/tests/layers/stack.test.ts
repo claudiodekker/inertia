@@ -380,7 +380,7 @@ describe('error hand-back', () => {
     expect(app.layers().map((open) => open.component)).toEqual(['Users/Invite'])
   })
 
-  it('does not apply to a layer that owns the address: the errors land on the page beneath it', async () => {
+  it('does not apply to a layer that owns the address: the answer navigates, and the errors show on the page', async () => {
     const app = await runtime(users, { '/users/invite': invite, 'post /users': rejected })
 
     app.router.visit('/users/invite')
@@ -388,7 +388,7 @@ describe('error hand-back', () => {
     app.router.layerHandle()!.router.post('/users')
     await settled()
 
-    expect(app.views()[0].page.props.errors).toEqual({})
+    expect(app.layers()).toEqual([])
     expect((await app.basePage()).props.errors).toEqual({ name: 'The name is required.' })
   })
 
@@ -400,8 +400,8 @@ describe('error hand-back', () => {
     app.router.layerHandle()!.router.post('/users')
     await settled()
 
-    expect(app.layers().map((open) => open.component)).toEqual(['Users/Invite'])
-    expect(app.views()[0].page.props.errors).toEqual({})
+    expect(app.layers()).toEqual([])
+    expect(await app.basePage()).toMatchObject({ component: 'Users/Index', props: { errors: {} } })
   })
 })
 

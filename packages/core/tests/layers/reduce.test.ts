@@ -113,20 +113,54 @@ describe('opening over the page on screen', () => {
   it('L:146 a client visit that installs another page drops every row and ghost and owes a paint', () => {
     const s = state({ base: { blank: false, gen: 3 }, rows: [row('a'), row('b')], ghosts: [id('c')] })
 
-    expect(reduce(s, committing({ mode: 'push', sameAsLive: true }))).toEqual({
+    expect(reduce(s, committing({ mode: 'push', against: 'same' }))).toEqual({
       state: state({ base: { blank: false, gen: 4 }, paint: { gated: true, owed: true } }),
       effects: [{ type: 'dispose', ids: ['a', 'b', 'c'], reason: 'navigated' }],
       outcome: none,
     })
-    expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', sameAsLive: false })).state.rows).toEqual(
+    expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', against: 'other' })).state.rows).toEqual(
       [],
     )
   })
 
   it('L:527 L:1144 L:1216 a replace of the same base page keeps the stack and closes the gate', () => {
-    expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', sameAsLive: true }))).toEqual({
+    expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', against: 'same' }))).toEqual({
       state: state({ rows: [row('a')], paint: { gated: true, owed: false } }),
       effects: [],
+      outcome: none,
+    })
+  })
+
+  it('the answer to a partial or a reload keeps the stack while the base stays on its component', () => {
+    const s = state({ base: { blank: false, gen: 3 }, rows: [row('a')] })
+    const kept = (gen: number) =>
+      state({ base: { blank: false, gen }, rows: [row('a')], paint: { gated: true, owed: false } })
+
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'same' })).state).toEqual(kept(3))
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'moved' })).state).toEqual(kept(4))
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'push', against: 'elsewhere' })).state).toEqual(kept(4))
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'push', against: 'other' })).state.rows).toEqual([])
+  })
+
+  it('the answer to a partial or a reload that fills a blank base keeps the stack and ends the walk', () => {
+    const cold = row('a', { standalone: true })
+    const s = state({
+      base: { blank: true, gen: 3 },
+      rows: [cold],
+      walk: { target: '/users', visit: visit('w'), startOnSwap: false },
+    })
+
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'other' })).state).toEqual(
+      state({ base: { blank: false, gen: 4 }, rows: [cold], paint: { gated: true, owed: false } }),
+    )
+  })
+
+  it('the answer to a navigation drops the stack even when it lands on the very same page', () => {
+    const s = state({ base: { blank: false, gen: 3 }, rows: [row('a')] })
+
+    expect(reduce(s, committing({ answer: 'navigation', mode: 'replace', against: 'same' }))).toEqual({
+      state: state({ base: { blank: false, gen: 4 }, paint: { gated: true, owed: true } }),
+      effects: [{ type: 'dispose', ids: ['a'], reason: 'navigated' }],
       outcome: none,
     })
   })

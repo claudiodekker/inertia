@@ -22,10 +22,11 @@ import {
   type CompositeEntry,
   type LayerEntry,
 } from './entry'
-import { entryFacts, isInterstitial, marksOf, routeFacts, sameOriginAndPath, snapshot, stripMark } from './facts'
+import { against, entryFacts, isInterstitial, marksOf, routeFacts, snapshot, stripMark } from './facts'
 import { TicketHandle } from './handles'
 import type { LayerInstance, StackPort } from './instance'
 import { reduce } from './reduce'
+import { refreshes } from './route'
 import type { PageScope } from './scope'
 import {
   idle,
@@ -80,6 +81,8 @@ export class Stack implements StackPort {
   protected restoring: readonly LayerEntry[] = []
   /** The next base commit is the document load's restore of a history entry, so it keeps the stack. */
   protected restoredLoad = false
+  /** What each response still landing answers, by visit: its base commit reads this. */
+  protected answers = new Map<string, 'refresh' | 'navigation'>()
 
   public connect(connection: Connection): void {
     this.connection = connection
@@ -302,21 +305,25 @@ export class Stack implements StackPort {
     const visit = response.getVisit()
     const live = this.state.rows.filter((row) => this.instances.has(row.id))
     const addressTier = live.filter((row) => row.phase === 'open' && row.ownsAddress).at(-1)
+    const facts = routeFacts(visit, page, marks, {
+      base: currentPage.get(),
+      live: live.map((row) => this.instance(row.id).page.get()),
+      addressTier: addressTier ? this.instance(addressTier.id).page.get() : currentPage.get(),
+    })
     const { outcome } = this.dispatch({
       type: 'responseArrived',
       visit: visit.id as VisitId,
       origin: response.origin,
       marks,
-      facts: routeFacts(visit, page, marks, {
-        base: currentPage.get(),
-        live: live.map((row) => this.instance(row.id).page.get()),
-        addressTier: addressTier ? this.instance(addressTier.id).page.get() : currentPage.get(),
-      }),
+      facts,
       newId: uid() as LayerId,
       newClose: uid() as CloseId,
     })
     const { landing } = outcome as Extract<Outcome, { kind: 'landing' }>
-    const landed = this.land(landing, response, page)
+
+    this.answers.set(visit.id, refreshes(facts) ? 'refresh' : 'navigation')
+
+    const landed = (this.land(landing, response, page) ?? response.land()).finally(() => this.answers.delete(visit.id))
 
     if ('id' in landing && landing.kind !== 'close' && landing.kind !== 'handback') {
       this.bindHandles(landing.id, visit.id)
@@ -397,20 +404,22 @@ export class Stack implements StackPort {
       return
     }
 
-    const live = currentPage.get()
     const restoredLoad = this.restoredLoad
 
     this.restoredLoad = false
-    this.dispatch({
+    this.dispatch(this.committing(page, replace, visitId, initial || restoredLoad))
+  }
+
+  protected committing(page: Page, replace: boolean, visitId: string | undefined, initial: boolean): StackEvent {
+    return {
       type: 'baseCommitting',
       visit: (visitId ?? null) as VisitId | null,
       mode: replace ? 'replace' : 'push',
       interstitial: isInterstitial(page),
-      initial: initial || restoredLoad,
-      // A blank that moved to the next url the walk fetches is still the same placeholder.
-      sameAsLive:
-        !!live && live.component === page.component && (isBlank(page) || sameOriginAndPath(live.url, page.url)),
-    })
+      initial,
+      against: against(currentPage.get(), page),
+      answer: (visitId !== undefined && this.answers.get(visitId)) || null,
+    }
   }
 
   public baseSwapped(): void {
@@ -462,9 +471,20 @@ export class Stack implements StackPort {
     this.connected().baseScope.router.clearHistory()
   }
 
-  /** The base location while a layer owns the address, else null (window.location). */
-  public baseLocation(): URL | null {
-    return this.ownsAddress() ? hrefToUrl(currentPage.get().url) : null
+  /**
+   * What a committing base page compares its url with to tell a replace from a push: the base url while a
+   * layer owns the address, else null (window.location). A refresh that moves the base beneath a stack it
+   * keeps is compared with its own url, so it rewrites the entry: the address is still the layer's.
+   */
+  public baseLocation(page: Page, replace: boolean, visitId?: string): URL | null {
+    if (!this.ownsAddress()) {
+      return null
+    }
+
+    const refresh = visitId !== undefined && this.answers.get(visitId) === 'refresh'
+    const kept = refresh && reduce(this.state, this.committing(page, replace, visitId, false)).state.rows.length > 0
+
+    return hrefToUrl(kept ? page.url : currentPage.get().url)
   }
 
   /**

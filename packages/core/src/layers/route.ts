@@ -4,6 +4,7 @@ import {
   type LayerId,
   type LayerRow,
   type Owner,
+  type RouteFacts,
   type StackEvent,
   type StackState,
 } from './state'
@@ -14,7 +15,7 @@ type ResponseArrived = Extract<StackEvent, { type: 'responseArrived' }>
 export function classify(s: StackState, e: ResponseArrived): Landing {
   const { origin, marks, facts } = e
   const op = s.ops.get(e.visit)
-  const isRefresh = facts.partial || (facts.async && facts.preserveState)
+  const isRefresh = refreshes(facts)
   const row = (id: LayerId) => s.rows.find((candidate) => candidate.id === id)
 
   if (op?.kind === 'walk') {
@@ -105,6 +106,11 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
   }
 
   return { kind: 'pass' }
+}
+
+/** A partial or a reload: it reads a page again in place, where any other visit navigates. */
+export function refreshes(facts: RouteFacts): boolean {
+  return facts.partial || (facts.async && facts.preserveState)
 }
 
 /** The routed row with this key: the preferred row first, else the topmost. */

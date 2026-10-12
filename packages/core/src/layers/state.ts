@@ -160,6 +160,19 @@ export interface RouteFacts {
   readonly replace: boolean
 }
 
+/**
+ * A committing base page against the one on screen: the `same` component and url, `moved` to another
+ * query of the same path, the same component `elsewhere`, or `other`. A blank over a blank is the same.
+ */
+export type Against = 'same' | 'moved' | 'elsewhere' | 'other'
+
+/**
+ * The response a base commit lands, if any: a `refresh` answers a partial or a reload, which reads the
+ * page again in place; a `navigation` answers any other visit. null for a client visit, a placeholder
+ * or an install.
+ */
+export type Answer = 'refresh' | 'navigation' | null
+
 /** One layer of a decrypted composite entry, structure only. */
 export interface EntryLayerFacts {
   readonly id: LayerId
@@ -214,7 +227,8 @@ export type StackEvent =
       type: 'baseCommitting'
       visit: VisitId | null
       mode: 'push' | 'replace'
-      sameAsLive: boolean
+      against: Against
+      answer: Answer
       interstitial: boolean
       initial: boolean
     }

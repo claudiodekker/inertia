@@ -578,20 +578,25 @@ describe("a page response landing", () => {
     });
 
     it("a partial reload of another url of the same component does not", async () => {
+      const late = gate();
       const app = await openOver({
         "/users?search=x": { ...users, url: "/users?search=x" },
+        "/teams/9": () => late.opened.then(() => teamsShow),
       });
+      const stacked = app.layers();
 
+      app.router.visit("/teams/9", { async: true });
+      await settled();
       app.router.visit("/users?search=x", { only: ["users"] });
       await settled();
-      exitShells(app);
+      late.open();
       await settled();
 
       expect(await app.basePage()).toMatchObject({
         component: "Users/Index",
         url: "/users?search=x",
       });
-      expect(app.layers()).toEqual([]);
+      expect(app.layers()).toEqual(stacked);
     });
   });
 

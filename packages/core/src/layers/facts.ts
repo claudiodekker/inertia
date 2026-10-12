@@ -5,7 +5,7 @@ import { RequestParams } from '../requestParams'
 import type { Page, PendingVisit } from '../types'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
 import { isBlank, type LayerEntry } from './entry'
-import type { EntryFacts, LayerId, LayerRow, Marks, Owner, RouteFacts } from './state'
+import type { Against, EntryFacts, LayerId, LayerRow, Marks, Owner, RouteFacts } from './state'
 
 type Marked = Page & { layer?: { key?: string; base?: string }; close?: unknown }
 
@@ -111,9 +111,17 @@ export function snapshot(row: LayerRow, historyPage: Page): LayerEntry {
   }
 }
 
-export function sameOriginAndPath(a: string, b: string): boolean {
-  const left = hrefToUrl(a)
-  const right = hrefToUrl(b)
+export function against(live: Page | undefined, page: Page): Against {
+  if (!live || live.component !== page.component) {
+    return 'other'
+  }
 
-  return left.origin === right.origin && left.pathname === right.pathname
+  const from = hrefToUrl(live.url)
+  const to = hrefToUrl(page.url)
+
+  if (isBlank(page) || isSameUrlWithoutHash(from, to)) {
+    return 'same'
+  }
+
+  return from.origin === to.origin && from.pathname === to.pathname ? 'moved' : 'elsewhere'
 }
