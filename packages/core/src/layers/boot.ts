@@ -69,7 +69,8 @@ export function wrapResolver<C>(
       return resolve(name, page)
     }
 
-    const found = await loading?.(page?.url ?? '', { layers })
+    // A blank with no url is waiting on nothing the resolver could draw.
+    const found = page?.url ? await loading?.(page.url, { layers }) : undefined
 
     if (found && typeof found === 'object' && 'default' in found) {
       return found.default
