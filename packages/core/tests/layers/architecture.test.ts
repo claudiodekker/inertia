@@ -35,8 +35,16 @@ describe('scope seam', () => {
   })
 })
 
-const pure = ['layers/state.ts', 'layers/route.ts', 'layers/restore.ts', 'layers/reduce.ts', 'layers/entry.ts']
-const pureSiblings = ['./state', './route', './restore', './reduce', './entry']
+const pure = [
+  'layers/state.ts',
+  'layers/route.ts',
+  'layers/restore.ts',
+  'layers/reduce.ts',
+  'layers/close.ts',
+  'layers/update.ts',
+  'layers/entry.ts',
+]
+const pureSiblings = ['./state', './route', './restore', './reduce', './close', './update', './entry']
 
 const code = (file: string) =>
   readFileSync(join(src, file), 'utf8')
