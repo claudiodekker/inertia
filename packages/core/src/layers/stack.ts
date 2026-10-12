@@ -7,6 +7,7 @@ import { history } from '../history'
 import { interceptors } from '../interceptors'
 import { page as currentPage, type CurrentPage } from '../page'
 import type { Response } from '../response'
+import type { Router } from '../router'
 import { Scroll } from '../scroll'
 import type { CancelToken, Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
@@ -532,6 +533,11 @@ export class Stack implements StackPort {
     const row = layer && this.state.rows.find((row) => row.type === 'routed' && row.key === layer.key)
 
     return layer ? ((row && this.instances.get(row.id)?.page) ?? null) : currentPage
+  }
+
+  /** True for the router of a layer with no url of its own: nothing it shows can be written to the address. */
+  public urlless(router: Router): boolean {
+    return [...this.instances.values()].some((instance) => instance.router === router && instance.type === 'local')
   }
 
   /** The history composer: the base page with every committed layer that is not being closed. Pure read. */

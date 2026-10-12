@@ -1,6 +1,7 @@
 import { hrefToUrl, urlHasProtocol, urlToString } from '..'
 import debounce from '../debounce'
 import { getElementsInViewportFromCollection } from '../domUtils'
+import { stack } from '../layers/stack'
 import Queue from './../queue'
 import { InfiniteScrollScope } from '../types'
 import { getPageFromElement } from './elements'
@@ -30,6 +31,10 @@ export const useInfiniteScrollQueryString = (options: {
         return new Promise((resolve) => {
           if (!enabled) {
             syncing.delete(options.scope.router)
+            return resolve()
+          }
+
+          if (stack.urlless(options.scope.router)) {
             return resolve()
           }
 
