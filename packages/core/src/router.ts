@@ -472,7 +472,7 @@ export class Router {
 
   /** Opens a layer. On a layer's router the new layer is owned by that layer, else by the top one or the page. */
   public layer(target: LayerTarget, options: VisitOptions = {}): LayerHandle {
-    return stack.open(target, options, this.scope)
+    return stack.requests.open(target, options, this.scope)
   }
 
   /** Closes `id` (default: the top layer) and every layer above it. */

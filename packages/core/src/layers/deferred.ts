@@ -28,7 +28,7 @@ export function fillsDeferred(visit: Reload, layer: LayerInfo | null, keys: stri
     return false
   }
 
-  const own = layer ? layer.url : stack.baseReloadUrl()
+  const own = layer ? layer.url : stack.base.reloadUrl()
 
   return (
     (layer === null || own !== null) &&

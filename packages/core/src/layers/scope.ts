@@ -36,8 +36,8 @@ export const baseScope: PageScope = {
   get router() {
     return router
   },
-  reloadUrl: () => stack.baseReloadUrl() ?? window.location.href,
-  capture: (visit, previous) => stack.captureBase(visit, previous),
+  reloadUrl: () => stack.base.reloadUrl() ?? window.location.href,
+  capture: (visit, previous) => stack.base.capture(visit, previous),
   route: (response) => stack.route(response),
   disposed: false,
 }

@@ -82,7 +82,7 @@ class EventHandler {
   protected handlePopstateEvent(event: PopStateEvent): void {
     const state = event.state || null
 
-    if (state === null && stack.anchored(window.location.hash)) {
+    if (state === null && stack.history.anchored(window.location.hash)) {
       Scroll.reset()
 
       return
@@ -110,7 +110,7 @@ class EventHandler {
           return
         }
 
-        const restored = stack.popstate(data)
+        const restored = stack.history.popstate(data)
 
         if (restored === null) {
           return

@@ -40,7 +40,7 @@ export class InitialVisit {
           return
         }
 
-        data = stack.restoreOnLoad(data)
+        data = stack.history.restoreOnLoad(data)
 
         const visitId = uid()
 

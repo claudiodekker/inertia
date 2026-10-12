@@ -4,11 +4,14 @@ import { page, runtime, settled } from './runtime'
 const panel = page('Panel', '/panel', { layer: { key: 'panel', base: '/users' } })
 
 // index.ts constructs the router while these are still loading. 3.x cannot be entered through the first
-// three either; the last three reach the router or its default scope before the index.
+// three either; the next three reach the router or its default scope before the index.
 const loadsBeforeTheRouter = /\/(router|eventHandler|initialVisit|request|layers\/scope|layers\/layerRouter)\.ts$/
 
+// stack.ts constructs these while it loads, and nothing else imports them.
+const constructedByTheStack = /\/layers\/(base|stackHistory|openRequests)\.ts$/
+
 const modules = Object.entries(import.meta.glob('../../src/**/*.ts')).filter(
-  ([path]) => !loadsBeforeTheRouter.test(path),
+  ([path]) => !loadsBeforeTheRouter.test(path) && !constructedByTheStack.test(path),
 )
 
 describe('opening a layer whichever core module is loaded first', () => {

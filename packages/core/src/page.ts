@@ -155,7 +155,7 @@ export class CurrentPage {
   }
 
   protected location(page: Page, replace: boolean, visitId?: string, initialRender = false): URL | Location {
-    return stack.baseLocation(page, replace, visitId, initialRender) ?? window.location
+    return stack.base.location(page, replace, visitId, initialRender) ?? window.location
   }
 
   protected write(
@@ -167,7 +167,7 @@ export class CurrentPage {
     // A new page replaces the one we booted on, so restore() must stop falling back to its state
     history.clearInitialState(history.rememberedState)
 
-    stack.baseCommitting(pageForHistory, replace, visitId, initialRender)
+    stack.base.committing(pageForHistory, replace, visitId, initialRender)
 
     return new Promise<void>((resolve) =>
       replace ? history.replaceState(pageForHistory, resolve) : history.pushState(pageForHistory, resolve),
@@ -179,7 +179,7 @@ export class CurrentPage {
   }
 
   protected swapped(): void {
-    stack.baseSwapped()
+    stack.base.swapped()
   }
 
   protected settle(
