@@ -95,7 +95,9 @@ class History {
       : this.clonePageProps(page)
 
     return new Promise((resolve) => {
-      return page.encryptHistory || page.layers?.some((layer) => layer.encryptHistory) ? encryptHistory(pageWithClonedProps).then(resolve) : resolve(pageWithClonedProps)
+      return page.encryptHistory || page.layers?.some((layer) => layer.encryptHistory)
+        ? encryptHistory(pageWithClonedProps).then(resolve)
+        : resolve(pageWithClonedProps)
     })
   }
 
@@ -215,7 +217,9 @@ class History {
 
     return this.queueWrite(
       entry,
-      watch((data) => (mode === 'replace' ? this.doReplaceState({ page: data }, url) : this.doPushState({ page: data }, url))),
+      watch((data) =>
+        mode === 'replace' ? this.doReplaceState({ page: data }, url) : this.doPushState({ page: data }, url),
+      ),
     )
   }
 

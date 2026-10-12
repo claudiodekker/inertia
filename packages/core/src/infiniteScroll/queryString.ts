@@ -2,8 +2,8 @@ import { hrefToUrl, urlHasProtocol, urlToString } from '..'
 import debounce from '../debounce'
 import { getElementsInViewportFromCollection } from '../domUtils'
 import { stack } from '../layers/stack'
-import Queue from './../queue'
 import { InfiniteScrollScope } from '../types'
+import Queue from './../queue'
 import { getPageFromElement } from './elements'
 
 // Shared queue among all instances to ensure URL updates are processed sequentially

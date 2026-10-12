@@ -202,7 +202,9 @@ export const useInfiniteScrollElementManager = (options: {
   const rememberElementsDebounced = debounce(rememberElements, 250)
 
   const restoreElements = (): boolean => {
-    const pageElementRange = options.scope.router.restore(getElementsRememberKey()) as Record<string, ElementRange> | undefined
+    const pageElementRange = options.scope.router.restore(getElementsRememberKey()) as
+      | Record<string, ElementRange>
+      | undefined
 
     if (!pageElementRange || typeof pageElementRange !== 'object') {
       return false

@@ -78,9 +78,9 @@ type InertiaAppOptionsAuto<SharedProps extends PageProps> = Omit<
   'setup'
 > &
   LayerOptions & {
-  page?: Page<SharedProps>
-  render?: undefined
-} & (
+    page?: Page<SharedProps>
+    render?: undefined
+  } & (
     | { setup?: undefined; withApp?: VueWithApp<SharedProps> }
     | { setup: (options: SetupOptions<HTMLElement | null, SharedProps>) => VueApp | void; withApp?: never }
   )

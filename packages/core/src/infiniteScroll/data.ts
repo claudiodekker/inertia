@@ -1,5 +1,13 @@
 import { ActiveVisit } from '../index'
-import { CancelToken, InfiniteScrollScope, Page, PendingVisit, ReloadOptions, ScrollProp, UseInfiniteScrollDataManager } from '../types'
+import {
+  CancelToken,
+  InfiniteScrollScope,
+  Page,
+  PendingVisit,
+  ReloadOptions,
+  ScrollProp,
+  UseInfiniteScrollDataManager,
+} from '../types'
 
 const MERGE_INTENT_HEADER = 'X-Inertia-Infinite-Scroll-Merge-Intent'
 

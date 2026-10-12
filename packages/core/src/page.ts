@@ -3,10 +3,20 @@ import { get, set } from 'es-toolkit/compat'
 import { eventHandler } from './eventHandler'
 import { fireNavigateEvent } from './events'
 import { history } from './history'
-import { prefetchedRequests } from './prefetched'
 import { stack } from './layers/stack'
+import { prefetchedRequests } from './prefetched'
 import { Scroll } from './scroll'
-import { Component, FlashData, Page, PageEvent, PageHandler, PageResolver, RouterInitParams, ScrollRegion, Visit } from './types'
+import {
+  Component,
+  FlashData,
+  Page,
+  PageEvent,
+  PageHandler,
+  PageResolver,
+  RouterInitParams,
+  ScrollRegion,
+  Visit,
+} from './types'
 import { hrefToUrl, isSameUrlWithoutHash } from './url'
 
 export class CurrentPage {
@@ -158,12 +168,7 @@ export class CurrentPage {
     return stack.base.location(page, replace, visitId, initialRender) ?? window.location
   }
 
-  protected write(
-    pageForHistory: Page,
-    replace: boolean,
-    visitId?: string,
-    initialRender = false,
-  ): Promise<void> {
+  protected write(pageForHistory: Page, replace: boolean, visitId?: string, initialRender = false): Promise<void> {
     // A new page replaces the one we booted on, so restore() must stop falling back to its state
     history.clearInitialState(history.rememberedState)
 

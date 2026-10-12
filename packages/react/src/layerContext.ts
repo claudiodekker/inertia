@@ -16,9 +16,5 @@ export function useRouter(): Router {
 
 /** The open layers, bottom to top. */
 export function useLayers(): readonly LayerInfo[] {
-  return useSyncExternalStore(
-    (onChange) => layerSlot.subscribe(() => onChange()),
-    layerSlot.info,
-    layerSlot.info,
-  )
+  return useSyncExternalStore((onChange) => layerSlot.subscribe(() => onChange()), layerSlot.info, layerSlot.info)
 }

@@ -17,9 +17,10 @@ import { Page, ReloadOptions, UseInfiniteScrollOptions, UseInfiniteScrollProps }
  * - Query string sync: Updates URL as user scrolls through pages
  * - Scroll preservation: Maintains scroll position during content updates
  */
-export default function useInfiniteScroll(
-  { scope = { router, page: currentPage }, ...rest }: UseInfiniteScrollOptions,
-): UseInfiniteScrollProps {
+export default function useInfiniteScroll({
+  scope = { router, page: currentPage },
+  ...rest
+}: UseInfiniteScrollOptions): UseInfiniteScrollProps {
   const options = { ...rest, scope }
 
   const queryStringManager = useInfiniteScrollQueryString({ ...options, getPageName: () => dataManager.getPageName() })
