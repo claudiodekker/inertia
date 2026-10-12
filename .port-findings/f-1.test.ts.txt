@@ -1,0 +1,29 @@
+// FINDING f-1. PR: entries === 0 after the browser refuses the push (the count is given back).
+// Rebuilt: entries === 1. The row is charged at the commit decision and nothing refunds it when
+// History.withThrottleProtection swallows the SecurityError, so a close that unwinds by the row's entry count would step back one entry too many (not exercised here).
+import { expect, it, vi } from 'vitest'
+import { page, settled, start } from '../packages/core/tests/layers/ported/f-support'
+
+const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
+const edit = page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit', base: '/users' }, props: { errors: {}, user: { id: 5 } } })
+
+it('gives the count back when the browser refuses the entry', async () => {
+  const app = await start(users, { '/users/5/edit': edit })
+  const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+  const refusal = new Error('Attempt to use history.pushState() more than 100 times per 10 seconds')
+
+  refusal.name = 'SecurityError'
+  vi.spyOn(window.history, 'pushState').mockImplementation(() => {
+    throw refusal
+  })
+
+  const handle = app.router.layer('/users/5/edit')
+  await settled()
+
+  vi.mocked(window.history.pushState).mockRestore()
+  app.router.layerHandle(handle.id)!.router.remember({ note: 'x' }, 'note')
+  await settled()
+
+  expect(error).toHaveBeenCalledWith(refusal.message)
+  expect(app.entry().layers![0].entries).toBe(0) // rebuilt: 1
+})

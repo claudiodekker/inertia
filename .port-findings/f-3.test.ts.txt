@@ -1,0 +1,34 @@
+// FINDING f-3. Same difference as f-2, with a second layer that owns no url (preserveUrl) above the layer owning the address:
+// PR: layers[0].url carries the hash and layers[1].url stays; rebuilt: the hash goes to the base url and the address bar loses it.
+import { expect, it, vi } from 'vitest'
+import { page, settled, start } from '../packages/core/tests/layers/ported/f-support'
+
+const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
+const edit = page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit', base: '/users' }, props: { errors: {}, user: { id: 5 } } })
+const notes = page('Users/Notes', '/users/5/notes', { layer: { key: 'Users/Notes', base: '/users' }, props: { errors: {} } })
+
+const walkOnto = async (app: Awaited<ReturnType<typeof start>>, address: string) => {
+  window.location.href = address
+  app.popstate(null)
+  await settled()
+  await app.history.processQueue()
+}
+
+it('writes it onto the layer beneath one with no url of its own', async () => {
+  const app = await start(users, { '/users/5/edit': edit, '/users/5/notes': notes })
+
+  app.router.layer('/users/5/edit')
+  await settled()
+  app.router.layer('/users/5/notes', { preserveUrl: true })
+  await settled()
+
+  const before = app.written().length
+
+  await walkOnto(app, 'http://localhost/users/5/edit#comments')
+
+  expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']]) // rebuilt: [['replace', '/users/5/edit']]
+  expect(app.entry()).toMatchObject({
+    url: '/users',
+    layers: [{ url: 'http://localhost/users/5/edit#comments' }, { url: '/users/5/notes' }],
+  })
+})

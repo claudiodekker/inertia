@@ -1,0 +1,9 @@
+// FINDING f-5. PR: partialReloadFillsDeferred(reload of the layer's url, undefined /* base */, ['stats']) === false, so a base <Deferred data="stats"> does not show `reloading` for a layer's reload.
+// Rebuilt: the base <Deferred> compares visit.url with window.location (packages/vue3/src/deferred.ts: `layer ? hrefToUrl(page.url) : window.location`). While the layer owns the address, window.location IS the layer's url, so the base predicate is true for the layer's reload.
+// Also (row 'matches a base reload against the base url while a layer owns the address', BEHAVIOUR CHANGED b16): a base reload (visit.url '/users') while the layer owns the address ('/users/5/edit') is false for the base predicate (PR: true), so base <Deferred> never shows `reloading` for its own reload then.
+// Reproduction: same fixtures and `fills` helper as the 'partialReloadFillsDeferred' block of misc.test.ts; the last assertion below fails.
+//
+//   const app = await start(page('Users/Index', '/users'), { '/users/5/edit': () => Promise.resolve(app.sent.length > 1 ? { ...edit, ...withStats } : edit) })
+//   const handle = app.router.layer('/users/5/edit'); await settled()
+//   app.router.layerHandle(handle.id)!.router.reload({ only: ['stats'] }); await settled()
+//   expect(await fills(startedOf(app), window.location /* what the base Deferred compares against */, ['stats'])).toBe(false)   // rebuilt: true
