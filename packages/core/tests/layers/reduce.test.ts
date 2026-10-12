@@ -28,7 +28,7 @@ const none = { kind: 'none' }
 const handled = { kind: 'restore', restore: { kind: 'handled' } }
 
 describe('opening over the page on screen', () => {
-  it('L:6 a layer response the base visit was aimed at opens as an opening row owned by the base', () => {
+  it('a layer response the base visit was aimed at opens as an opening row owned by the base', () => {
     expect(arrived(state(), { layer: { key: 'panel', base: '/base' }, facts: { aimed: true } })).toEqual({
       state: state({ rows: [row('new', { key: 'panel', phase: 'opening', entries: 0 })] }),
       effects: [],
@@ -36,7 +36,7 @@ describe('opening over the page on screen', () => {
     })
   })
 
-  it('L:75 a layer answer to a visit made from a layer stacks above it as its child', () => {
+  it('a layer answer to a visit made from a layer stacks above it as its child', () => {
     const s = state({ rows: [row('a', { key: 'panel:first' })] })
 
     expect(arrived(s, { origin: layerOrigin('a'), layer: { key: 'panel:second', base: '/base' } })).toEqual({
@@ -51,7 +51,7 @@ describe('opening over the page on screen', () => {
     })
   })
 
-  it('L:491 L:624 a base-made answer opens over the top layer live at dispatch; a preserveUrl open owns no address', () => {
+  it('a base-made answer opens over the top layer live at dispatch; a preserveUrl open owns no address', () => {
     const s = state({ rows: [row('a')] })
     const step = arrived(s, {
       origin: baseOrigin({ top: 'a' }),
@@ -66,7 +66,7 @@ describe('opening over the page on screen', () => {
     ])
   })
 
-  it('L:201 L:212 a base-made answer that is neither aimed nor over a live layer lands cold', () => {
+  it('a base-made answer that is neither aimed nor over a live layer lands cold', () => {
     expect(arrived(state(), { layer: { key: 'guarded', base: '/base' } }).outcome).toEqual(
       landing('cold', { id: 'new' }),
     )
@@ -78,7 +78,7 @@ describe('opening over the page on screen', () => {
     ).toEqual(landing('open', { id: 'new', owner: 'base' }))
   })
 
-  it('L:184 a base push committing while a layer is still opening drops it, and its commit is skipped', () => {
+  it('a base push committing while a layer is still opening drops it, and its commit is skipped', () => {
     const {
       state: s,
       effects,
@@ -93,7 +93,7 @@ describe('opening over the page on screen', () => {
     expect(last.outcome).toEqual({ kind: 'commit', decision: { kind: 'skip' } })
   })
 
-  it('L:146 a client visit that installs another page drops every row and ghost and owes a paint', () => {
+  it('a client visit that installs another page drops every row and dismissed layer and owes a paint', () => {
     const s = state({ base: { blank: false, gen: 3 }, rows: [row('a'), row('b')], dismissed: [id('c')] })
 
     expect(reduce(s, committing({ mode: 'push', change: 'same' }))).toEqual({
@@ -104,7 +104,7 @@ describe('opening over the page on screen', () => {
     expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', change: 'other' })).state.rows).toEqual([])
   })
 
-  it('L:527 L:1144 L:1216 a replace of the same base page keeps the stack and closes the gate', () => {
+  it('a replace of the same base page keeps the stack and closes the gate', () => {
     expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', change: 'same' }))).toEqual({
       state: state({ rows: [row('a')], paint: { gated: true, owed: false } }),
       effects: [],
@@ -135,7 +135,7 @@ describe('opening over the page on screen', () => {
     expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', change: 'moved' })).state.rows).toEqual(rows)
   })
 
-  it('the answer to a partial or a reload that fills a blank base keeps the stack and ends the walk', () => {
+  it('the answer to a partial or a reload that fills a blank base keeps the stack and ends the base fetch', () => {
     const cold = row('a', { standalone: true })
     const s = state({
       base: { blank: true, gen: 3 },
@@ -158,7 +158,7 @@ describe('opening over the page on screen', () => {
     })
   })
 
-  it('L:1216 a plain page answering the global router with a layer open passes to 3.x', () => {
+  it('a plain page answering the global router with a layer open passes to 3.x', () => {
     const s = state({ rows: [row('a')] })
 
     expect(arrived(s, { origin: baseOrigin({ top: 'a' }), facts: { partial: false } })).toEqual({
@@ -168,7 +168,7 @@ describe('opening over the page on screen', () => {
     })
   })
 
-  it('L:1468 a local layer opens with no request and pushes one entry; Back dismisses it; Forward reopens it', () => {
+  it('a local layer opens with no request and pushes one entry; Back dismisses it; Forward reopens it', () => {
     const opened = script(state(), [
       { type: 'localOpened', id: id('l'), owner: 'base', key: 'Confirm' },
       { type: 'layerCommitting', id: id('l'), requestedReplace: false, urlChanged: false },
@@ -205,7 +205,7 @@ describe('opening over the page on screen', () => {
 })
 
 describe('rewrites and refreshes', () => {
-  it('L:797 a same-key answer rewrites the row in place with a remount, and its new url pushes', () => {
+  it('a same-key answer rewrites the row in place with a remount, and its new url pushes', () => {
     const { state: s, effects } = script(state({ rows: [row('a', { key: 'step' })] }), [
       arrival({ origin: baseOrigin({ top: 'a' }), layer: { key: 'step', base: '/base' } }),
       { type: 'layerCommitting', id: id('a'), requestedReplace: false, urlChanged: true },
@@ -215,7 +215,7 @@ describe('rewrites and refreshes', () => {
     expect(effects).toEqual([{ type: 'writeEntry', mode: 'push', charged: 'a' }])
   })
 
-  it('L:818 L:105 L:476 a same-key answer that preserves state rewrites without a remount', () => {
+  it('a same-key answer that preserves state rewrites without a remount', () => {
     const s = state({ rows: [row('a', { key: 'step' })] })
 
     expect(
@@ -227,7 +227,7 @@ describe('rewrites and refreshes', () => {
     })
   })
 
-  it('L:832 an answer for an earlier level dismisses the rows above as ghosts and takes over their entries', () => {
+  it('an answer for an earlier level dismisses the rows above as dismissed layers and takes over their entries', () => {
     const s = state({ rows: [row('a', { key: 'step' }), row('b', { entries: 2 })] })
 
     expect(arrived(s, { origin: baseOrigin({ top: 'b' }), layer: { key: 'step', base: '/base' } })).toEqual({
@@ -237,7 +237,7 @@ describe('rewrites and refreshes', () => {
     })
   })
 
-  it('L:857 Back between wizard steps rewinds the row to its entry; closing unwinds every entry it pushed', () => {
+  it('Back between wizard steps rewinds the row to its entry; closing unwinds every entry it pushed', () => {
     const s = state({ rows: [row('a', { key: 'step', entries: 2 })] })
 
     expect(
@@ -256,7 +256,7 @@ describe('rewrites and refreshes', () => {
     expect(closed.effects).toEqual([{ type: 'paint' }, { type: 'historyGo', delta: -2, token: 1 }])
   })
 
-  it('L:878 a remounting landing on a row whose close is still exiting abandons that close', () => {
+  it('a remounting landing on a row whose close is still exiting abandons that close', () => {
     const s = state({
       rows: [row('a', { key: 'bottom', close: cid('c1') }), row('b', { close: cid('c1') })],
       closes: closes(close('c1', ['a', 'b'], { exited: [id('b')], waiters: [wid('w1')] })),
@@ -275,7 +275,7 @@ describe('rewrites and refreshes', () => {
     })
   })
 
-  it('L:878 a state-preserving landing (poll, deferred) leaves a close the user started alone', () => {
+  it('a state-preserving landing (poll, deferred) leaves a close the user started alone', () => {
     const s = state({
       rows: [row('a', { key: 'bottom', close: cid('c1') })],
       closes: closes(close('c1', ['a'])),
@@ -290,7 +290,7 @@ describe('rewrites and refreshes', () => {
     ).toEqual({ state: s, effects: [], outcome: landing('refresh', { id: 'a', remount: false }) })
   })
 
-  it('L:1167 L:1197 L:1298 a partial answer made from a layer refreshes that layer', () => {
+  it('a partial answer made from a layer refreshes that layer', () => {
     const s = state({ rows: [row('a', { key: 'counted' })] })
 
     expect(
@@ -302,7 +302,7 @@ describe('rewrites and refreshes', () => {
     ).toEqual({ state: s, effects: [], outcome: landing('refresh', { id: 'a', remount: false }) })
   })
 
-  it('L:1549 a layer owning no address reloads itself, not the base', () => {
+  it('a layer owning no address reloads itself, not the base', () => {
     const s = state({ rows: [row('a', { key: 'other', ownsAddress: false })] })
 
     expect(
@@ -314,7 +314,7 @@ describe('rewrites and refreshes', () => {
     ).toEqual(landing('refresh', { id: 'a', remount: false }))
   })
 
-  it('L:1527 an instant visit inside a layer lands on that layer, which takes its key, and its new url pushes', () => {
+  it('an instant visit inside a layer lands on that layer, which takes its key, and its new url pushes', () => {
     const {
       state: s,
       effects,
@@ -349,7 +349,7 @@ describe('layer commits', () => {
   const committingA = (s: StackState, requestedReplace: boolean, urlChanged: boolean) =>
     reduce(s, { type: 'layerCommitting', id: id('a'), requestedReplace, urlChanged })
 
-  it('L:545 L:1491 the first commit of an opening row pushes and is charged one entry', () => {
+  it('the first commit of an opening row pushes and is charged one entry', () => {
     expect(committingA(state({ rows: [row('a', { phase: 'opening', entries: 0 })] }), false, false)).toEqual({
       state: state({ rows: [row('a')] }),
       effects: [{ type: 'writeEntry', mode: 'push', charged: 'a' }],
@@ -365,7 +365,7 @@ describe('layer commits', () => {
     })
   })
 
-  it('L:925 a standalone row inserted beneath by the walk replaces', () => {
+  it('a standalone row inserted beneath by the base fetch replaces', () => {
     expect(
       committingA(state({ rows: [row('a', { phase: 'opening', entries: 0, standalone: true })] }), false, false),
     ).toEqual({
@@ -439,7 +439,7 @@ describe('the paint gate', () => {
     })
   })
 
-  it('L:723 a ghost is disposed once its exit finished, and painted away', () => {
+  it('a dismissed layer is disposed once its exit finished, and painted away', () => {
     expect(reduce(state({ rows: [row('a')], dismissed: [id('b')] }), { type: 'exited', id: id('b') })).toEqual({
       state: state({ rows: [row('a')] }),
       effects: [{ type: 'dispose', ids: ['b'], reason: 'closed' }, { type: 'paint' }],
@@ -449,7 +449,7 @@ describe('the paint gate', () => {
 })
 
 describe('closing', () => {
-  it('L:652 L:757 L:1572 L:1613 a close keeps its rows until every exit finished, unwinds, refreshes beneath, then settles', () => {
+  it('a close keeps its rows until every exit finished, unwinds, refreshes beneath, then settles', () => {
     const marked = reduce(state({ rows: [row('a')] }), {
       type: 'closeRequested',
       target: 'top',
@@ -511,7 +511,7 @@ describe('closing', () => {
     expect(s).toEqual(state({ nextToken: 2 }))
   })
 
-  it('L:673 closing a lower layer marks every layer above and waits for all their exits', () => {
+  it('closing a lower layer marks every layer above and waits for all their exits', () => {
     const { state: s, effects } = script(state({ rows: [row('a'), row('b')] }), [
       { type: 'closeRequested', target: id('a'), close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('b') },
@@ -522,7 +522,7 @@ describe('closing', () => {
     expect(reduce(s, { type: 'exited', id: id('a') }).effects).toEqual([{ type: 'historyGo', delta: -2, token: 1 }])
   })
 
-  it('L:694 L:1425 closing a middle layer removes it and everything above, and refreshes the routed row beneath', () => {
+  it('closing a middle layer removes it and everything above, and refreshes the routed row beneath', () => {
     const { state: s, effects } = script(state({ rows: [row('a'), row('b'), row('c')] }), [
       { type: 'closeRequested', target: id('b'), close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('c') },
@@ -540,7 +540,7 @@ describe('closing', () => {
     expect(s.rows).toEqual([row('a')])
   })
 
-  it('L:773 L:1510 closing a layer that never moved the address unwinds only its own entry and leaves the one beneath', () => {
+  it('closing a layer that never moved the address unwinds only its own entry and leaves the one beneath', () => {
     const { state: s, effects } = script(state({ rows: [row('a'), row('b', { ownsAddress: false })] }), [
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('b') },
@@ -550,7 +550,7 @@ describe('closing', () => {
     expect(s.rows).toEqual([row('a'), row('b', { ownsAddress: false, close: cid('c1') })])
   })
 
-  it('L:993 L:1586 closing a cold layer over a real base pushes the base as its own step and refreshes it', () => {
+  it('closing a cold layer over a real base pushes the base as its own step and refreshes it', () => {
     const { state: s, effects } = script(state({ rows: [row('a', { standalone: true, entries: 0 })] }), [
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('a') },
@@ -592,7 +592,7 @@ describe('closing', () => {
     expect(landed.outcome).toEqual(handled)
   })
 
-  it('L:425 a local layer closes without a refresh beneath', () => {
+  it('a local layer closes without a refresh beneath', () => {
     const { effects } = script(state({ rows: [row('a'), row('l', { type: 'local', ownsAddress: false })] }), [
       { type: 'closeRequested', target: id('l'), close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('l') },
@@ -609,7 +609,7 @@ describe('closing', () => {
     ])
   })
 
-  it('L:1624 a server close answer closes its origin layer, succeeding against the tier beneath', () => {
+  it('a server close answer closes its origin layer, succeeding against the page or layer beneath', () => {
     expect(
       arrived(state({ rows: [row('a'), row('b')] }), { origin: layerOrigin('b'), close: true, newClose: 'c9' }),
     ).toEqual({
@@ -619,18 +619,18 @@ describe('closing', () => {
     })
   })
 
-  it('L:1624 a base-made close answer closes the top layer live at dispatch, and is ignored with nothing open', () => {
+  it('a base-made close answer closes the top layer live at dispatch, and is ignored with nothing open', () => {
     expect(arrived(state({ rows: [row('a')] }), { origin: baseOrigin({ top: 'a' }), close: true }).outcome).toEqual(
       landing('close', { id: 'a', beneath: 'base' }),
     )
     expect(arrived(state(), { close: true })).toEqual({ state: state(), effects: [], outcome: landing('pass') })
   })
 
-  it('L:1599 a plain answer to a write made from a layer that has since closed lands on the base', () => {
+  it('a plain answer to a write made from a layer that has since closed lands on the base', () => {
     expect(arrived(state(), { origin: layerOrigin('a') }).outcome).toEqual(landing('base'))
   })
 
-  it('L:1747 L:1759 Escape closes the top open layer only, skipping one still opening', () => {
+  it('Escape closes the top open layer only, skipping one still opening', () => {
     const s = state({ rows: [row('a'), row('b'), row('c', { phase: 'opening', entries: 0 })] })
 
     expect(
@@ -646,7 +646,7 @@ describe('closing', () => {
     })
   })
 
-  it('L:1599 a close that finishes its exit while another unwinds queues, and starts when that one is answered', () => {
+  it('a close that finishes its exit while another unwinds queues, and starts when that one is answered', () => {
     const s = state({
       nextToken: 2,
       rows: [row('a'), row('b', { close: cid('c1') })],

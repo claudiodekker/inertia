@@ -105,7 +105,7 @@ describe('the handle of a layer open that never lands', () => {
     expect(app.paths()).toEqual(['/notes'])
   })
 
-  it('closes the handle when the layer response is promoted to a page instead of composing [BEHAVIOUR CHANGED]', async () => {
+  it('closes the handle when the layer response is promoted to a page instead of composing', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
     const app = await openApp(base(), {
@@ -173,7 +173,7 @@ describe('the handle of a layer open that never lands', () => {
     expect((await app.basePage()).component).toBe('Users/Archive')
   })
 
-  it('fires the handle of a layer opened cold exactly once when a back restore drops its stack, even if its walk then fails', async () => {
+  it('fires the handle of a layer opened cold exactly once when a back restore drops its stack, even if its base fetch then fails', async () => {
     let fail = (_response: ReturnType<typeof rawResponse>) => {}
     const walk = new Promise<ReturnType<typeof rawResponse>>((resolve) => (fail = resolve))
     const app = await openApp(
@@ -218,7 +218,7 @@ describe('the handle of a layer open that never lands', () => {
     expect(app.requests).toEqual([])
   })
 
-  it('closes the handle when a 409 redirect re-issues the visit as a page navigation', async () => {
+  it('closes the handle when the 409 redirect re-issues the visit as a page navigation', async () => {
     const app = await openApp(
       base(),
       { '/users': base({ props: { users: [{ id: 9 }], errors: {} } }) },

@@ -28,33 +28,38 @@ const layer = (key: string, base: string | null = '/base') => ({ key, base })
 
 const cases: [string, StackState, Arrival, Landing][] = [
   ['an idle base answer with no marks passes', state(), {}, { kind: 'pass' }],
-  ['a walk hop for the current walk lands as the base', walk(), { visit: 'w' }, { kind: 'fetched-base' }],
   [
-    'a walk hop with its own base goes beneath',
+    'a base fetch request for the current base fetch lands as the base',
+    walk(),
+    { visit: 'w' },
+    { kind: 'fetched-base' },
+  ],
+  [
+    'a base fetch request with its own base goes beneath',
     walk(),
     { visit: 'w', layer: layer('inner', '/deeper') },
     { kind: 'fetched-beneath', id: id('new') },
   ],
   [
-    'a walk hop that would make the stack ten deep lands as the base',
+    'a base fetch request that would make the stack ten deep lands as the base',
     walk({ rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) => row(`r${depth}`, { standalone: true })) }),
     { visit: 'w', layer: layer('deep', '/deeper') },
     { kind: 'fetched-base' },
   ],
   [
-    'a walk hop whose base cycles lands as the base',
+    'a base fetch request whose base cycles lands as the base',
     walk(),
     { visit: 'w', layer: layer('loop', '/loop'), facts: { cycles: true } },
     { kind: 'fetched-base' },
   ],
   [
-    'a walk hop of a superseded walk drops',
+    'a base fetch request of a superseded base fetch drops',
     walk({ baseFetch: { url: '/base', visit: visit('w2'), startOnSwap: false } }),
     { visit: 'w' },
     { kind: 'drop' },
   ],
   [
-    'a walk hop once the base is real drops',
+    'a base fetch request once the base is real drops',
     walk({ base: { blank: false, gen: 0 } }),
     { visit: 'w' },
     { kind: 'drop' },

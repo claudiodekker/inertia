@@ -18,8 +18,8 @@ const layerEdit = page('Users/Edit', '/users/5/edit', {
 
 const components = (app: App) => app.layers().map((layer) => layer.component)
 
-describe('the walk a cold layer sends for the base beneath it', () => {
-  it('does not interrupt a visit the user made while the walk is running', async () => {
+describe('the base fetch a cold layer sends for the base beneath it', () => {
+  it('does not interrupt a visit the user made while the base fetch is running', async () => {
     const w = await world({
       ...from(),
       routes: { '/users/5': 'hold', '/dashboard': 'hold', '/users': 'hold' },
@@ -59,68 +59,8 @@ describe('the walk a cold layer sends for the base beneath it', () => {
 
     warn.mockRestore()
   })
-})
 
-describe('a walk hop landing', () => {
-  const cold = { ...layerEdit, layer: { key: 'Users/Edit', base: '/users' } }
-
-  it('fills in the blank base beneath the stack', async () => {
-    const walk = gate()
-    const app = await openApp(
-      plainLogin,
-      byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }),
-    )
-
-    app.router.visit('/login')
-    await settled()
-
-    const [open] = app.layers()
-
-    expect(await app.basePage()).toMatchObject({ component: '' })
-
-    walk.open()
-    await settled()
-
-    expect(await app.basePage()).toMatchObject({
-      component: 'Users/Index',
-      url: '/users',
-    })
-    expect(app.layers()).toEqual([open])
-    expect(app.entry()).toMatchObject({
-      component: 'Users/Index',
-      layers: [{ id: open.id }],
-    })
-  })
-
-  it('inserts a base that is itself a layer beneath the stack and keeps walking', async () => {
-    const walk = gate()
-    const app = await openApp(
-      plainLogin,
-      byPath({
-        '/login': cold,
-        '/users': { ...plainUsers, layer: { key: 'Users/Index', base: '/' } },
-        '/': () => walk.opened.then(() => page('Home', '/')),
-      }),
-    )
-
-    app.router.visit('/login')
-    await settled()
-
-    expect(components(app)).toEqual(['Users/Index', 'Users/Edit'])
-    expect(await app.basePage()).toMatchObject({ component: '', url: '/' })
-    expect(app.loadingFor).toEqual(['/users', '/'])
-    expect(app.requests.map((request) => request.path)).toEqual(['/login', '/users', '/'])
-
-    walk.open()
-    await settled()
-
-    expect(components(app)).toEqual(['Users/Index', 'Users/Edit'])
-    expect(await app.basePage()).toMatchObject({ component: 'Home', url: '/' })
-  })
-})
-
-describe('the walk a cold layer sends for the base beneath it', () => {
-  it('does not re-announce flash the base is already holding when a hop lands', async () => {
+  it('does not re-announce flash the base is already holding when a base fetch request lands', async () => {
     const w = await world({
       ...from(),
       routes: { '/users': 'hold', '/users/list': 'hold' },
@@ -138,7 +78,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.events.slice(announced)).not.toContain('inertia:flash')
   })
 
-  it('sends one hop for a base while a landing on the blank it is for arrives', async () => {
+  it('sends one base fetch request for a base while a landing on the blank it is for arrives', async () => {
     const w = await world({
       ...from(),
       routes: { '/users': 'hold', '/users/5/edit': 'hold' },
@@ -205,7 +145,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.events).toContain('inertia:error')
   })
 
-  it('does not re-announce the flash the base was holding when the walk stops', async () => {
+  it('does not re-announce the flash the base was holding when the base fetch stops', async () => {
     const w = await world({ ...from(), routes: { '/users/5': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users/5'))
@@ -231,7 +171,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.events).toContain('inertia:flash')
   })
 
-  it('announces the flash once, and not again as the walk fills the stack beneath it', async () => {
+  it('announces the flash once, and not again as the base fetch fills the stack beneath it', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -263,7 +203,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.headers.get('/users')!['X-Inertia-Version']).toBe('v1')
   })
 
-  it('records the url a redirected hop answered from on the layer it inserts', async () => {
+  it('records the url a redirected base fetch request answered from on the layer it inserts', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -278,7 +218,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.urls()).toEqual(['/users/5?tab=profile', '/users/5/edit'])
   })
 
-  it('walks on from the page a hop was redirected to', async () => {
+  it('continues the base fetch from the page a base fetch request was redirected to', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -299,7 +239,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.keys()).toEqual(['Users/Edit'])
   })
 
-  it('keeps walking for the base a layer closed mid-walk was standing on', async () => {
+  it('keeps fetching the base a layer closed during the base fetch was standing on', async () => {
     const w = await world({
       ...from(),
       routes: { '/users': 'hold', '/users/list': 'hold' },
@@ -314,5 +254,63 @@ describe('the walk a cold layer sends for the base beneath it', () => {
 
     expect((await w.base()).component).toBe('Users/List')
     expect(w.keys()).toEqual(['Users/Index'])
+  })
+})
+
+describe('a base fetch request landing', () => {
+  const cold = { ...layerEdit, layer: { key: 'Users/Edit', base: '/users' } }
+
+  it('fills in the blank base beneath the stack', async () => {
+    const walk = gate()
+    const app = await openApp(
+      plainLogin,
+      byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }),
+    )
+
+    app.router.visit('/login')
+    await settled()
+
+    const [open] = app.layers()
+
+    expect(await app.basePage()).toMatchObject({ component: '' })
+
+    walk.open()
+    await settled()
+
+    expect(await app.basePage()).toMatchObject({
+      component: 'Users/Index',
+      url: '/users',
+    })
+    expect(app.layers()).toEqual([open])
+    expect(app.entry()).toMatchObject({
+      component: 'Users/Index',
+      layers: [{ id: open.id }],
+    })
+  })
+
+  it('inserts a base that is itself a layer beneath the stack and keeps fetching the base beneath it', async () => {
+    const walk = gate()
+    const app = await openApp(
+      plainLogin,
+      byPath({
+        '/login': cold,
+        '/users': { ...plainUsers, layer: { key: 'Users/Index', base: '/' } },
+        '/': () => walk.opened.then(() => page('Home', '/')),
+      }),
+    )
+
+    app.router.visit('/login')
+    await settled()
+
+    expect(components(app)).toEqual(['Users/Index', 'Users/Edit'])
+    expect(await app.basePage()).toMatchObject({ component: '', url: '/' })
+    expect(app.loadingFor).toEqual(['/users', '/'])
+    expect(app.requests.map((request) => request.path)).toEqual(['/login', '/users', '/'])
+
+    walk.open()
+    await settled()
+
+    expect(components(app)).toEqual(['Users/Index', 'Users/Edit'])
+    expect(await app.basePage()).toMatchObject({ component: 'Home', url: '/' })
   })
 })

@@ -24,9 +24,7 @@ describe('resolveLayers, the layout page', () => {
     expect(window.location.pathname).toBe('/users')
     expect(app.written().at(-1)).toEqual(['push', '/users'])
   })
-})
 
-describe('resolveLayers, the layout page', () => {
   it('keeps the layer url when the layer has one', async () => {
     const app = await openApp(users, { '/users/5/edit': edit() })
 
@@ -189,7 +187,7 @@ describe('createLayoutPropsStore, per-layer slots', () => {
     expect(app.router.layerHandle(handle.id)).toBeUndefined()
   })
 
-  it('snapshot holds every tier at once', async () => {
+  it('snapshot holds the page and every layer at once', async () => {
     const { app, first, second } = await twoLayers()
     const base = createLayoutPropsStore()
 

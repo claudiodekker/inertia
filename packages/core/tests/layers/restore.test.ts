@@ -30,7 +30,7 @@ describe('planRestore', () => {
     )
   })
 
-  it('does not pass while a ghost still exits', () => {
+  it('does not pass while a dismissed layer still exits', () => {
     expect(planRestore(state({ dismissed: [id('g')] }), entry([]))).toEqual(plan())
   })
 

@@ -14,7 +14,7 @@ const response = {
 const Panel = { name: 'Panel' }
 
 describe('the server render of a boot plan', () => {
-  it('renders the seed as an open top view under the id the client boots with', () => {
+  it('renders the layer the document arrived with as an open top view under the id the client boots with', () => {
     const plan = layerSlot.planBoot(response, '')
     const views = layerSlot.ssrViews(plan, [Panel])
 

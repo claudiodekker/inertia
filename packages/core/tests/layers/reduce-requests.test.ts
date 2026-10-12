@@ -43,8 +43,8 @@ const pinnedOver = (overrides: Partial<StackState> = {}) =>
     ...overrides,
   })
 
-describe('tickets', () => {
-  it('L:1312 L:1391 a ticket’s answer opens with the ticket’s id, owned by its opener, and the ticket is done', () => {
+describe('open requests', () => {
+  it('an open request’s answer opens with the request’s id, owned by its opener, and the request is done', () => {
     const {
       state: s,
       effects,
@@ -63,7 +63,7 @@ describe('tickets', () => {
     expect([...effects, ...finished.effects]).toEqual([])
   })
 
-  it('L:1376 a ticket opened from a layer is owned by that layer', () => {
+  it('an open request made from a layer is owned by that layer', () => {
     const { last } = script(state({ rows: [row('a')] }), [
       { type: 'openRequested', request: id('t1'), owner: id('a') },
       { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', request: id('t1') } },
@@ -73,7 +73,7 @@ describe('tickets', () => {
     expect(last.outcome).toEqual(landing('open', { id: 't1', owner: 'a' }))
   })
 
-  it('L:1562 L:1961 a ticket whose visit finished without landing on a row is refused', () => {
+  it('an open request whose visit finished without landing on a row is refused', () => {
     const {
       state: s,
       effects,
@@ -90,7 +90,7 @@ describe('tickets', () => {
     expect(last.outcome).toEqual(none)
   })
 
-  it('refuses a ticket its gate never dispatched, and leaves a dispatched one to its finish', () => {
+  it('refuses an open request its gate never dispatched, and leaves a dispatched one to its finish', () => {
     expect(
       script(state(), [
         { type: 'openRequested', request: id('t1'), owner: 'base' },
@@ -108,7 +108,7 @@ describe('tickets', () => {
     expect(dispatched.state.openRequests.get(id('t1'))).toEqual({ id: 't1', owner: 'base', state: 'dispatched' })
   })
 
-  it('gives up a ticket waiting on a prompt: the pin stays, and the layer answer after it returns under a fresh id', () => {
+  it('gives up an open request waiting on a prompt: the interstitial stays, and the layer answer after it returns under a fresh id', () => {
     const givenUp = reduce(pinnedOver(), { type: 'openRefused', request: id('t1') })
 
     expect(givenUp.effects).toEqual([{ type: 'refuse', request: 't1' }])
@@ -143,7 +143,7 @@ describe('an open that shows a component at once', () => {
     { type: 'placeholderOpened', request: id('t1'), ownsAddress: true },
   ]
 
-  it('puts the layer up under the ticket id before any answer, keyed by that id, and the ticket is done', () => {
+  it('puts the layer up under the open request id before any answer, keyed by that id, and the request is done', () => {
     const { state: s, effects } = script(state({ rows: [row('a')] }), opened)
 
     expect(s.rows).toEqual([row('a'), row('t1', { key: 't1', owner: id('a'), phase: 'opening', entries: 0 })])
@@ -163,7 +163,7 @@ describe('an open that shows a component at once', () => {
     expect(s.rows.at(-1)).toEqual(row('t1', { key: 'Users/Edit', owner: id('a') }))
   })
 
-  it('does nothing for a ticket that is gone', () => {
+  it('does nothing for an open request that is gone', () => {
     const s = state({ rows: [row('a')] })
 
     expect(reduce(s, { type: 'placeholderOpened', request: id('t1'), ownsAddress: true }).state).toBe(s)
@@ -171,7 +171,7 @@ describe('an open that shows a component at once', () => {
 })
 
 describe('interstitials', () => {
-  it('L:1937 L:2047 a prompt pins the stack; the layer answer after it returns the pinned base with the layer, one replace', () => {
+  it('a prompt holds the stack; the layer answer after it returns the held base with the layer, one replace', () => {
     const pinned = script(state({ rows: [row('a')] }), [
       { type: 'openRequested', request: id('t1'), owner: 'base' },
       { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', request: id('t1') } },
@@ -215,7 +215,7 @@ describe('interstitials', () => {
     )
   })
 
-  it('L:1975 a layer answer made while the prompt shows returns too, with a fresh id when no ticket waits', () => {
+  it('a layer answer made while the prompt shows returns too, with a fresh id when no open request waits', () => {
     expect(
       arrived(
         pinnedOver({
@@ -230,7 +230,7 @@ describe('interstitials', () => {
     ).toEqual(landing('return', { id: 'new' }))
   })
 
-  it('L:1992 the return consumes the pin, so the next layer answer opens over the page on screen', () => {
+  it('the return ends the interstitial, so the next layer answer opens over the page on screen', () => {
     const returned = arrived(pinnedOver(), {
       origin: baseOrigin({ gen: 1 }),
       layer: { key: 'guarded', base: '/base' },
@@ -245,7 +245,7 @@ describe('interstitials', () => {
     ).toEqual(landing('open', { id: 'new', owner: 't1' }))
   })
 
-  it('L:2013 navigating away from the prompt ends it: suspended rows go, the ticket is refused, the page released', () => {
+  it('navigating away from the prompt ends it: suspended rows go, the open request is refused, the page released', () => {
     expect(reduce(pinnedOver(), committing({ mode: 'push' }))).toEqual({
       state: state({ nextToken: 2, base: { blank: false, gen: 2 }, paint: { gated: true, owed: false } }),
       effects: [
@@ -257,7 +257,7 @@ describe('interstitials', () => {
     })
   })
 
-  it('a wrong-password re-render of the prompt keeps the pin and moves its gen', () => {
+  it('a wrong-password re-render of the prompt keeps the interstitial and moves its gen', () => {
     const step = reduce(pinnedOver(), committing({ mode: 'push', interstitial: true }))
 
     expect(step.state.interstitial).toEqual({ token: 1, gen: 2, pushes: 2, request: 't1', suspended: [row('a')] })
@@ -265,7 +265,7 @@ describe('interstitials', () => {
     expect(step.effects).toEqual([])
   })
 
-  it('L:2115 a prompt with nothing open pins an empty stack and paints nothing', () => {
+  it('a prompt with nothing open holds an empty stack and paints nothing', () => {
     expect(reduce(state(), committing({ mode: 'push', interstitial: true }))).toEqual({
       state: state({
         nextToken: 2,
@@ -278,7 +278,7 @@ describe('interstitials', () => {
     })
   })
 
-  it('L:2103 a layer answer that is also marked interstitial opens as a layer', () => {
+  it('a layer answer that is also marked interstitial opens as a layer', () => {
     expect(arrived(state(), { layer: { key: 'prompted', base: '/base' }, facts: { aimed: true } }).outcome).toEqual(
       landing('open', { id: 'new', owner: 'base' }),
     )
@@ -384,7 +384,7 @@ describe('hazards', () => {
     ])
   })
 
-  it('Back clears the pin before anything else: suspended rows go, the ticket is refused, the page released', () => {
+  it('Back clears the interstitial before anything else: suspended rows go, the open request is refused, the page released', () => {
     expect(reduce(pinnedOver(), { type: 'popstate', entry: entry([]) })).toEqual({
       state: state({ nextToken: 2, base: { blank: false, gen: 1 } }),
       effects: [
@@ -423,7 +423,7 @@ describe('hazards', () => {
     })
   })
 
-  it('a stale walk hop drops: its answer, its failure and its finish change nothing', () => {
+  it('a stale base fetch request drops: its answer, its failure and its finish change nothing', () => {
     const s = walking({
       baseFetch: { url: '/base', visit: visit('v2'), startOnSwap: false },
       ops: new Map([
@@ -437,7 +437,7 @@ describe('hazards', () => {
     expect(reduce(s, { type: 'visitFinished', visit: visit('v1') }).effects).toEqual([])
   })
 
-  it('a 409 re-issue does not refuse its ticket: the first leg’s finish leaves it waiting for the second', () => {
+  it('the 409 re-issue does not refuse its open request: the first leg’s finish leaves it waiting for the second', () => {
     const {
       state: s,
       effects,

@@ -160,7 +160,7 @@ describe('router.layer: the routed handle', () => {
     expect(app.entry()).not.toHaveProperty('layers')
   })
 
-  it('closes the handle of an open whose base moved in flight, composing nothing [BEHAVIOUR CHANGED]', async () => {
+  it('closes the handle of an open whose base moved in flight, composing nothing', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
     const app = await openApp(base(), {

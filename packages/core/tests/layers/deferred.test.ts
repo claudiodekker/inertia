@@ -36,9 +36,7 @@ describe("a layer's deferred and rescued props", () => {
     expect(partialOf(app)).toEqual([])
     expect(app.requests.map((request) => request.path)).toEqual(['/users/5/edit'])
   })
-})
 
-describe("a layer's deferred and rescued props", () => {
   it('loads the deferred props a layer response declared into the layer', async () => {
     let opens = 0
     const app = await openApp(users, (request) => {
@@ -275,7 +273,7 @@ describe('the deferred props a page write was carrying', () => {
     expect(groups).toEqual([{ default: ['stats'] }, { default: ['stats'] }])
   })
 
-  it('are left alone by a write that carries them along for another tier', async () => {
+  it('are left alone by a write that carries them along for another page or layer', async () => {
     const { app, base, groups, stop } = await listening((request) =>
       request.headers['X-Inertia-Partial-Data'] !== undefined ? new Promise(() => {}) : editPage,
     )

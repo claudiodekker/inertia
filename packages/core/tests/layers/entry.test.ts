@@ -120,7 +120,7 @@ describe('planBoot', () => {
     },
   )
 
-  it('gives a seed the empty flash and rescued props 3.x gives an initial page that names none', () => {
+  it('gives a layer the document arrived with the empty flash and rescued props 3.x gives an initial page that names none', () => {
     const { component, props, url, version } = page('Layers/Panel', '/layers/panel/first')
     const plan = planBoot(
       { component, props, url, version, layer: { key: 'panel', base: '/layers/base' } } as never,
@@ -130,13 +130,13 @@ describe('planBoot', () => {
     expect(plan.layers[0].page).toMatchObject({ flash: {}, rescuedProps: [] })
   })
 
-  it('walks for a base that differs from its own url only in the query', () => {
+  it('fetches a base that differs from its own url only in the query', () => {
     expect(planBoot(marked({ key: 'own', base: '/layers/panel/first?tab=2' }), '').declaredBase).toBe(
       '/layers/panel/first?tab=2',
     )
   })
 
-  it('puts a declared base under a blank placeholder that carries the layer version, and seeds the layer', () => {
+  it('puts a declared base under a blank placeholder that carries the layer version, and opens the layer the document arrived with', () => {
     const plan = planBoot({ ...marked({ key: 'panel:first', base: '/layers/base' }), version: 'v7' }, '#notes')
 
     expect(plan.base).toEqual({

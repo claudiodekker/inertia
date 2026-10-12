@@ -169,7 +169,7 @@ describe('a layer response landing', () => {
     expect(second.state).toBe('open')
   })
 
-  it('stands a layer with nowhere valid to sit on a cold base and walks to fetch it', async () => {
+  it('stands a layer with nowhere valid to sit on a cold base and fetches the base', async () => {
     const walk = gate()
     const app = await openApp(
       plainLogin,

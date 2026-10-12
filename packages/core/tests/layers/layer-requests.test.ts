@@ -218,7 +218,7 @@ describe('a reload or partial issued from inside a layer', () => {
     expect(app.requests.at(-1)!.headers['X-Inertia-Partial-Component']).toBe('Users/Edit')
   })
 
-  it('strips the layer target from the request a 409 redirect re-issues', async () => {
+  it('strips the layer target from the request the 409 redirect re-issues', async () => {
     const app = await open(index(), { '/users/5/edit': editWith() })
     const requested: string[] = []
     const components: (string | undefined)[] = []

@@ -8,7 +8,7 @@ const none = { kind: 'none' }
 const handled = { kind: 'restore', restore: { kind: 'handled' } }
 
 describe('history', () => {
-  it('L:545 L:585 L:723 Back off the top layer dismisses it through its exit, leaving the one beneath', () => {
+  it('Back off the top layer dismisses it through its exit, leaving the one beneath', () => {
     expect(
       reduce(state({ rows: [row('a'), row('b')] }), { type: 'popstate', entry: entry([entryLayer('a')]) }),
     ).toEqual({
@@ -18,7 +18,7 @@ describe('history', () => {
     })
   })
 
-  it('L:566 L:605 Forward reopens the entry’s layers with no request', () => {
+  it('Forward reopens the entry’s layers with no request', () => {
     expect(
       reduce(state({ rows: [row('a')] }), {
         type: 'popstate',
@@ -31,7 +31,7 @@ describe('history', () => {
     })
   })
 
-  it('L:741 history.go(-2) past the entry beneath drops the stack at once, with no exit', () => {
+  it('history.go(-2) past the entry beneath drops the stack at once, with no exit', () => {
     expect(reduce(state({ rows: [row('a'), row('b')] }), { type: 'popstate', entry: entry([]) })).toEqual({
       state: state(),
       effects: [
@@ -43,7 +43,7 @@ describe('history', () => {
     })
   })
 
-  it('L:1455 a plain Back with no layer anywhere passes to 3.x', () => {
+  it('a plain Back with no layer anywhere passes to 3.x', () => {
     expect(reduce(state(), { type: 'popstate', entry: entry([]) })).toEqual({
       state: state(),
       effects: [],

@@ -25,7 +25,7 @@ const teamsEntry = () =>
 
 const from = (href = 'http://localhost/login') => ({ href })
 
-describe('the walk a cold layer sends for the base beneath it', () => {
+describe('the base fetch a cold layer sends for the base beneath it', () => {
   it('re-requests a restored entry that holds no page, replacing it with the page fetched for its url', async () => {
     const w = await world({ href: document, routes: { '/users': 'hold' } })
     await w.begin(login)
@@ -59,10 +59,8 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.writes.at(-1)!.state.page.component).toBe('Users/Index')
     expect(w.writes.at(-1)!.state.page.layers).toBeUndefined()
   })
-})
 
-describe('the walk a cold layer sends for the base beneath it', () => {
-  it('restores an entry the walk never filled in by promoting its layer to the page', async () => {
+  it('restores an entry the base fetch never filled in by promoting its layer to the page', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))

@@ -28,7 +28,7 @@ const response = {
 const Panel = { name: 'Panel' }
 
 describe('the client boot of a boot plan', () => {
-  it('shows the seed before mount under the id the server rendered it with', async () => {
+  it('shows the layer the document arrived with before mount under the id the server rendered it with', async () => {
     const { layerSlot } = await import('../../src')
 
     layerSlot.boot(

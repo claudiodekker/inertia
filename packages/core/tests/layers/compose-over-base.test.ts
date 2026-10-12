@@ -306,7 +306,7 @@ describe('whether a layer response composes over the captured base', () => {
     })
   })
 
-  it('never composes a hop of a walk, which is fetching the base beneath', async () => {
+  it('never composes a base fetch request, which is fetching the base beneath', async () => {
     const app = await openApp(
       plainLogin,
       byPath({
@@ -664,9 +664,7 @@ describe('the base a layer response composes onto', () => {
     expect((await app.basePage()).props).toEqual({ user: { id: 5 } })
     expect(app.layers()).toEqual([])
   })
-})
 
-describe('the base a layer response composes onto', () => {
   it('composes onto the page a visit aimed at the layer was made from', async () => {
     const app = await open()
 
@@ -692,7 +690,7 @@ describe('the base a layer response composes onto', () => {
     expect(app.sent()).toEqual(['post /users'])
   })
 
-  it('walks a base back for a layer whose base is not the page on screen', async () => {
+  it('fetches a base back for a layer whose base is not the page on screen', async () => {
     const walk = held()
     const app = await openAppSentCall(page('Auth/Login', '/login'), {
       'post /login': editLayerPage({

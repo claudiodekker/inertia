@@ -28,7 +28,7 @@ describe('a layer that declares its own url as its base, landing in session', ()
   })
 })
 
-describe('the walk a cold layer sends for the base beneath it', () => {
+describe('the base fetch a cold layer sends for the base beneath it', () => {
   describe('when the layer arrives on the initial page', () => {
     it('does not send for a base a layer declares at its own url', async () => {
       const w = await world({ href: document })
@@ -50,9 +50,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
       expect(w.events.indexOf('inertia:flash')).toBeGreaterThan(w.events.indexOf('inertia:navigate'))
     })
   })
-})
 
-describe('the walk a cold layer sends for the base beneath it', () => {
   it('opens the layer over a base that has not arrived yet', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
@@ -139,7 +137,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.entry().layers!.map((layer) => layer.standalone)).toEqual([true, true])
   })
 
-  it('pushes one history entry for the whole walk, however deep it goes', async () => {
+  it('pushes one history entry for the whole base fetch, however deep it goes', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -153,7 +151,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.writes.filter(({ mode }) => mode === 'push').map(({ url }) => url)).toEqual(['/users/5/edit'])
   })
 
-  it('does not walk for a layer that declares no base at all', async () => {
+  it('does not fetch a base for a layer that declares no base at all', async () => {
     const w = await world(from())
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit'))
@@ -163,7 +161,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.layers()).toEqual([])
   })
 
-  it('does not reload the page when a hop comes back as a location visit on a new version', async () => {
+  it('does not reload the page when a base fetch request comes back as a location visit on a new version', async () => {
     const w = await world({ ...from(), routes: { '/users': elsewhere } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -172,7 +170,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(window.location.href).toBe('http://localhost/users/5/edit')
   })
 
-  it('writes the layer onto the entry, not the base the walk is still fetching', async () => {
+  it('writes the layer onto the entry, not the base that is still being fetched', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -196,7 +194,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(state.page.layers).toEqual([expect.objectContaining({ key: 'Users/Edit' })])
   })
 
-  it('writes the deepest layer it has reached onto the entry as the walk goes deeper', async () => {
+  it('writes the deepest layer it has reached onto the entry as the base fetch goes deeper', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -215,7 +213,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(state.page.layers).toEqual([expect.objectContaining({ key: 'Users/Edit' })])
   })
 
-  it('opens a warm layer on top of the stack a cold open walked to', async () => {
+  it('opens a warm layer on top of the stack a cold open fetched', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -352,7 +350,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
       ])
     })
 
-    it('walks on down to the page the chain stands on', async () => {
+    it('fetches on down to the page the chain stands on', async () => {
       const w = await world({
         href: document,
         routes: {

@@ -572,7 +572,7 @@ describe('closing a layer that has a handle', () => {
     expect(handle.state).toBe('closed')
   })
 
-  it('does not refresh when the layer closed was standalone, since the blank recovery already fetches [BEHAVIOUR CHANGED]', async () => {
+  it('does not refresh when the layer closed was standalone, since the blank recovery already fetches', async () => {
     const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = await openCold(app)
     const calls = counted(handle)

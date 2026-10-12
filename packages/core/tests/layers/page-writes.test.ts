@@ -38,7 +38,7 @@ describe('clonePageProps', () => {
     expect(await clonePageProps(input)).toBe(input)
   })
 
-  it('does not mutate the original props', async () => {
+  it('does not mutate the props it was given', async () => {
     const onClick = () => {}
     const input = pageWith({ onClick, user: new Proxy({ id: 5 }, {}) })
 

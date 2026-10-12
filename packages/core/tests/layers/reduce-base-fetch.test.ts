@@ -30,8 +30,8 @@ const walking = (overrides: Partial<StackState> = {}) =>
     ...overrides,
   })
 
-describe('cold boot and the walk', () => {
-  it('S:394 L:914 a cold boot seeds the layer on a blank base, walks after the first swap, and the hop lands the base', () => {
+describe('cold boot and the base fetch', () => {
+  it('a cold boot opens the layer on a blank base, fetches the base after the first swap, and that base fetch request lands it', () => {
     const layer = {
       id: id('a'),
       type: 'routed' as const,
@@ -69,7 +69,7 @@ describe('cold boot and the walk', () => {
     expect(s).toEqual(state({ rows: [row('a', { key: 'panel', standalone: true, entries: 0 })] }))
   })
 
-  it('L:925 a hop answered by a layer with its own base goes beneath, and the walk goes on', () => {
+  it('a base fetch request answered by a layer with its own base goes beneath, and the base fetch goes on', () => {
     const step = arrived(walking(), { visit: 'v1', layer: { key: 'inner', base: '/deeper' }, newId: 'inner' })
 
     expect(step).toEqual({
@@ -89,7 +89,7 @@ describe('cold boot and the walk', () => {
     })
   })
 
-  it(`stops a walk whose next layer would make the stack ${MAX_LAYER_CHAIN} deep, landing the answer as the base with a warning`, () => {
+  it(`stops a base fetch whose next layer would make the stack ${MAX_LAYER_CHAIN} deep, landing the answer as the base with a warning`, () => {
     const s = walking({
       rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) =>
         row(`r${depth}`, { standalone: true, entries: 0 }),
@@ -109,13 +109,13 @@ describe('cold boot and the walk', () => {
     })
   })
 
-  it('lands a hop whose declared base cycles back to a live row as the base, without a warning', () => {
+  it('lands a base fetch request whose declared base cycles back to a live row as the base, without a warning', () => {
     expect(
       arrived(walking(), { visit: 'v1', layer: { key: 'loop', base: '/panel' }, facts: { cycles: true } }).effects,
     ).toEqual([])
   })
 
-  it('L:1037 a failed hop promotes the deepest layer to the page, and the base swap paints its dialog away', () => {
+  it('a failed base fetch request promotes the deepest layer to the page, and the base swap paints its dialog away', () => {
     const { state: s, effects } = script(walking(), [
       { type: 'baseFetchFailed', visit: visit('v1') },
       committing({ visit: visit('1'), mode: 'replace' }),
@@ -131,7 +131,7 @@ describe('cold boot and the walk', () => {
     expect(s).toEqual(state({ nextToken: 2, paint: { gated: false, owed: false } }))
   })
 
-  it('L:1047 a hop that fails after its layer closed requests the base again, and that commit keeps the stack', () => {
+  it('a base fetch request that fails after its layer closed requests the base again, and that commit keeps the stack', () => {
     const { state: s, effects } = script(walking({ rows: [] }), [
       { type: 'baseFetchFailed', visit: visit('v1') },
       { type: 'visitFinished', visit: visit('v1') },
@@ -144,13 +144,13 @@ describe('cold boot and the walk', () => {
     expect(s).toEqual(state({ paint: { gated: true, owed: false } }))
   })
 
-  it('L:1047 a hop cancelled or answered by a 409 location fails the walk at its finish', () => {
+  it('a base fetch request cancelled or answered by a location redirect (409) fails the base fetch at its finish', () => {
     expect(reduce(walking({ rows: [] }), { type: 'visitFinished', visit: visit('v1') }).effects).toEqual([
       { type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: '/base' },
     ])
   })
 
-  it('L:1090 L:2140 closing a cold layer over the blank base pushes the placeholder and skips the refresh', () => {
+  it('closing a cold layer over the blank base pushes the placeholder and skips the refresh', () => {
     const { state: s, effects } = script(walking(), [
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('a') },
@@ -166,7 +166,7 @@ describe('cold boot and the walk', () => {
     expect(s).toEqual(walking({ rows: [] }))
   })
 
-  it('L:1090 Back onto a plain entry while the base is still out ends the walk, so no hop or recovery lands on it', () => {
+  it('Back onto a plain entry while the base is still out ends the base fetch, so no base fetch request or recovery lands on it', () => {
     const {
       state: s,
       effects,
@@ -188,7 +188,7 @@ describe('cold boot and the walk', () => {
   it.each([
     ['with nothing on it', walking({ rows: [] }), entry([], { url: '/base', blank: true })],
     ['of another base', walking(), entry([], { url: '/other', blank: true, baseSame: false })],
-  ])('Back onto a blank placeholder %s fetches its page once: the recovery ends the walk', (_, from, blank) => {
+  ])('Back onto a blank placeholder %s fetches its page once: the recovery ends the base fetch', (_, from, blank) => {
     const { state: s, effects } = script(from, [
       { type: 'popstate', entry: blank },
       { type: 'visitFinished', visit: visit('v1') },
@@ -201,7 +201,7 @@ describe('cold boot and the walk', () => {
     expect(s.base.blank).toBe(true)
   })
 
-  it('L:2165 a close during the walk landing sends the walk again, and the first commit to arrive lands the base', () => {
+  it('a close during the base fetch landing sends the base fetch again, and the first commit to arrive lands the base', () => {
     const closing = script(walking(), [
       arrival({ visit: 'v1' }),
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
@@ -224,7 +224,7 @@ describe('cold boot and the walk', () => {
     expect(last.outcome).toEqual(landing('drop'))
   })
 
-  it('L:2165 the walk sent again lands the base when its answer commits first', () => {
+  it('the base fetch sent again lands the base when its answer commits first', () => {
     const { state: s, last } = script(walking(), [
       arrival({ visit: 'v1' }),
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
@@ -240,7 +240,7 @@ describe('cold boot and the walk', () => {
     })
   })
 
-  it('L:212 an in-session cold landing installs the blank under the layer with one push, then walks', () => {
+  it('an in-session cold landing installs the blank under the layer with one push, then fetches the base', () => {
     const { state: s, effects } = script(state(), [
       arrival({ layer: { key: 'guarded', base: '/layers/base' } }),
       { type: 'layerCommitting', id: id('new'), requestedReplace: false, urlChanged: false },
@@ -264,7 +264,7 @@ describe('cold boot and the walk', () => {
     )
   })
 
-  it('L:504 an answer over the visit’s own instant placeholder lands cold, replacing it', () => {
+  it('an answer over the visit’s own instant placeholder lands cold, replacing it', () => {
     const step = arrived(state({ base: { blank: false, gen: 1 } }), {
       origin: baseOrigin({ gen: 0, instantGen: 1 }),
       layer: { key: 'panel', base: '/layers/base' },
@@ -281,7 +281,7 @@ describe('cold boot and the walk', () => {
     })
   })
 
-  it('L:1120 an answer that cannot compose and declares no base lands as a plain page', () => {
+  it('an answer that cannot compose and declares no base lands as a plain page', () => {
     expect(arrived(state(), { layer: { key: 'plain', base: null } })).toEqual({
       state: state(),
       effects: [],

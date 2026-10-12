@@ -39,7 +39,7 @@ describe('a detour', () => {
     await settled()
   }
 
-  it('pins the base the layer was dispatched from through the prompt', async () => {
+  it('holds the base the layer was dispatched from through the prompt', async () => {
     const { app, handle } = await detour()
 
     expect(await app.basePage()).toMatchObject({
@@ -61,7 +61,7 @@ describe('a detour', () => {
     expect(app.requests.map((request) => request.path)).toEqual(['/users/5/edit', '/users/5/edit'])
   })
 
-  it('composes the returning layer over the pinned base', async () => {
+  it('composes the returning layer over the held base', async () => {
     const { app, handle } = await detour()
 
     await wrongPassword(app)
@@ -262,7 +262,7 @@ describe('a layer open answered by an interstitial', () => {
     expect((await app.basePage()).component).toBe('Auth/Login')
   })
 
-  it('gives the returned layer the page it lands on as its owner [BEHAVIOUR CHANGED]', async () => {
+  it('gives the returned layer the page it lands on as its owner', async () => {
     const app = await openApp(base(), { '/users/5/edit': answering(prompt(), edit()) })
     const handle = app.router.layer('http://localhost/users/5/edit')
 

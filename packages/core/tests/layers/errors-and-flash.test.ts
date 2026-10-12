@@ -26,7 +26,7 @@ const teamsShow = page('Teams/Show', '/teams/9', {
   props: { errors: {}, team: { id: 9 } },
 })
 
-describe('a submit answered by the tier the layer stands on', () => {
+describe('a submit answered by whatever the layer stands on', () => {
   const openLocal = async (routes: Record<string, Route>) => {
     const app = await openAppSentCall(index(), routes)
     const handle = app.router.layer({

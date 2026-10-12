@@ -302,7 +302,7 @@ describe('while the unwind is in flight', () => {
     expect(window.location.pathname).toBe('/users')
   })
 
-  it('runs a close issued inside the window once the browser has answered the step back [BEHAVIOUR CHANGED]', async () => {
+  it('runs a close issued inside the window once the browser has answered the step back', async () => {
     const { app, handles } = await stack('/users/5/edit', '/users/5/notes')
     const browser = holdBack()
     const first = handles[1].close()

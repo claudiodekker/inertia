@@ -55,6 +55,45 @@ describe('withAddressHash', () => {
     expect(app.entry().layers![0].url).toBe('http://localhost/a#comments')
     expect(app.entry().url).toBe('/users')
   })
+
+  it('writes the hash onto the page url when there are no layers', async () => {
+    const app = await openApp(users, {})
+
+    await app.anchor('/users#comments')
+
+    expect(app.entry().url).toBe('http://localhost/users#comments')
+  })
+
+  it('writes it onto the page url when no layer has one', async () => {
+    const app = await openApp(users, {})
+    app.router.layer({ component: 'Prompt' })
+    await settled()
+
+    await app.anchor('/users#comments')
+
+    expect(app.entry().url).toBe('http://localhost/users#comments')
+    expect(app.entry().layers!.map((layer) => [layer.type, layer.url])).toEqual([['local', '']])
+  })
+
+  it('replaces a hash the address already carries', async () => {
+    const app = await openApp(page('Users/Index', '/users#top'), {}, { href: 'http://localhost/users#top' })
+
+    await app.anchor('/users#comments')
+
+    expect(app.entry().url).toBe('http://localhost/users#comments')
+  })
+
+  it('does not mutate the page it is given', async () => {
+    const app = await openApp(users, { '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }) })
+    app.router.visit('/a')
+    await settled()
+    const before = structuredClone(app.views()[0].page)
+
+    await app.anchor('/a#comments')
+
+    expect(app.views()[0].page).toEqual(before)
+    expect(app.views()[0].page.url).toBe('/a')
+  })
 })
 
 describe('openLayerFor', () => {
@@ -224,46 +263,5 @@ describe('addressOf', () => {
 
   it('is the page url when no layer has one', () => {
     expect(addressOf(base, [layerEntry('A', '', { type: 'local' })])).toBe('/users')
-  })
-})
-
-describe('withAddressHash', () => {
-  it('writes the hash onto the page url when there are no layers', async () => {
-    const app = await openApp(users, {})
-
-    await app.anchor('/users#comments')
-
-    expect(app.entry().url).toBe('http://localhost/users#comments')
-  })
-
-  it('writes it onto the page url when no layer has one', async () => {
-    const app = await openApp(users, {})
-    app.router.layer({ component: 'Prompt' })
-    await settled()
-
-    await app.anchor('/users#comments')
-
-    expect(app.entry().url).toBe('http://localhost/users#comments')
-    expect(app.entry().layers!.map((layer) => [layer.type, layer.url])).toEqual([['local', '']])
-  })
-
-  it('replaces a hash the address already carries', async () => {
-    const app = await openApp(page('Users/Index', '/users#top'), {}, { href: 'http://localhost/users#top' })
-
-    await app.anchor('/users#comments')
-
-    expect(app.entry().url).toBe('http://localhost/users#comments')
-  })
-
-  it('does not mutate the page it is given', async () => {
-    const app = await openApp(users, { '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }) })
-    app.router.visit('/a')
-    await settled()
-    const before = structuredClone(app.views()[0].page)
-
-    await app.anchor('/a#comments')
-
-    expect(app.views()[0].page).toEqual(before)
-    expect(app.views()[0].page.url).toBe('/a')
   })
 })

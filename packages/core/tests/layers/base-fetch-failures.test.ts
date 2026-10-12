@@ -23,8 +23,8 @@ const teamsEntry = () =>
     false,
   ).data
 
-describe('the walk a cold layer sends for the base beneath it', () => {
-  it('sends the walk again when a close supersedes its landing while the base component resolves', async () => {
+describe('the base fetch a cold layer sends for the base beneath it', () => {
+  it('sends the base fetch again when a close supersedes its landing while the base component resolves', async () => {
     let landTheImport!: () => void
     const importing = new Promise<void>((resolve) => (landTheImport = resolve))
     let imports = 0
@@ -50,7 +50,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.swaps.filter(({ component }) => component === 'Users/Index')).toHaveLength(1)
   })
 
-  it('does not re-request the blank when the user has navigated away from the stack being walked', async () => {
+  it('does not re-request the blank when the user has navigated away from the stack whose base is being fetched', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -71,10 +71,8 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.layers()).toEqual([])
     expect(visit).toHaveBeenCalledTimes(1)
   })
-})
 
-describe('the walk a cold layer sends for the base beneath it', () => {
-  it('drops a hop that lands after the user has navigated away', async () => {
+  it('drops a base fetch request that lands after the user has navigated away', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -93,7 +91,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.layers()).toEqual([])
   })
 
-  it('drops a hop that lands after the user has gone back', async () => {
+  it('drops a base fetch request that lands after the user has gone back', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -106,7 +104,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.layers()).toEqual([])
   })
 
-  it('lands on the layer it has when a hop comes back as an error page', async () => {
+  it('lands on the layer it has when a base fetch request comes back as an error page', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -118,7 +116,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.overlay).not.toHaveBeenCalled()
   })
 
-  it('lands on the layer it has when a hop is answered by an error page the application rendered', async () => {
+  it('lands on the layer it has when a base fetch request is answered by an error page the application rendered', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -141,7 +139,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.layers()).toEqual([])
   })
 
-  it('lands on the layer it has when a hop never answers', async () => {
+  it('lands on the layer it has when a base fetch request never answers', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -151,7 +149,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.layers()).toEqual([])
   })
 
-  it('lands on the deepest layer it resolved when a hop further down fails', async () => {
+  it('lands on the deepest layer it resolved when a base fetch request further down fails', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -167,7 +165,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.keys()).toEqual(['Users/Edit'])
   })
 
-  it('still composes a visit made from inside the stack when a failed hop lands', async () => {
+  it('still composes a visit made from inside the stack when a failed base fetch request lands', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -190,7 +188,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.keys()).toEqual(['Users/Edit'])
   })
 
-  it('does not land a failed hop on a stack the user went back to', async () => {
+  it('does not land a failed base fetch request on a stack the user went back to', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -204,7 +202,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.keys()).toEqual(['Teams/Edit'])
   })
 
-  it('does not land a location-answered hop on a stack the user went back to', async () => {
+  it('does not land a location-answered base fetch request on a stack the user went back to', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -218,7 +216,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.keys()).toEqual(['Teams/Edit'])
   })
 
-  it('installs the base via a re-request when the stack it was walking for has been closed', async () => {
+  it('installs the base via a re-request when the stack whose base was being fetched has been closed', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -262,7 +260,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.writes.at(-1)!.state.page.layers).toBeUndefined()
   })
 
-  it('does not resurrect a layer that is mid-close when its hop fails, and re-requests the base', async () => {
+  it('does not resurrect a layer that is mid-close when its base fetch request fails, and re-requests the base', async () => {
     const w = await world({ ...from(), routes: { '/users': 'hold' } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
@@ -310,7 +308,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect((await w.base()).component).toBe('')
   })
 
-  it('does not land a failed hop into a stack the user has already left', async () => {
+  it('does not land a failed base fetch request into a stack the user has already left', async () => {
     const w = await world({
       ...from(),
       routes: {
@@ -351,7 +349,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
     expect(w.keys()).toEqual(['Teams/Edit'])
   })
 
-  it('lands on the layer it has when a hop is answered on a new version', async () => {
+  it('lands on the layer it has when a base fetch request is answered on a new version', async () => {
     const w = await world({ ...from(), routes: { '/users': elsewhere } })
     await w.begin(login)
     await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))

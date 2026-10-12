@@ -92,7 +92,7 @@ describe('layerPageOf', () => {
     expect((await app.basePage()).props.errors).toEqual({ other: 'x' })
   })
 
-  it("carries the stack as structure only, never another tier's props", async () => {
+  it('carries the stack as structure only, never the props of another page or layer', async () => {
     const app = await openApp(users, {
       '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }),
       '/users/5/edit': edit(),

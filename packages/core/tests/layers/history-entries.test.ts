@@ -196,44 +196,7 @@ describe('the history entry a layer open leaves behind', () => {
     expect(error).toHaveBeenCalledWith(refusal.message)
     expect(app.entry().layers![0].entries).toBe(0)
   })
-})
 
-describe('a hash the browser wrote', () => {
-  it('writes it onto the layer that owns the address, leaving the base beneath it alone', async () => {
-    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
-
-    app.router.layer('/users/5/edit')
-    await settled()
-
-    const before = app.written().length
-
-    await walkOnto(app, 'http://localhost/users/5/edit#comments')
-
-    expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']])
-    expect(app.entry()).toMatchObject({ url: '/users', layers: [{ url: 'http://localhost/users/5/edit#comments' }] })
-  })
-
-  it('writes it onto the layer beneath one with no url of its own', async () => {
-    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers, '/users/5/notes': notes })
-
-    app.router.layer('/users/5/edit')
-    await settled()
-    app.router.layer('/users/5/notes', { preserveUrl: true })
-    await settled()
-
-    const before = app.written().length
-
-    await walkOnto(app, 'http://localhost/users/5/edit#comments')
-
-    expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']])
-    expect(app.entry()).toMatchObject({
-      url: '/users',
-      layers: [{ url: 'http://localhost/users/5/edit#comments' }, { url: '/users/5/notes' }],
-    })
-  })
-})
-
-describe('the history entry a layer open leaves behind', () => {
   it('is pushed, so the entry the base sits on survives', async () => {
     const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
     const before = app.written().length
@@ -376,6 +339,41 @@ describe('the history entry a layer open leaves behind', () => {
     await settled()
 
     expect(app.written().slice(before)).toEqual([['replace', '/users']])
+  })
+})
+
+describe('a hash the browser wrote', () => {
+  it('writes it onto the layer that owns the address, leaving the base beneath it alone', async () => {
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
+
+    app.router.layer('/users/5/edit')
+    await settled()
+
+    const before = app.written().length
+
+    await walkOnto(app, 'http://localhost/users/5/edit#comments')
+
+    expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']])
+    expect(app.entry()).toMatchObject({ url: '/users', layers: [{ url: 'http://localhost/users/5/edit#comments' }] })
+  })
+
+  it('writes it onto the layer beneath one with no url of its own', async () => {
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers, '/users/5/notes': notes })
+
+    app.router.layer('/users/5/edit')
+    await settled()
+    app.router.layer('/users/5/notes', { preserveUrl: true })
+    await settled()
+
+    const before = app.written().length
+
+    await walkOnto(app, 'http://localhost/users/5/edit#comments')
+
+    expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']])
+    expect(app.entry()).toMatchObject({
+      url: '/users',
+      layers: [{ url: 'http://localhost/users/5/edit#comments' }, { url: '/users/5/notes' }],
+    })
   })
 })
 
