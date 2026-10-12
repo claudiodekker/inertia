@@ -1,0 +1,32 @@
+import { expect, it, vi } from 'vitest'
+import { bench, byPath, exitShells, page, settled } from './e-support'
+
+const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
+const edit = page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit' }, props: { errors: {}, user: { id: 5 } } })
+
+const cached = (app: Awaited<ReturnType<Awaited<ReturnType<typeof bench>>['modules']>>) =>
+  (app.prefetchedRequests as unknown as { cached: { response: Promise<{ getPageResponse(): Promise<any> }> }[] }).cached
+
+const baseOnce = page('Users/Index', '/users', {
+  props: { errors: {}, baseProp: 'base value' },
+  onceProps: { baseKey: { prop: 'baseProp' } },
+})
+
+it("does not put the page's once props into a cached layer response", async () => {
+  const app = await bench(
+    baseOnce,
+    byPath({ '/users/5/edit': { ...edit, onceProps: { baseKey: { prop: 'baseProp' } } } }),
+  )
+  const modules = await app.modules()
+
+  app.router.prefetch('/users/5/edit', {}, { cacheFor: '30s' })
+  await vi.waitFor(() => expect(cached(modules)).toHaveLength(1))
+  modules.prefetchedRequests.updateCachedOncePropsFromCurrentPage()
+
+  const response = await cached(modules)[0].response.then((answered) => answered.getPageResponse())
+
+  modules.prefetchedRequests.removeAll()
+
+  expect(response.props).not.toHaveProperty('baseProp')
+  expect(response.props).toEqual({ errors: {}, user: { id: 5 } })
+})
