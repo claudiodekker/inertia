@@ -1,9 +1,11 @@
-import type { Method, Page, PageProps, Router } from '@inertiajs/core'
+import type { LayerHandle, Method, Page, PageProps, Router } from '@inertiajs/core'
 
 declare global {
   interface Window {
     testing: {
       Inertia: Router
+      childHandle?: LayerHandle
+      layerChildHandle?: LayerHandle
     }
     initialPage: Page
     _inertia_request_dump: {
@@ -27,6 +29,7 @@ declare global {
     _inertia_content_layout_id: string | undefined
     _plugin_global_props: object
     resolverReceivedPage: Page | null
+    loadingResolved: string | undefined
   }
 
   interface ImportMeta {
