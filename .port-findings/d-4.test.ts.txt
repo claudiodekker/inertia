@@ -1,0 +1,31 @@
+// FINDING d-4: PR layer-walk.test.ts:878 "sends the walk again when a close supersedes its landing while the base component resolves"
+// PR outcome: the first answer of '/users' (whose component import is still resolving) is superseded by the dismissal of the cold layer, so the walk is sent AGAIN:
+//   requested.filter(path === '/users') has length 2, then base = Users/Index at '/users', layers undefined.
+// Rebuilt outcome: the end state is the same (base Users/Index, url '/users', layers [], history: push '/users' placeholder then replace '/users' Users/Index; swaps Auth/Login, Blank, Users/Index {preserveState: true}),
+//   but the walk is NOT re-sent: '/users' is requested exactly once (requested = ['/login', '/users']); the first answer's commit lands the base once the import resolves.
+//   packages/core/tests/layers/reduce.test.ts "L:2165 a close during the walk landing still lets the walk commit land the base" encodes this; rationale.md records no decision for it
+//   and grounding/01-behaviour-contract.md:63 says "re-sends the walk and still lands base".
+it('sends the walk again when a close supersedes its landing while the base component resolves', async () => {
+  let landTheImport!: () => void
+  const importing = new Promise<void>((resolve) => (landTheImport = resolve))
+  let imports = 0
+  const w = await world({
+    ...from(),
+    routes: { '/users': pageWith() },
+    component: (name) =>
+      name === 'Users/Index' ? (++imports === 1 ? importing.then(() => ({ name })) : { name }) : { name },
+  })
+  await w.begin(login)
+  await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
+
+  await w.dismiss()
+  landTheImport()
+  await vi.waitFor(() => expect(w.requested.filter((path) => path === '/users')).toHaveLength(2)) // FAILS: 1
+  await settled()
+
+  const base = await w.base()
+
+  expect(base.component).toBe('Users/Index')
+  expect(w.layers()).toEqual([])
+  expect(base.url).toBe('/users')
+})

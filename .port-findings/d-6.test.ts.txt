@@ -1,0 +1,13 @@
+// FINDING d-6: PR layer-walk.test.ts:1236 "keeps the hash the browser is on with the layer that owns the address" (initial page)
+// Scenario: document at http://localhost/users/5/edit#profile; layer response layer {key:'Users/Edit', base:'/users'}; adapter boot passes hash '#profile'.
+// PR outcome: layers[0].url === '/users/5/edit#profile' AND the page (blank base) url === '/users' (the hash belongs to the layer that owns the address only).
+// Rebuilt outcome: layer url '/users/5/edit#profile' (same) but the blank base url === '/users#profile': router.init -> InitialVisit.handleDefault -> currentPage.setUrlHash(window.location.hash)
+//   appends the browser hash to the base as well. No rationale.md entry covers it.
+    it('keeps the hash the browser is on with the layer that owns the address', async () => {
+      const w = await world({ href: `${document}#profile`, routes: { '/users': 'hold' } })
+      await w.boot(layerAt('/users/5/edit', 'Users/Edit', '/users'), '#profile')
+
+      expect(w.urls()).toEqual(['/users/5/edit#profile'])
+      expect((await w.base()).url).toBe('/users')
+    })
+

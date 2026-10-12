@@ -1,0 +1,20 @@
+// FINDING d-2: PR layer-walk.test.ts:517 "re-requests a restored entry that holds no page, replacing it with the page fetched for its url"
+// PR outcome: cold open (hop '/users' held) -> top layer dismissed (placeholder entry pushed) -> popstate onto that placeholder entry:
+//   exactly 2 requests for '/users' in total (the original hop + ONE recovery); adapter swaps after the popstate are [{Users/Index, preserveState: true}].
+// Rebuilt outcome: 3 requests for '/users' (requested = ['/login', '/users', '/users', '/users']): popstate's planRestore answers `recover` (startVisit recover) and does
+//   NOT clear `walk`; router.cancelAll then cancels the original hop, whose visitFinished (walk op not landed) runs walkFailed -> a second `recover` startVisit.
+//   Two recovery requests race for the same blank. Swaps after the popstate are [{Blank, false}, {Users/Index, true}] (loading view; recorded decision).
+//   Final state otherwise matches the PR (base Users/Index, props {users: []}, replace write, no push).
+it('re-requests a restored entry that holds no page, replacing it with the page fetched for its url', async () => {
+  const w = await world({ href: 'http://localhost/users/5/edit', routes: { '/users': 'hold' } })
+  await w.begin(login)
+  await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users'))
+  await w.dismiss()
+
+  const captured = w.writes.filter(({ mode }) => mode === 'push').at(-1)!.state
+
+  w.popstate(captured)
+  await settled()
+
+  expect(w.requested.filter((path) => path === '/users')).toHaveLength(2) // FAILS: 3
+})

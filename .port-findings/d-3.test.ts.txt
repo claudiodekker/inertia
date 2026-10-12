@@ -1,0 +1,26 @@
+// FINDING d-3: PR layer-walk.test.ts:633 "stops at the depth it is capped to, and warns"
+// Scenario: /login answers a layer (/step-0, base /step-1); every /step-N answers a layer with base /step-(N+1), forever.
+// PR outcome (maxLayerChain = 10, the cap counts layers on the stack): requested has length 10 ('/login' + /step-1../step-9), one console.warn with
+//   `A layer chain more than 10 layers deep was declared, so "/step-10" was not fetched. The deepest layer that loaded is being used as the page.`,
+//   base component 'Step/9', 9 layers.
+// Rebuilt outcome (MAX_WALK = 10 hops): requested has length 11 ('/login' + /step-1../step-10), one console.warn('A layer walk stopped after 10 declared bases.'),
+//   base component 'Step/10', 10 layers (keys Step/9 .. Step/0). One more request than the PR, a different warning, one more layer.
+it('stops at the depth it is capped to, and warns', async () => {
+  const steps = Object.fromEntries(
+    Array.from({ length: 11 }, (_, step) => [
+      `/step-${step + 1}`,
+      layerAt(`/step-${step + 1}`, `Step/${step + 1}`, `/step-${step + 2}`),
+    ]),
+  )
+  const w = await world({ ...from(), routes: steps })
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+  await w.begin(login)
+  await w.open(layerAt('/step-0', 'Step/0', '/step-1'))
+
+  expect(w.requested).toHaveLength(10) // FAILS: 11
+  expect(warn).toHaveBeenCalledWith(
+    'A layer chain more than 10 layers deep was declared, so "/step-10" was not fetched. The deepest layer that loaded is being used as the page.',
+  ) // FAILS
+  expect((await w.base()).component).toBe('Step/9') // FAILS: Step/10
+  expect(w.layers()).toHaveLength(9) // FAILS: 10
+})
