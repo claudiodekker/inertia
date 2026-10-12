@@ -1,4 +1,4 @@
-import { completeUnwind, forgetInCloses } from './close'
+import { completeUnwind, finishRefreshingOver, forgetInCloses } from './close'
 import type { EntryFacts, EntryLayerFacts, LayerId, LayerRow, StackState, Step } from './state'
 import { clearPin, clearStack, paint, run, withoutRows, type E, type Fx } from './update'
 
@@ -118,6 +118,8 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
       outcome: { kind: 'restore', restore: { kind: 'base' } },
     }
   }
+
+  t = finishRefreshingOver(t, fx, plan.reopen)
 
   const reopened = new Set(plan.reopen)
   const lingering = t.ghosts.filter((id) => reopened.has(id))

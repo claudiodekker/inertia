@@ -207,6 +207,16 @@ export function abandonIfExiting(s: StackState, fx: Fx, closeId: CloseId | null)
   )
 }
 
+/**
+ * A refreshing close still names the rows it removed, to dispose them when its refresh finishes. An
+ * entry that reopens one of them reuses its id, so that close ends first.
+ */
+export function finishRefreshingOver(s: StackState, fx: Fx, ids: readonly LayerId[]): StackState {
+  return [...s.closes.values()]
+    .filter((close) => close.phase.kind === 'refreshing' && close.layers.some((id) => ids.includes(id)))
+    .reduce((t, close) => finishClose(t, fx, close.id), s)
+}
+
 /** Rows that left the model outside their close (dismissed, dropped) leave it; an emptied close settles. */
 export function forgetInCloses(s: StackState, fx: Fx, ids: readonly LayerId[]): StackState {
   let t = s
