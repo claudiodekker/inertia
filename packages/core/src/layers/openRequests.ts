@@ -4,7 +4,7 @@
 import { page as currentPage } from '../page'
 import type { CancelToken, VisitOptions } from '../types'
 import { uid } from '../uid'
-import { TicketHandle, type Bindable } from './handles'
+import { OpenRequestHandle, type Bindable } from './handles'
 import type { PageScope } from './scope'
 import type { Stack } from './stack'
 import type { LayerId, Owner } from './state'
@@ -13,17 +13,17 @@ import type { LayerHandle, LayerTarget } from './types'
 type LocalTarget = Extract<LayerTarget, { component: string }>
 
 export class OpenRequests {
-  /** Handles no landing has named yet, by ticket. */
-  protected pending = new Map<LayerId, TicketHandle>()
+  /** Handles no landing has named yet, by the id their layer was asked under. */
+  protected pending = new Map<LayerId, OpenRequestHandle>()
 
   constructor(protected stack: Stack) {}
 
   /** `scope` is the router's that was asked: a layer owns what it opens, the base hands it to the top layer. */
   public open(target: LayerTarget, options: VisitOptions, scope: PageScope): LayerHandle {
     const id = uid() as LayerId
-    const handle = new TicketHandle(id, {
+    const handle = new OpenRequestHandle(id, {
       close: (bound) => this.stack.close(bound),
-      giveUp: (ticket) => void this.stack.dispatch({ type: 'openRefused', ticket }),
+      giveUp: (request) => void this.stack.dispatch({ type: 'openRefused', request }),
     })
     const { rows } = this.stack.state
     const owner = this.stack.instanceOf(scope)?.id ?? rows.filter((row) => row.phase === 'open').at(-1)?.id ?? 'base'
@@ -37,8 +37,8 @@ export class OpenRequests {
     return handle
   }
 
-  /** No request and no ticket: the row is added once the component resolved, and the instance owns its page. */
-  protected openLocal(handle: TicketHandle, id: LayerId, { component, props }: LocalTarget, owner: Owner): void {
+  /** No visit and no open request: the row is added once the component resolved, and the instance owns its page. */
+  protected openLocal(handle: OpenRequestHandle, id: LayerId, { component, props }: LocalTarget, owner: Owner): void {
     handle.abort = () => handle.fireClose()
 
     const landed = currentPage.resolve(component).then(() => {
@@ -74,7 +74,7 @@ export class OpenRequests {
   }
 
   protected visit(
-    handle: TicketHandle,
+    handle: OpenRequestHandle,
     id: LayerId,
     target: Exclude<LayerTarget, LocalTarget>,
     options: VisitOptions,
@@ -83,13 +83,13 @@ export class OpenRequests {
   ): void {
     // A component to show at once goes up as the layer itself, and its answer lands on that layer.
     const placeholder =
-      typeof options.component === 'string' ? this.stack.create(id).standingOn(scope.page.get()) : null
+      typeof options.component === 'string' ? this.stack.create(id).openingOver(scope.page.get()) : null
 
     this.pending.set(id, handle)
-    this.stack.dispatch({ type: 'openRequested', ticket: id, owner })
+    this.stack.dispatch({ type: 'openRequested', request: id, owner })
 
     handle.visit = this.stack.visits.follow(
-      { kind: 'open', ticket: id },
+      { kind: 'open', request: id },
       {
         ...options,
         onCancelToken: (token: CancelToken) => {
@@ -102,29 +102,29 @@ export class OpenRequests {
 
     if (handle.visit === null) {
       this.stack.forget(id)
-      this.stack.dispatch({ type: 'openRefused', ticket: id })
+      this.stack.dispatch({ type: 'openRefused', request: id })
     } else if (placeholder) {
       this.pending.delete(id)
-      this.stack.dispatch({ type: 'placeholderOpened', ticket: id, ownsAddress: !options.preserveUrl })
+      this.stack.dispatch({ type: 'placeholderOpened', request: id, ownsAddress: !options.preserveUrl })
       handle.bind(placeholder)
     }
   }
 
-  /** A landing named `layer`: the handle that asked for it by ticket or by this visit is that layer's now. */
+  /** A landing named `layer`: the handle that asked for it under that id or by this visit is that layer's now. */
   public bind(layer: Bindable, visit: string): void {
-    for (const [ticket, handle] of this.pending) {
-      if (ticket === layer.id || handle.visit === visit) {
-        this.pending.delete(ticket)
+    for (const [request, handle] of this.pending) {
+      if (request === layer.id || handle.visit === visit) {
+        this.pending.delete(request)
         handle.bind(layer)
       }
     }
   }
 
-  /** The ticket never landed: its handle closes. */
-  public refuse(ticket: LayerId): void {
-    const handle = this.pending.get(ticket)
+  /** The open request never landed: its handle closes. */
+  public refuse(request: LayerId): void {
+    const handle = this.pending.get(request)
 
-    this.pending.delete(ticket)
+    this.pending.delete(request)
     queueMicrotask(() => handle?.fireClose())
   }
 }

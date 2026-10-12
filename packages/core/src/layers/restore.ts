@@ -1,6 +1,6 @@
 import { completeUnwind, finishRefreshingOver, forgetInCloses } from './close'
 import type { EntryFacts, EntryLayerFacts, LayerId, LayerRow, StackState, Step } from './state'
-import { clearPin, clearStack, paint, run, withoutRows, type E, type Fx } from './update'
+import { clearInterstitial, clearStack, paint, run, withoutRows, type E, type Fx } from './update'
 
 type RestorePlan =
   | { kind: 'pass' }
@@ -27,7 +27,7 @@ export function planRestore(s: StackState, entry: EntryFacts): RestorePlan {
 
   const plan = { kind: 'restore' as const, base: false, dismiss: null, drop: [], rewind: [], reopen: [] }
 
-  if (target.length === 0 && rows.length === 0 && s.ghosts.length === 0) {
+  if (target.length === 0 && rows.length === 0 && s.dismissed.length === 0) {
     if (entry.blank) {
       return { kind: 'recover', url: entry.url }
     }
@@ -95,7 +95,7 @@ export function restoredOnLoad(s: StackState, e: E<'restoredOnLoad'>): Step {
 
 export function popstate(s: StackState, e: E<'popstate'>): Step {
   const fx: Fx = []
-  let t = clearPin(s, fx, 'restored-away')
+  let t = clearInterstitial(s, fx, 'restored-away')
 
   if (t.expect?.kind === 'unwind') {
     t = completeUnwind(t, fx, t.expect.close)
@@ -113,8 +113,8 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
     fx.push({ type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: plan.url })
 
     return {
-      // The recovery fetches the base now. The hop still out is cancelled by this popstate's own cancelAll.
-      state: { ...t, base: { blank: true, gen: t.base.gen + 1 }, walk: null, paint: { ...t.paint, gated: true } },
+      // The recovery fetches the base now. The fetch still out is cancelled by this popstate's own cancelAll.
+      state: { ...t, base: { blank: true, gen: t.base.gen + 1 }, baseFetch: null, paint: { ...t.paint, gated: true } },
       effects: fx,
       outcome: { kind: 'restore', restore: { kind: 'base' } },
     }
@@ -123,7 +123,7 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
   t = finishRefreshingOver(t, fx, plan.reopen)
 
   const reopened = new Set(plan.reopen)
-  const lingering = t.ghosts.filter((id) => reopened.has(id))
+  const lingering = t.dismissed.filter((id) => reopened.has(id))
   const gone = [...plan.drop, ...lingering]
 
   if (gone.length > 0) {
@@ -140,7 +140,7 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
     rows: withoutRows(t.rows, [...plan.drop, ...(plan.dismiss ? [plan.dismiss] : [])]).map((r) =>
       (counted.get(r.id) ?? r.entries) === r.entries ? r : { ...r, entries: counted.get(r.id)! },
     ),
-    ghosts: [...t.ghosts.filter((id) => !reopened.has(id)), ...(plan.dismiss ? [plan.dismiss] : [])],
+    dismissed: [...t.dismissed.filter((id) => !reopened.has(id)), ...(plan.dismiss ? [plan.dismiss] : [])],
   }
 
   const entering = fromEntry(
@@ -167,7 +167,7 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
       state: {
         ...t,
         base: { blank: e.entry.blank, gen: t.base.gen + 1 },
-        walk: null,
+        baseFetch: null,
         paint: { gated: true, owed: true },
       },
       effects: fx,

@@ -7,7 +7,7 @@ import type { LayerInstance } from './instance'
 import type { PageScope } from './scope'
 import type { Landing, LayerId } from './state'
 
-interface Tiers {
+interface Targets {
   readonly base: PageScope
   /** A new layer for a landing that opens one. */
   create(id: LayerId): LayerInstance
@@ -15,30 +15,30 @@ interface Tiers {
 }
 
 /** Undefined for a landing 3.x runs as it is. */
-export function land(landing: Landing, response: Response, page: Page, tiers: Tiers): Promise<void> | undefined {
+export function land(landing: Landing, response: Response, page: Page, targets: Targets): Promise<void> | undefined {
   switch (landing.kind) {
     case 'pass':
       return undefined
     case 'drop':
       return Promise.resolve()
     case 'base':
-      return response.retarget(tiers.base).land()
+      return response.retarget(targets.base).land()
     case 'promote':
-    case 'walk-base':
-      return response.retarget(tiers.base, stripMark(page)).land()
+    case 'fetched-base':
+      return response.retarget(targets.base, stripMark(page)).land()
     case 'open':
     case 'cold':
     case 'return':
-    case 'walk-beneath':
-      return response.retarget(tiers.create(landing.id).scope).land()
+    case 'fetched-beneath':
+      return response.retarget(targets.create(landing.id).scope).land()
     case 'rewrite':
     case 'refresh':
-      return response.retarget(tiers.layer(landing.id).scope).land()
+      return response.retarget(targets.layer(landing.id).scope).land()
     case 'close':
-      return response.succeed((landing.beneath === 'base' ? tiers.base : tiers.layer(landing.beneath)).page.get())
+      return response.succeed((landing.beneath === 'base' ? targets.base : targets.layer(landing.beneath)).page.get())
     case 'handback': {
       // The layer keeps its page; only the answer's errors and flash land, on the layer that asked.
-      const { scope } = tiers.layer(landing.id)
+      const { scope } = targets.layer(landing.id)
       const own = scope.page.get()
 
       return response

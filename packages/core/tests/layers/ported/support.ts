@@ -89,7 +89,7 @@ export async function ported(initial: Answer, routes: Routes, options: Options =
 
     core.layerSlot.boot(
       plan,
-      await Promise.all(plan.seeds.map(({ page: seed }) => wrapped(seed.component, seed, plan.info))),
+      await Promise.all(plan.layers.map(({ page: layer }) => wrapped(layer.component, layer, plan.info))),
     )
     core.router.init({ initialPage: plan.base, resolveComponent: wrapped, swapComponent: swap as never })
   } else {

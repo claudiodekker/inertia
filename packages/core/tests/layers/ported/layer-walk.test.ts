@@ -870,7 +870,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
           type: 'routed',
         },
       ])
-      expect(plan.walkTo).toBe('/users')
+      expect(plan.declaredBase).toBe('/users')
       expect(w.requested).toEqual(['/users'])
 
       await w.answer('/users', pageWith())
@@ -978,8 +978,8 @@ describe('the walk a cold layer sends for the base beneath it', () => {
       const first = planBoot(layerAt('/users/5/edit', 'Users/Edit', '/users') as never, '')
       const second = planBoot(layerAt('/users/5/edit', 'Users/Edit', '/users') as never, '')
 
-      expect(first.seeds.map((seed) => seed.row.id)).toEqual(['layer-boot-zyavpb'])
-      expect(second.seeds.map((seed) => seed.row.id)).toEqual(['layer-boot-zyavpb'])
+      expect(first.layers.map((layer) => layer.row.id)).toEqual(['layer-boot-zyavpb'])
+      expect(second.layers.map((layer) => layer.row.id)).toEqual(['layer-boot-zyavpb'])
     })
 
     it('installs an initial page that is not a layer exactly as it arrived', async () => {

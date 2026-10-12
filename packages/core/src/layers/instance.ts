@@ -8,7 +8,7 @@ import type { Response } from '../response'
 import type { Router } from '../router'
 import type { Component, LayoutProps, NamedLayoutProps, Page, PageResolver, PendingVisit } from '../types'
 import { madeInLayer } from './deferred'
-import { Inbox } from './handles'
+import { LayerMessages } from './handles'
 import { LayerHistory } from './layerHistory'
 import { createLayerPage, type LayerPage } from './layerPage'
 import { createLayerRouter, type LayerRouter } from './layerRouter'
@@ -48,7 +48,7 @@ export class LayerInstance {
   readonly public: LayerScope
   readonly layout = createLayoutPropsStore()
   /** Messages this layer's children emit up to it. */
-  readonly inbox = new Inbox()
+  readonly messages = new LayerMessages()
   readonly closeListeners = new Set<() => void>()
   /** The page last handed to history for this layer. The composer reads this. */
   historyPage: Page | null = null
@@ -132,8 +132,8 @@ export class LayerInstance {
   }
 
   /** Boot: the page and component the document arrived with, set at once with no request and no swap. */
-  seed(page: Page, component: Component): this {
-    this.page.seed(page)
+  setInitial(page: Page, component: Component): this {
+    this.page.setWithoutSwap(page)
     this.historyPage = page
     this.lastWrite = 'replace'
     this.view = { component, page, renderKey: 0 }
@@ -154,7 +154,7 @@ export class LayerInstance {
     this.page.setQuietly(page, { preserveState: false })
   }
 
-  /** Deferred props a page restored or seeded without a request still lacks load through its router. */
+  /** Deferred props a page set without a request still lacks load through its router. */
   loadMissingDeferred(): void {
     const page = this.page.get()
     const missing = Object.entries(page.initialDeferredProps ?? page.deferredProps ?? {})
@@ -170,8 +170,8 @@ export class LayerInstance {
    * Before a placeholder goes up: the props a placeholder is built from are those of the page it opens
    * over, as they are for a placeholder that takes the page's place.
    */
-  standingOn({ props, sharedProps, encryptHistory }: Page): this {
-    this.page.seed({ ...this.page.get(), props, sharedProps, encryptHistory })
+  openingOver({ props, sharedProps, encryptHistory }: Page): this {
+    this.page.setWithoutSwap({ ...this.page.get(), props, sharedProps, encryptHistory })
 
     return this
   }
@@ -242,11 +242,11 @@ class PublicScope implements LayerScope {
   }
 
   on(name: string, listener: LayerMessageListener): () => void {
-    return this.layer.inbox.on(name, listener)
+    return this.layer.messages.on(name, listener)
   }
 
   once(name: string, listener: LayerMessageListener): () => void {
-    return this.layer.inbox.once(name, listener)
+    return this.layer.messages.once(name, listener)
   }
 
   onClose(listener: () => void): () => void {

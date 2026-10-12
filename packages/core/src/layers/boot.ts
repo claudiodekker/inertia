@@ -10,22 +10,22 @@ import type { LayerInfo, LoadingResolver } from './types'
 import { viewOf, type LayerView } from './views'
 
 /**
- * The server renders the plan's seeds in fresh instances, never registered with the stack: renders run
+ * The server renders the plan's layers in fresh instances, never registered with the stack: renders run
  * concurrently and the server keeps no layer state. Ids come from the plan, so hydration finds them.
  */
 export function ssrViews(plan: BootPlan, components: readonly unknown[]): LayerView[] {
   const port = new ServerPort(plan)
 
-  return plan.seeds.map(({ row, page }, index) => {
+  return plan.layers.map(({ row, page }, index) => {
     const instance = new LayerInstance(row.id, row.type, port, {
       resolveComponent: () => Promise.resolve(components[index] as Component),
       version: page.version,
-    }).seed(page, components[index] as Component)
+    }).setInitial(page, components[index] as Component)
 
     return viewOf(instance, {
       open: true,
       index,
-      isTop: index === plan.seeds.length - 1,
+      isTop: index === plan.layers.length - 1,
       type: row.type,
       close: () => {},
       done: () => {},
@@ -33,7 +33,7 @@ export function ssrViews(plan: BootPlan, components: readonly unknown[]): LayerV
   })
 }
 
-/** Answers what a seeded layer asks during a server render. Nothing commits, routes or closes there. */
+/** Answers what a layer asks during a server render. Nothing commits, routes or closes there. */
 class ServerPort implements StackPort {
   constructor(protected plan: BootPlan) {}
 
@@ -47,11 +47,11 @@ class ServerPort implements StackPort {
   emit() {}
 
   key(id: LayerId): string {
-    return this.plan.seeds.find((seed) => seed.row.id === id)?.row.key ?? ''
+    return this.plan.layers.find((layer) => layer.row.id === id)?.row.key ?? ''
   }
 
   index(id: LayerId): number {
-    return this.plan.seeds.findIndex((seed) => seed.row.id === id)
+    return this.plan.layers.findIndex((layer) => layer.row.id === id)
   }
 }
 
@@ -64,7 +64,7 @@ export function wrapResolver<C>(
   loading: LoadingResolver<C> | undefined,
   blank: C,
 ): (name: string, page?: Page, layers?: readonly LayerInfo[]) => Promise<C> {
-  return async (name, page, layers = stack.painter.info()) => {
+  return async (name, page, layers = stack.views.info()) => {
     if (name !== '') {
       return resolve(name, page)
     }

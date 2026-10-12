@@ -2,7 +2,7 @@
 // reduce.ts, which routes the close events here.
 
 import type { CloseId, CloseRow, LayerId, LayerRow, StackState, Step, WaiterId } from './state'
-import { beneath, mint, paint, put, row, run, setClose, without, withoutRows, type E, type Fx } from './update'
+import { beneath, issueToken, paint, put, row, run, setClose, without, withoutRows, type E, type Fx } from './update'
 
 export function closeRequested(s: StackState, e: E<'closeRequested'>): Step {
   return run(s, (t, fx) => {
@@ -73,10 +73,10 @@ export function startClose(s: StackState, fx: Fx, id: LayerId, closeId: CloseId,
 
 export function exited(s: StackState, e: E<'exited'>): Step {
   return run(s, (t, fx) => {
-    if (t.ghosts.includes(e.id)) {
+    if (t.dismissed.includes(e.id)) {
       fx.push({ type: 'dispose', ids: [e.id], reason: 'closed' })
 
-      return paint({ ...t, ghosts: t.ghosts.filter((id) => id !== e.id) }, fx)
+      return paint({ ...t, dismissed: t.dismissed.filter((id) => id !== e.id) }, fx)
     }
 
     const close = t.closes.get(row(t, e.id)?.close as CloseId)
@@ -120,12 +120,12 @@ function removeOrUnwind(s: StackState, fx: Fx, close: CloseRow): StackState {
     return continueAfterRemoval(paint(t, fx), fx, close, covered[0], s.rows)
   }
 
-  const [token, minted] = mint(s)
+  const [token, issued] = issueToken(s)
 
   fx.push({ type: 'historyGo', delta: -entries, token })
 
   return {
-    ...setClose(minted, { ...close, phase: { kind: 'unwinding', token } }),
+    ...setClose(issued, { ...close, phase: { kind: 'unwinding', token } }),
     expect: { kind: 'unwind', close: close.id, token },
   }
 }
@@ -150,8 +150,9 @@ export function completeUnwind(s: StackState, fx: Fx, closeId: CloseId): StackSt
 }
 
 /**
- * Refresh the routed tier beneath when the closed bottom row was routed and that tier is real. Over a
- * blank base whose page has been answered and is still resolving its component, the walk is sent again.
+ * Refresh the routed layer or the page beneath when the closed bottom row was routed and what is beneath
+ * is real. Over a blank base whose page has been answered and is still resolving its component, the
+ * base is fetched again.
  */
 function continueAfterRemoval(
   removed: StackState,
@@ -160,7 +161,7 @@ function continueAfterRemoval(
   bottom: LayerRow | undefined,
   before: readonly LayerRow[],
 ): StackState {
-  const s = walkAgain(removed, fx)
+  const s = fetchBaseAgain(removed, fx)
   const via = bottom ? beneath(before, bottom.id) : 'base'
   const refreshes = bottom?.type === 'routed' && !(via === 'base' && s.base.blank)
 
@@ -173,17 +174,17 @@ function continueAfterRemoval(
   return setClose(s, { ...close, phase: { kind: 'refreshing', visit: null } })
 }
 
-/** A removal supersedes the walk landing in flight, as it did in the original. The first commit to arrive lands. */
-function walkAgain(s: StackState, fx: Fx): StackState {
-  const hop = s.walk?.visit ? s.ops.get(s.walk.visit) : undefined
+/** A removal supersedes the fetched base still landing. The first commit to arrive lands. */
+function fetchBaseAgain(s: StackState, fx: Fx): StackState {
+  const fetching = s.baseFetch?.visit ? s.ops.get(s.baseFetch.visit) : undefined
 
-  if (!s.walk || !s.base.blank || hop?.kind !== 'walk' || !hop.landed) {
+  if (!s.baseFetch || !s.base.blank || fetching?.kind !== 'fetchBase' || !fetching.landed) {
     return s
   }
 
-  fx.push({ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: s.walk.target })
+  fx.push({ type: 'startVisit', tag: { kind: 'fetchBase' }, via: 'base', url: s.baseFetch.url })
 
-  return { ...s, walk: { ...s.walk, visit: null } }
+  return { ...s, baseFetch: { ...s.baseFetch, visit: null } }
 }
 
 export function finishClose(s: StackState, fx: Fx, closeId: CloseId): StackState {

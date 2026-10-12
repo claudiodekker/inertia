@@ -31,7 +31,7 @@ describe('planRestore', () => {
   })
 
   it('does not pass while a ghost still exits', () => {
-    expect(planRestore(state({ ghosts: [id('g')] }), entry([]))).toEqual(plan())
+    expect(planRestore(state({ dismissed: [id('g')] }), entry([]))).toEqual(plan())
   })
 
   it('restores another base: drops every live row and reopens every entry layer', () => {

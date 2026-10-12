@@ -32,7 +32,7 @@ import {
   type WaiterId,
 } from './state'
 import type { LayerScope } from './types'
-import { Painter } from './views'
+import { LayerViews } from './views'
 import { Visits } from './visits'
 
 const isServer = typeof window === 'undefined'
@@ -42,7 +42,7 @@ export class Stack implements StackPort {
   public readonly history = new StackHistory(this)
   public readonly requests = new OpenRequests(this)
   /** What the adapters render: the views last painted. */
-  public readonly painter = new Painter((id) => ({ close: () => void this.close(id), done: () => this.exited(id) }))
+  public readonly views = new LayerViews((id) => ({ close: () => void this.close(id), done: () => this.exited(id) }))
   public readonly visits = new Visits((event) => void this.dispatch(event))
   protected current: StackState = initialState
   protected instances = new Map<LayerId, LayerInstance>()
@@ -98,24 +98,24 @@ export class Stack implements StackPort {
         return console.warn(effect.message)
       case 'installBase':
         return this.base.install(effect)
-      case 'retargetBlank':
-        return this.base.retargetBlank(effect.url)
-      case 'capturePin':
-        return this.base.pin(effect.token)
-      case 'releasePin':
-        return this.base.unpin(effect.token)
+      case 'setBlankUrl':
+        return this.base.setBlankUrl(effect.url)
+      case 'holdBase':
+        return this.base.hold(effect.token)
+      case 'releaseBase':
+        return this.base.release(effect.token)
       case 'refuse':
-        return this.requests.refuse(effect.ticket)
+        return this.requests.refuse(effect.request)
       default:
         return assertNever(effect)
     }
   }
 
   public paint(): Promise<void> {
-    // The boot paints its seeds before the router gives the page beneath them to the page store.
+    // The boot paints its layers before the router gives the page beneath them to the page store.
     const baseUrl = currentPage.get()?.url ?? ''
 
-    return this.painter.paint(this.state.rows, this.state.ghosts, this.instances, baseUrl)
+    return this.views.paint(this.state.rows, this.state.dismissed, this.instances, baseUrl)
   }
 
   protected dispose(id: LayerId): void {
@@ -124,14 +124,14 @@ export class Stack implements StackPort {
     if (instance) {
       instance.dispose()
       this.instances.delete(id)
-      this.painter.left(instance)
+      this.views.removed(instance)
     }
   }
 
   protected startVisit(effect: Extract<StackEffect, { type: 'startVisit' }>): void {
     const { tag } = effect
 
-    if (tag.kind === 'walk' || tag.kind === 'recover') {
+    if (tag.kind === 'fetchBase' || tag.kind === 'recover') {
       // After the task that asked for it: a popstate's own 3.x cancelAll runs right after its dispatch.
       return queueMicrotask(() => this.base.fetch(tag, effect.url!))
     }
@@ -177,11 +177,11 @@ export class Stack implements StackPort {
     }
 
     const live = this.state.rows.filter((row) => this.instances.has(row.id))
-    const addressTier = live.filter((row) => row.phase === 'open' && row.ownsAddress).at(-1)
+    const addressOwner = live.filter((row) => row.phase === 'open' && row.ownsAddress).at(-1)
     const facts = routeFacts(visit, page, marks, {
       base: currentPage.get(),
       live: live.map((row) => this.instance(row.id).page.get()),
-      addressTier: addressTier ? this.instance(addressTier.id).page.get() : currentPage.get(),
+      addressOwner: addressOwner ? this.instance(addressOwner.id).page.get() : currentPage.get(),
     })
     const { outcome } = this.dispatch({
       type: 'responseArrived',
@@ -196,12 +196,12 @@ export class Stack implements StackPort {
 
     this.base.answering(visit, response.scope.page.get())
 
-    const tiers = {
+    const targets = {
       base: baseScope,
       create: (id: LayerId) => this.create(id),
       layer: (id: LayerId) => this.instance(id),
     }
-    const landed = (land(landing, response, page, tiers) ?? response.land()).finally(() => this.base.answered(visit))
+    const landed = (land(landing, response, page, targets) ?? response.land()).finally(() => this.base.answered(visit))
 
     if ('id' in landing && landing.kind !== 'close' && landing.kind !== 'handback') {
       this.requests.bind(this.instance(landing.id), visit.id)
@@ -281,11 +281,11 @@ export class Stack implements StackPort {
   }
 
   /**
-   * A walk hop fetches the page beneath the stack. The blank base carries the hop's url, so 3.x would
-   * take the hop for a request aimed at the page a visit leaves, and cancel it.
+   * A base fetch asks for the page beneath the stack. The blank base carries its url, so 3.x would take
+   * the fetch for a request aimed at the page a visit leaves, and cancel it.
    */
-  public walking(visit: string): boolean {
-    return this.state.ops.get(visit as VisitId)?.kind === 'walk'
+  public fetchesBase(visit: string): boolean {
+    return this.state.ops.get(visit as VisitId)?.kind === 'fetchBase'
   }
 
   /**
@@ -304,20 +304,20 @@ export class Stack implements StackPort {
     return [...this.instances.values()].some((instance) => instance.router === router && instance.type === 'local')
   }
 
-  /** The document load: seed instances from the plan, so the first render shows them. Before mount. */
+  /** The document load: an instance for each layer of the plan, so the first render shows them. Before mount. */
   public boot(plan: BootPlan, components: readonly unknown[]): void {
-    if (isServer || plan.seeds.length === 0) {
+    if (isServer || plan.layers.length === 0) {
       return
     }
 
-    plan.seeds.forEach(({ row, page }, index) => {
-      this.create(row.id, row.type, page.version).seed(page, components[index] as Component)
+    plan.layers.forEach(({ row, page }, index) => {
+      this.create(row.id, row.type, page.version).setInitial(page, components[index] as Component)
     })
     this.dispatch({
       type: 'booted',
-      seeds: plan.seeds.map((seed) => seed.row),
+      layers: plan.layers.map((layer) => layer.row),
       blank: isBlank(plan.base),
-      walkTo: plan.walkTo,
+      declaredBase: plan.declaredBase,
     })
     void this.paint()
     queueMicrotask(() => this.instances.forEach((instance) => instance.loadMissingDeferred()))
@@ -392,7 +392,7 @@ export class Stack implements StackPort {
     const to = owner && owner !== 'base' && from ? this.instances.get(owner) : undefined
 
     interceptors.fireLayerEvent({ type: 'event', from: id, to: to?.id ?? null, name, payload })
-    to?.inbox.deliver(name, payload, from!)
+    to?.messages.deliver(name, payload, from!)
   }
 
   protected row(id: LayerId): LayerRow | undefined {

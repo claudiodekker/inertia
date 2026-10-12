@@ -14,7 +14,7 @@ import {
   assertNever,
   beneath,
   clearStack,
-  mint,
+  issueToken,
   openingRow,
   paint,
   put,
@@ -34,14 +34,14 @@ export function classify(s: StackState, e: E<'responseArrived'>): Landing {
   const op = s.ops.get(e.visit)
   const isRefresh = facts.partial || (facts.async && facts.preserveState)
 
-  if (op?.kind === 'walk') {
-    if (s.walk === null || s.walk.visit !== e.visit || !s.base.blank) {
+  if (op?.kind === 'fetchBase') {
+    if (s.baseFetch === null || s.baseFetch.visit !== e.visit || !s.base.blank) {
       return { kind: 'drop' }
     }
 
     return marks.layer?.base && !facts.cycles && s.rows.length + 1 < MAX_LAYER_CHAIN
-      ? { kind: 'walk-beneath', id: e.newId }
-      : { kind: 'walk-base' }
+      ? { kind: 'fetched-beneath', id: e.newId }
+      : { kind: 'fetched-base' }
   }
 
   if (origin.kind === 'layer' && !row(s, origin.id)) {
@@ -55,21 +55,21 @@ export function classify(s: StackState, e: E<'responseArrived'>): Landing {
   }
 
   const from = origin.kind === 'layer' ? row(s, origin.id)! : null
-  // A layer that owns no address was submitted from the tier beneath it, so that tier's page comes back.
-  const handsBack = from !== null && !from.ownsAddress && facts.matchesAddressTier && facts.hasErrors
+  // A layer that owns no address was submitted from the page or layer beneath it, whose page comes back.
+  const handsBack = from !== null && !from.ownsAddress && facts.matchesAddressOwner && facts.hasErrors
 
   if (marks.layer) {
-    if (s.pin && s.pin.gen === s.base.gen) {
-      const pinned = s.pin.ticket ? s.tickets.get(s.pin.ticket) : undefined
+    if (s.interstitial && s.interstitial.gen === s.base.gen) {
+      const asked = s.interstitial.request ? s.openRequests.get(s.interstitial.request) : undefined
 
-      return { kind: 'return', id: pinned ? pinned.id : e.newId }
+      return { kind: 'return', id: asked ? asked.id : e.newId }
     }
 
     if (handsBack) {
       return { kind: 'handback', id: from.id }
     }
 
-    const ticket = op?.kind === 'open' ? s.tickets.get(op.ticket) : undefined
+    const request = op?.kind === 'open' ? s.openRequests.get(op.request) : undefined
     const same = sameKey(s.rows, marks.layer.key, origin.kind === 'layer' ? origin.id : null)
 
     // The answer to a layer's own placeholder lands on it, unless another layer already holds its key.
@@ -99,15 +99,15 @@ export function classify(s: StackState, e: E<'responseArrived'>): Landing {
       }
 
       return marks.layer.base && !facts.cycles
-        ? { kind: 'cold', id: ticket ? ticket.id : e.newId }
+        ? { kind: 'cold', id: request ? request.id : e.newId }
         : { kind: 'promote' }
     }
 
-    if (ticket && !row(s, ticket.id)) {
+    if (request && !row(s, request.id)) {
       return {
         kind: 'open',
-        id: ticket.id,
-        owner: ticket.owner === 'base' || row(s, ticket.owner) ? ticket.owner : 'base',
+        id: request.id,
+        owner: request.owner === 'base' || row(s, request.owner) ? request.owner : 'base',
       }
     }
 
@@ -121,7 +121,9 @@ export function classify(s: StackState, e: E<'responseArrived'>): Landing {
       return { kind: 'open', id: e.newId, owner: top ?? 'base' }
     }
 
-    return marks.layer.base && !facts.cycles ? { kind: 'cold', id: ticket ? ticket.id : e.newId } : { kind: 'promote' }
+    return marks.layer.base && !facts.cycles
+      ? { kind: 'cold', id: request ? request.id : e.newId }
+      : { kind: 'promote' }
   }
 
   if (from) {
@@ -144,7 +146,7 @@ export function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
   const key = e.marks.layer?.key ?? ''
   const op = s.ops.get(e.visit)
 
-  const capped = landing.kind === 'walk-base' && !!e.marks.layer?.base && !e.facts.cycles
+  const capped = landing.kind === 'fetched-base' && !!e.marks.layer?.base && !e.facts.cycles
 
   return run(
     s,
@@ -193,15 +195,15 @@ export function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
         case 'cold': {
           t = clearStack(t, fx, 'navigated')
 
-          const [token, minted] = mint(t)
+          const [token, issued] = issueToken(t)
           const url = e.marks.layer!.base!
 
           return bind(
             {
-              ...minted,
+              ...issued,
               rows: [openingRow(landing.id, key, 'base', { standalone: true })],
-              base: { blank: true, gen: minted.base.gen + 1 },
-              walk: { target: url, visit: null, startOnSwap: true },
+              base: { blank: true, gen: issued.base.gen + 1 },
+              baseFetch: { url, visit: null, startOnSwap: true },
               expect: {
                 kind: 'base',
                 token,
@@ -209,14 +211,14 @@ export function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
                 layer: landing.id,
                 source: { kind: 'blank', url },
               },
-              paint: { ...minted.paint, gated: true },
+              paint: { ...issued.paint, gated: true },
             },
             op,
           )
         }
         case 'return': {
-          const pin = t.pin!
-          const leftover = [...t.rows.map((r) => r.id), ...t.ghosts]
+          const interstitial = t.interstitial!
+          const leftover = [...t.rows.map((r) => r.id), ...t.dismissed]
 
           if (leftover.length > 0) {
             fx.push({ type: 'dispose', ids: leftover, reason: 'navigated' })
@@ -224,42 +226,42 @@ export function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
 
           t = settleAll(t, fx, 'closed')
 
-          const [token, minted] = mint(t)
-          const returning = openingRow(landing.id, key, pin.suspended.at(-1)?.id ?? 'base', {
-            entries: pin.pushes,
+          const [token, issued] = issueToken(t)
+          const returning = openingRow(landing.id, key, interstitial.suspended.at(-1)?.id ?? 'base', {
+            entries: interstitial.pushes,
             ownsAddress: !e.facts.preserveUrl,
           })
-          const bound = { ...minted, tickets: without(minted.tickets, landing.id) }
+          const bound = { ...issued, openRequests: without(issued.openRequests, landing.id) }
 
           return {
             ...bound,
-            rows: [...pin.suspended, returning],
-            ghosts: [],
-            pin: null,
+            rows: [...interstitial.suspended, returning],
+            dismissed: [],
+            interstitial: null,
             base: { ...bound.base, gen: bound.base.gen + 1 },
             expect: {
               kind: 'base',
               token,
               mode: 'replace',
               layer: landing.id,
-              source: { kind: 'pinned', pin: pin.token },
+              source: { kind: 'held', token: interstitial.token },
             },
             paint: { ...bound.paint, gated: true },
           }
         }
-        case 'walk-base':
+        case 'fetched-base':
           return landed(t, e)
-        case 'walk-beneath': {
-          const target = e.marks.layer!.base!
+        case 'fetched-beneath': {
+          const url = e.marks.layer!.base!
 
-          fx.push({ type: 'retargetBlank', url: target })
-          fx.push({ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: target })
+          fx.push({ type: 'setBlankUrl', url })
+          fx.push({ type: 'startVisit', tag: { kind: 'fetchBase' }, via: 'base', url })
 
           return landed(
             {
               ...t,
               rows: [openingRow(landing.id, key, 'base', { standalone: true }), ...t.rows],
-              walk: { target, visit: null, startOnSwap: false },
+              baseFetch: { url, visit: null, startOnSwap: false },
             },
             e,
           )
@@ -293,7 +295,7 @@ function rewrite(s: StackState, fx: Fx, landing: Extract<Landing, { kind: 'rewri
           }
         : r,
     ),
-    ghosts: [...s.ghosts, ...landing.dismissed.filter((id) => !unseen.includes(id))],
+    dismissed: [...s.dismissed, ...landing.dismissed.filter((id) => !unseen.includes(id))],
   }
 
   t = forgetInCloses(t, fx, landing.dismissed)
@@ -308,10 +310,12 @@ function rewrite(s: StackState, fx: Fx, landing: Extract<Landing, { kind: 'rewri
 function landed(s: StackState, e: E<'responseArrived'>): StackState {
   const op = s.ops.get(e.visit)
 
-  return op?.kind === 'walk' ? { ...s, ops: put(s.ops, e.visit, { ...op, landed: true }) } : s
+  return op?.kind === 'fetchBase' ? { ...s, ops: put(s.ops, e.visit, { ...op, landed: true }) } : s
 }
 
-/** A ticket visit that landed on a row is done with its ticket: the landing names the row. */
+/** An open request whose visit landed on a row is over: the landing names the row. */
 function bind(s: StackState, op: Op | undefined): StackState {
-  return op?.kind === 'open' && s.tickets.has(op.ticket) ? { ...s, tickets: without(s.tickets, op.ticket) } : s
+  return op?.kind === 'open' && s.openRequests.has(op.request)
+    ? { ...s, openRequests: without(s.openRequests, op.request) }
+    : s
 }

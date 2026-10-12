@@ -1,12 +1,12 @@
 // The control plane's one value, its events, effects and outcomes. Pure types.
 // StackState holds structure only, never a Page: layer pages live in their LayerInstance and the base
 // page in the 3.x `page` singleton. Facts a decision needs from page data arrive as event fields.
-// The one page reference is PinRow.token, which names a page the runtime keeps aside.
+// The one page reference is Interstitial.token, which names a page the runtime sets aside.
 
 declare const brand: unique symbol
 type Brand<T, B extends string> = T & { readonly [brand]: B }
 
-/** Minted by the runtime and carried in on events. */
+/** Made by the runtime and carried in on events. */
 export type LayerId = Brand<string, 'LayerId'>
 /** The 3.x visit id. It survives getPendingVisit merges and 409 re-issues. */
 export type VisitId = Brand<string, 'VisitId'>
@@ -17,25 +17,25 @@ export type Token = Brand<number, 'Token'>
 
 export type Owner = LayerId | 'base'
 
-/** The deepest stack a walk builds. A base declared beneath it is not fetched. */
+/** The deepest stack that fetching declared bases builds. A base declared beneath it is not fetched. */
 export const MAX_LAYER_CHAIN = 10
 
 export interface StackState {
   readonly nextToken: number
-  /** `gen` bumps when the base page is replaced. `blank`: a placeholder stands in until the walk lands the base. */
+  /** `gen` bumps when the base page is replaced. `blank`: a placeholder stands in until the base is fetched. */
   readonly base: { readonly blank: boolean; readonly gen: number }
   /** The live model, bottom to top. Rows in a close stay here until removal: the address is still theirs. */
   readonly rows: readonly LayerRow[]
   /** Out of the model already (Back-dismissed, rewrite-dismissed), still rendering their exit. */
-  readonly ghosts: readonly LayerId[]
+  readonly dismissed: readonly LayerId[]
   /** Insertion order is the removal queue order. */
   readonly closes: ReadonlyMap<CloseId, CloseRow>
   /** Programmatic opens, keyed by the id the layer will get. */
-  readonly tickets: ReadonlyMap<LayerId, TicketRow>
-  /** Visits the stack itself follows: ticket visits, walk hops, refresh-beneath, recovery. */
+  readonly openRequests: ReadonlyMap<LayerId, OpenRequest>
+  /** Visits the stack itself follows: open requests, base fetches, refreshes beneath, recoveries. */
   readonly ops: ReadonlyMap<VisitId, Op>
-  readonly walk: WalkRow | null
-  readonly pin: PinRow | null
+  readonly baseFetch: BaseFetch | null
+  readonly interstitial: Interstitial | null
   /** What only the browser or 3.x can complete. At most one at a time. */
   readonly expect: Expectation | null
   /** Closed while a base commit is between `baseCommitting` and `baseSwapped`. */
@@ -50,7 +50,7 @@ export interface LayerRow {
   readonly owner: Owner
   /** opening: first commit pending, so not rendered and not composed. */
   readonly phase: 'opening' | 'open'
-  /** Opened cold (seed, walk-beneath, in-session cold): its close pushes the page beneath. */
+  /** Opened cold (with the document, beneath a fetched layer, or in session): its close pushes the page beneath. */
   readonly standalone: boolean
   /** False for local rows and preserveUrl opens. */
   readonly ownsAddress: boolean
@@ -72,46 +72,46 @@ export interface CloseRow {
     /** Every shell exited, but another close or a base install holds `expect`. */
     | { readonly kind: 'queued' }
     | { readonly kind: 'unwinding'; readonly token: Token }
-    /** Rows removed; the tier beneath is reloading. Waiters settle when that visit finishes. */
+    /** Rows removed; the page or layer beneath is reloading. Waiters settle when that visit finishes. */
     | { readonly kind: 'refreshing'; readonly visit: VisitId | null }
 }
 
 /** Lives until its visit lands on a row (the landing names the row) or is refused. */
-export interface TicketRow {
+export interface OpenRequest {
   readonly id: LayerId
   readonly owner: Owner
   readonly state: 'pending' | 'dispatched'
 }
 
 export type Op =
-  | { readonly kind: 'open'; readonly ticket: LayerId; readonly inFlight: number }
-  | { readonly kind: 'walk'; readonly inFlight: number; readonly landed: boolean }
+  | { readonly kind: 'open'; readonly request: LayerId; readonly inFlight: number }
+  | { readonly kind: 'fetchBase'; readonly inFlight: number; readonly landed: boolean }
   | { readonly kind: 'refresh'; readonly close: CloseId; readonly inFlight: number }
   | { readonly kind: 'recover'; readonly inFlight: number }
 
-export interface WalkRow {
+export interface BaseFetch {
   /** The declared base being fetched. */
-  readonly target: string
+  readonly url: string
   readonly visit: VisitId | null
-  /** The first hop starts at the first baseSwapped after the blank base is on screen. */
+  /** The first request starts at the first baseSwapped after the blank base is on screen. */
   readonly startOnSwap: boolean
 }
 
-export interface PinRow {
+export interface Interstitial {
   /** Names the outgoing base page the runtime set aside. */
   readonly token: Token
-  /** Gen of the prompt on screen. A layer response landing while `base.gen === pin.gen` is a return. */
+  /** Gen of the prompt on screen. A layer response landing while `base.gen === interstitial.gen` is a return. */
   readonly gen: number
-  /** Base pushes made while pinned, charged to the returning row so Back skips the prompt. */
+  /** Base pushes made while the prompt is up, charged to the returning row so Back skips the prompt. */
   readonly pushes: number
-  readonly ticket: LayerId | null
+  readonly request: LayerId | null
   /** Rows live when the prompt replaced the screen: not rendered, not composed, not disposed. */
   readonly suspended: readonly LayerRow[]
 }
 
 export type InstallSource =
   | { readonly kind: 'blank'; readonly url: string }
-  | { readonly kind: 'pinned'; readonly pin: Token }
+  | { readonly kind: 'held'; readonly token: Token }
   /** The layer's page becomes the base page. */
   | { readonly kind: 'promote'; readonly layer: LayerId }
 
@@ -147,10 +147,10 @@ export interface RouteFacts {
   readonly aimed: boolean
   /** The declared base equals the live base url, without the hash. */
   readonly baseMatches: boolean
-  /** The declared base equals the url of a live row or the answer's own, so fetching it would walk in a circle. */
+  /** The declared base equals the url of a live row or the answer's own, so fetching it would go in a circle. */
   readonly cycles: boolean
-  /** Response component and url equal the address tier's page (top address-owning row, else base). */
-  readonly matchesAddressTier: boolean
+  /** Response component and url equal the page that owns the address (top address-owning row, else base). */
+  readonly matchesAddressOwner: boolean
   readonly hasErrors: boolean
   /** only, except or reset. */
   readonly partial: boolean
@@ -164,7 +164,7 @@ export interface RouteFacts {
  * A committing base page against the one on screen: the `same` component and url, `moved` to another
  * query of the same path, the same component `elsewhere`, or `other`. A blank over a blank is the same.
  */
-export type Against = 'same' | 'moved' | 'elsewhere' | 'other'
+export type BaseChange = 'same' | 'moved' | 'elsewhere' | 'other'
 
 /**
  * The response a base commit lands, if any: a `refresh` answers a partial or a reload, which reads the
@@ -196,28 +196,28 @@ export interface EntryFacts {
   readonly sameSnapshot: ReadonlySet<LayerId>
 }
 
-export type Seed = Omit<LayerRow, 'phase' | 'close' | 'renderKey'>
+export type InitialRow = Omit<LayerRow, 'phase' | 'close' | 'renderKey'>
 
 export type StackEvent =
-  | { type: 'booted'; seeds: readonly Seed[]; blank: boolean; walkTo: string | null }
+  | { type: 'booted'; layers: readonly InitialRow[]; blank: boolean; declaredBase: string | null }
   | { type: 'restoredOnLoad'; entry: EntryFacts }
-  | { type: 'openRequested'; ticket: LayerId; owner: Owner }
+  | { type: 'openRequested'; request: LayerId; owner: Owner }
   /**
-   * The ticket is given up with no visit out: its gate refused the visit, or its handle was closed while
-   * it waited on a prompt. A ticket whose visit is out ends at that visit's finish instead.
+   * The request is given up with no visit out: its gate refused the visit, or its handle was closed while
+   * it waited on a prompt. A request whose visit is out ends at that visit's finish instead.
    */
-  | { type: 'openRefused'; ticket: LayerId }
+  | { type: 'openRefused'; request: LayerId }
   /**
-   * The open named a component to show at once, so its layer goes up before the answer: the ticket's row
+   * The open named a component to show at once, so its layer goes up before the answer: the request's row
    * exists from here, keyed by its own id until the answer names the key.
    */
-  | { type: 'placeholderOpened'; ticket: LayerId; ownsAddress: boolean }
+  | { type: 'placeholderOpened'; request: LayerId; ownsAddress: boolean }
   /** After the local layer's component resolved. */
   | { type: 'localOpened'; id: LayerId; owner: Owner; key: string }
   /** From scope.capture() for a visit the runtime tagged. Counted per id: a 409 re-issue dispatches the same id. */
   | { type: 'visitDispatched'; visit: VisitId; tag: VisitTag }
   | { type: 'visitFinished'; visit: VisitId }
-  | { type: 'walkHopFailed'; visit: VisitId }
+  | { type: 'baseFetchFailed'; visit: VisitId }
   | {
       type: 'responseArrived'
       visit: VisitId
@@ -232,7 +232,7 @@ export type StackEvent =
       type: 'baseCommitting'
       visit: VisitId | null
       mode: 'push' | 'replace'
-      against: Against
+      change: BaseChange
       answer: Answer
       interstitial: boolean
       initial: boolean
@@ -254,8 +254,8 @@ export type StackEvent =
   | { type: 'exited'; id: LayerId }
 
 export type VisitTag =
-  | { readonly kind: 'open'; readonly ticket: LayerId }
-  | { readonly kind: 'walk' }
+  | { readonly kind: 'open'; readonly request: LayerId }
+  | { readonly kind: 'fetchBase' }
   | { readonly kind: 'refresh'; readonly close: CloseId }
   | { readonly kind: 'recover' }
 
@@ -268,15 +268,15 @@ export type StackEffect =
    */
   | { type: 'writeEntry'; mode: 'push' | 'replace'; charged?: LayerId }
   | { type: 'historyGo'; delta: number; token: Token }
-  /** A visit the stack starts itself: through the base router (walk, recover) or a tier's router reload (refresh). */
+  /** A visit the stack starts itself: through the base router (fetchBase, recover) or a reload on the router of the page or layer beneath (refresh). */
   | { type: 'startVisit'; tag: VisitTag; via: Owner; url: string | null }
   /** currentPage.set(page from source, { replace: mode === 'replace', visitId: String(token) }). */
   | { type: 'installBase'; token: Token; source: InstallSource; mode: 'push' | 'replace' }
-  /** The blank base takes the url the walk fetches next, so the loading resolver is asked about that page. */
-  | { type: 'retargetBlank'; url: string }
+  /** The blank base takes the url fetched next, so the loading resolver is asked about that page. */
+  | { type: 'setBlankUrl'; url: string }
   /** Keep the outgoing base page under `token`. Runs inside baseCommitting, before the write. */
-  | { type: 'capturePin'; token: Token }
-  | { type: 'releasePin'; token: Token }
+  | { type: 'holdBase'; token: Token }
+  | { type: 'releaseBase'; token: Token }
   /** instance.dispose(): scope.disposed is true at once, its view leaves at the next paint. */
   | { type: 'dispose'; ids: readonly LayerId[]; reason: 'closed' | 'navigated' | 'restored-away' }
   /** Recreate rows from the entry the runtime is holding, with no request. */
@@ -284,8 +284,8 @@ export type StackEffect =
   /** instance.page.setQuietly(the entry's layer page). */
   | { type: 'rewind'; ids: readonly LayerId[] }
   | { type: 'settle'; waiters: readonly WaiterId[]; result: 'closed' | 'abandoned' }
-  /** The handle of a ticket that never landed fires onClose. */
-  | { type: 'refuse'; ticket: LayerId }
+  /** The handle of a request that never landed fires onClose. */
+  | { type: 'refuse'; request: LayerId }
   | { type: 'cancelAll' }
   | { type: 'warn'; message: string }
 
@@ -305,14 +305,14 @@ export type Landing =
   | { kind: 'handback'; id: LayerId }
   /** Server close: no set, the response succeeds against the page beneath. */
   | { kind: 'close'; id: LayerId; beneath: Owner }
-  /** A blank base plus a standalone layer, then the walk. */
+  /** A blank base plus a standalone layer, then the fetch of its declared base. */
   | { kind: 'cold'; id: LayerId }
-  /** The pinned base comes back with the layer on it. */
+  /** The base set aside for the prompt comes back with the layer on it. */
   | { kind: 'return'; id: LayerId }
-  /** A walk hop's answer becomes the base, `layer` mark stripped. */
-  | { kind: 'walk-base' }
-  /** A walk hop's answer is itself a layer with a base: it goes beneath, and the walk goes on. */
-  | { kind: 'walk-beneath'; id: LayerId }
+  /** The fetched page becomes the base, `layer` mark stripped. */
+  | { kind: 'fetched-base' }
+  /** The fetched page is itself a layer with a base: it goes beneath, and its base is fetched next. */
+  | { kind: 'fetched-beneath'; id: LayerId }
 
 export type CommitDecision = { kind: 'skip' } | { kind: 'write'; mode: 'push' | 'replace' } | { kind: 'none' }
 
@@ -342,12 +342,12 @@ export const initialState: StackState = {
   nextToken: 1,
   base: { blank: false, gen: 0 },
   rows: [],
-  ghosts: [],
+  dismissed: [],
   closes: new Map(),
-  tickets: new Map(),
+  openRequests: new Map(),
   ops: new Map(),
-  walk: null,
-  pin: null,
+  baseFetch: null,
+  interstitial: null,
   expect: null,
   paint: { gated: false, owed: false },
 }
@@ -356,12 +356,12 @@ export const initialState: StackState = {
 export function idle(s: StackState): boolean {
   return (
     s.rows.length === 0 &&
-    s.ghosts.length === 0 &&
+    s.dismissed.length === 0 &&
     s.closes.size === 0 &&
-    s.tickets.size === 0 &&
+    s.openRequests.size === 0 &&
     s.ops.size === 0 &&
-    s.walk === null &&
-    s.pin === null &&
+    s.baseFetch === null &&
+    s.interstitial === null &&
     s.expect === null &&
     !s.base.blank
   )

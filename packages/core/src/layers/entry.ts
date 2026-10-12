@@ -4,7 +4,7 @@
 // stored as the base page, and a blank base with no layers is stored as the placeholder itself.
 
 import type { Page } from '../types'
-import type { LayerId, Seed } from './state'
+import type { LayerId, InitialRow } from './state'
 import type { LayerInfo } from './types'
 
 export type LayerEntry = Omit<Page, 'flash'> & {
@@ -88,8 +88,8 @@ export function layerPage(layer: LayerEntry): Page {
 // derive the same plan, ids included, from the same response.
 // ---------------------------------------------------------------------------------------------------
 
-export interface BootSeed {
-  readonly row: Seed
+export interface InitialLayer {
+  readonly row: InitialRow
   /** The layer's page: the response without its `layer` mark, plus the client's hash. */
   readonly page: Page
 }
@@ -97,12 +97,12 @@ export interface BootSeed {
 export interface BootPlan {
   /** What the app and router.init receive as the initial page. The response itself when it is no layer. */
   readonly base: Page
-  readonly seeds: readonly BootSeed[]
-  /** The declared base the walk fetches first, once the blank base is on screen. */
-  readonly walkTo: string | null
-  /** The page head and title come from: the top seed's, else the base. */
+  readonly layers: readonly InitialLayer[]
+  /** The declared base fetched first, once the blank base is on screen. */
+  readonly declaredBase: string | null
+  /** The page head and title come from: the top layer's, else the base. */
   readonly top: Page
-  /** The seeds as the loading resolver sees them. */
+  /** The layers as the loading resolver sees them. */
   readonly info: readonly LayerInfo[]
 }
 
@@ -112,16 +112,16 @@ export function planBoot(response: Page, hash: string): BootPlan {
   const { layer: mark, ...page } = response as Marked
 
   if (!mark) {
-    return { base: response, seeds: [], walkTo: null, top: response, info: [] }
+    return { base: response, layers: [], declaredBase: null, top: response, info: [] }
   }
 
   // A layer with no base, or one that names itself as its base, has nothing beneath it to fetch.
   if (!mark.base || samePathAndQuery(mark.base, response.url)) {
-    return { base: page, seeds: [], walkTo: null, top: page, info: [] }
+    return { base: page, layers: [], declaredBase: null, top: page, info: [] }
   }
 
   const base = blankPage(mark.base, response)
-  const seed: BootSeed = {
+  const layer: InitialLayer = {
     row: {
       id: bootId(response.url),
       type: 'routed',
@@ -131,7 +131,7 @@ export function planBoot(response: Page, hash: string): BootPlan {
       ownsAddress: true,
       entries: 0,
     },
-    // A document may name no flash or rescued props: the seed gets what 3.x gives its initial page.
+    // A document may name no flash or rescued props: the layer gets what 3.x gives its initial page.
     page: {
       ...page,
       flash: page.flash ?? {},
@@ -140,14 +140,14 @@ export function planBoot(response: Page, hash: string): BootPlan {
     },
   }
   const info: LayerInfo = {
-    id: seed.row.id,
-    key: seed.row.key,
-    component: seed.page.component,
-    url: seed.page.url,
+    id: layer.row.id,
+    key: layer.row.key,
+    component: layer.page.component,
+    url: layer.page.url,
     type: 'routed',
   }
 
-  return { base, seeds: [seed], walkTo: mark.base, top: seed.page, info: [info] }
+  return { base, layers: [layer], declaredBase: mark.base, top: layer.page, info: [info] }
 }
 
 /** The origin is left out: the server knows none, and it must plan what the client plans. */
@@ -161,7 +161,7 @@ function samePathAndQuery(a: string, b: string): boolean {
   return at(a) === at(b)
 }
 
-/** The placeholder a cold layer stands on until the walk lands its base. It carries the layer's version. */
+/** The placeholder a cold layer stands on until its base is fetched. It carries the layer's version. */
 export function blankPage(url: string, from: Pick<Page, 'version' | 'encryptHistory'>): Page {
   return {
     component: '',

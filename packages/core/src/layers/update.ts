@@ -30,17 +30,17 @@ export function run(s: StackState, body: (s: StackState, fx: Fx) => StackState, 
   return { state, effects: fx, outcome }
 }
 
-/** Drop every row, ghost, close and the pin: the base page they stood on is gone. */
+/** Drop every row, dismissed layer, close and the interstitial: the base page they stood on is gone. */
 export function clearStack(s: StackState, fx: Fx, reason: 'navigated' | 'restored-away'): StackState {
-  const ids = [...s.rows.map((r) => r.id), ...s.ghosts]
+  const ids = [...s.rows.map((r) => r.id), ...s.dismissed]
 
   if (ids.length > 0) {
     fx.push({ type: 'dispose', ids, reason })
   }
 
-  const t = clearPin(settleAll(s, fx, 'closed'), fx, reason)
+  const t = clearInterstitial(settleAll(s, fx, 'closed'), fx, reason)
 
-  return { ...t, rows: [], ghosts: [], closes: new Map(), expect: null, walk: null }
+  return { ...t, rows: [], dismissed: [], closes: new Map(), expect: null, baseFetch: null }
 }
 
 export function settleAll(s: StackState, fx: Fx, result: 'closed' | 'abandoned'): StackState {
@@ -53,26 +53,26 @@ export function settleAll(s: StackState, fx: Fx, result: 'closed' | 'abandoned')
   return { ...s, closes: new Map() }
 }
 
-/** The pin dies on any popstate and any navigation: its rows go, its ticket is refused. */
-export function clearPin(s: StackState, fx: Fx, reason: 'navigated' | 'restored-away'): StackState {
-  const pin = s.pin
+/** The interstitial ends on any popstate and any navigation: its suspended rows go, its open request is refused. */
+export function clearInterstitial(s: StackState, fx: Fx, reason: 'navigated' | 'restored-away'): StackState {
+  const interstitial = s.interstitial
 
-  if (!pin) {
+  if (!interstitial) {
     return s
   }
 
-  if (pin.suspended.length > 0) {
-    fx.push({ type: 'dispose', ids: pin.suspended.map((r) => r.id), reason })
+  if (interstitial.suspended.length > 0) {
+    fx.push({ type: 'dispose', ids: interstitial.suspended.map((r) => r.id), reason })
   }
 
-  let t: StackState = { ...s, pin: null }
+  let t: StackState = { ...s, interstitial: null }
 
-  if (pin.ticket && t.tickets.has(pin.ticket)) {
-    fx.push({ type: 'refuse', ticket: pin.ticket })
-    t = { ...t, tickets: without(t.tickets, pin.ticket) }
+  if (interstitial.request && t.openRequests.has(interstitial.request)) {
+    fx.push({ type: 'refuse', request: interstitial.request })
+    t = { ...t, openRequests: without(t.openRequests, interstitial.request) }
   }
 
-  fx.push({ type: 'releasePin', token: pin.token })
+  fx.push({ type: 'releaseBase', token: interstitial.token })
 
   return t
 }
@@ -110,7 +110,7 @@ export function openingRow(id: LayerId, key: string, owner: Owner, overrides: Pa
   }
 }
 
-/** The nearest routed tier below `id`, else the base. */
+/** The nearest routed layer below `id`, else the base. */
 export function beneath(rows: readonly LayerRow[], id: LayerId): Owner {
   const index = rows.findIndex((row) => row.id === id)
 
@@ -134,7 +134,7 @@ export function paint(s: StackState, fx: Fx): StackState {
   return s
 }
 
-export function mint(s: StackState): [Token, StackState] {
+export function issueToken(s: StackState): [Token, StackState] {
   return [s.nextToken as Token, { ...s, nextToken: s.nextToken + 1 }]
 }
 

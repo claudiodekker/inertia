@@ -155,12 +155,12 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   // server and the hydrating client render the same tree.
   const boot = async (response: Page) => {
     const plan = layerSlot.planBoot(response, isServer ? '' : window.location.hash)
-    const [initialComponent, ...seedComponents] = await Promise.all([
+    const [initialComponent, ...layerComponents] = await Promise.all([
       resolveComponent(plan.base.component, plan.base, plan.info),
-      ...plan.seeds.map((seed) => resolvePage(seed.page.component, seed.page)),
+      ...plan.layers.map((layer) => resolvePage(layer.page.component, layer.page)),
     ])
 
-    return { plan, initialComponent, seedComponents }
+    return { plan, initialComponent, layerComponents }
   }
 
   // SSR render function factory - when on server without page/render, return a render function
@@ -169,12 +169,12 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     return async (page: Page<SharedProps>, renderToString: RenderToString) => {
       let head: string[] = []
 
-      const { plan, initialComponent, seedComponents } = await boot(page)
+      const { plan, initialComponent, layerComponents } = await boot(page)
 
       const props: InertiaAppProps<SharedProps> = {
         initialPage: plan.base as Page<SharedProps>,
         initialComponent,
-        initialLayers: layerSlot.ssrViews(plan, seedComponents),
+        initialLayers: layerSlot.ssrViews(plan, layerComponents),
         resolveComponent,
         titleCallback: title,
         onHeadUpdate: (elements: string[]) => (head = elements),
@@ -214,17 +214,17 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   let head: string[] = []
 
   const vueApp = await Promise.all([boot(initialPage), router.decryptHistory().catch(() => {})]).then(([booted]) => {
-    const { plan, initialComponent, seedComponents } = booted
+    const { plan, initialComponent, layerComponents } = booted
     const el = isServer ? null : document.getElementById(id)!
 
     if (!isServer) {
-      layerSlot.boot(plan, seedComponents)
+      layerSlot.boot(plan, layerComponents)
     }
 
     const props: InertiaAppProps<SharedProps> = {
       initialPage: plan.base as Page<SharedProps>,
       initialComponent,
-      initialLayers: isServer ? layerSlot.ssrViews(plan, seedComponents) : undefined,
+      initialLayers: isServer ? layerSlot.ssrViews(plan, layerComponents) : undefined,
       resolveComponent,
       titleCallback: title,
       onHeadUpdate: isServer ? (elements: string[]) => (head = elements) : undefined,

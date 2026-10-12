@@ -7,49 +7,49 @@ const walk = (overrides: Partial<StackState> = {}) =>
   state({
     rows: [row('a', { standalone: true })],
     base: { blank: true, gen: 0 },
-    walk: { target: '/base', visit: visit('w'), startOnSwap: false },
-    ops: new Map([[visit('w'), { kind: 'walk', inFlight: 1, landed: false }]]),
+    baseFetch: { url: '/base', visit: visit('w'), startOnSwap: false },
+    ops: new Map([[visit('w'), { kind: 'fetchBase', inFlight: 1, landed: false }]]),
     ...overrides,
   })
 
 const ticketed = (overrides: Partial<StackState> = {}) =>
   state({
-    tickets: new Map([[id('t'), { id: id('t'), owner: 'base', state: 'dispatched' }]]),
-    ops: new Map([[visit('v'), { kind: 'open', ticket: id('t'), inFlight: 1 }]]),
+    openRequests: new Map([[id('t'), { id: id('t'), owner: 'base', state: 'dispatched' }]]),
+    ops: new Map([[visit('v'), { kind: 'open', request: id('t'), inFlight: 1 }]]),
     ...overrides,
   })
 
 const pinned = state({
   base: { blank: false, gen: 2 },
-  pin: { token: tok(1), gen: 2, pushes: 1, ticket: null, suspended: [row('a')] },
+  interstitial: { token: tok(1), gen: 2, pushes: 1, request: null, suspended: [row('a')] },
 })
 
 const layer = (key: string, base: string | null = '/base') => ({ key, base })
 
 const cases: [string, StackState, Arrival, Landing][] = [
   ['an idle base answer with no marks passes', state(), {}, { kind: 'pass' }],
-  ['a walk hop for the current walk lands as the base', walk(), { visit: 'w' }, { kind: 'walk-base' }],
+  ['a walk hop for the current walk lands as the base', walk(), { visit: 'w' }, { kind: 'fetched-base' }],
   [
     'a walk hop with its own base goes beneath',
     walk(),
     { visit: 'w', layer: layer('inner', '/deeper') },
-    { kind: 'walk-beneath', id: id('new') },
+    { kind: 'fetched-beneath', id: id('new') },
   ],
   [
     'a walk hop that would make the stack ten deep lands as the base',
     walk({ rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) => row(`r${depth}`, { standalone: true })) }),
     { visit: 'w', layer: layer('deep', '/deeper') },
-    { kind: 'walk-base' },
+    { kind: 'fetched-base' },
   ],
   [
     'a walk hop whose base cycles lands as the base',
     walk(),
     { visit: 'w', layer: layer('loop', '/loop'), facts: { cycles: true } },
-    { kind: 'walk-base' },
+    { kind: 'fetched-base' },
   ],
   [
     'a walk hop of a superseded walk drops',
-    walk({ walk: { target: '/base', visit: visit('w2'), startOnSwap: false } }),
+    walk({ baseFetch: { url: '/base', visit: visit('w2'), startOnSwap: false } }),
     { visit: 'w' },
     { kind: 'drop' },
   ],
@@ -181,19 +181,19 @@ const cases: [string, StackState, Arrival, Landing][] = [
     { kind: 'promote' },
   ],
   [
-    'a ticket’s answer opens with the ticket id and owner',
+    'a request’s answer opens with the request id and owner',
     ticketed(),
     { layer: layer('k') },
     { kind: 'open', id: id('t'), owner: 'base' },
   ],
   [
-    'a ticket whose owner left opens over the base',
-    ticketed({ tickets: new Map([[id('t'), { id: id('t'), owner: id('gone'), state: 'dispatched' }]]) }),
+    'a request whose owner left opens over the base',
+    ticketed({ openRequests: new Map([[id('t'), { id: id('t'), owner: id('gone'), state: 'dispatched' }]]) }),
     { layer: layer('k') },
     { kind: 'open', id: id('t'), owner: 'base' },
   ],
   [
-    'a ticket’s answer that cannot compose lands cold with the ticket id',
+    'a request’s answer that cannot compose lands cold with the request id',
     ticketed({ base: { blank: false, gen: 1 } }),
     { origin: baseOrigin({ gen: 0, instantGen: 1 }), layer: layer('k') },
     { kind: 'cold', id: id('t') },
@@ -237,13 +237,13 @@ const cases: [string, StackState, Arrival, Landing][] = [
   [
     'a plain answer with errors for an addressless layer hands back',
     state({ rows: [row('a', { ownsAddress: false })] }),
-    { origin: layerOrigin('a'), facts: { matchesAddressTier: true, hasErrors: true } },
+    { origin: layerOrigin('a'), facts: { matchesAddressOwner: true, hasErrors: true } },
     { kind: 'handback', id: id('a') },
   ],
   [
     "the layer beneath's own page answering a local layer with errors hands back, rewriting nothing",
     state({ rows: [row('a', { key: 'k' }), row('l', { type: 'local', ownsAddress: false })] }),
-    { origin: layerOrigin('l'), layer: layer('k'), facts: { matchesAddressTier: true, hasErrors: true } },
+    { origin: layerOrigin('l'), layer: layer('k'), facts: { matchesAddressOwner: true, hasErrors: true } },
     { kind: 'handback', id: id('l') },
   ],
   [

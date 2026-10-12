@@ -21,7 +21,7 @@ export function madeInLayer(visit: Pick<PendingVisit, 'url'>, id: string): void 
 /**
  * True when `visit` reloads some of `keys` for the <Deferred> inside `layer` (null: on the page). The
  * page's reload goes to its own url, which is not the address while a layer owns it, and a layer and
- * the page can sit on one path, so the visit has to be the tier's own as well.
+ * the page can sit on one path, so the visit has to be made there as well.
  */
 export function fillsDeferred(visit: Reload, layer: LayerInfo | null, keys: string[]): boolean {
   if (visit.preserveState !== true || (madeIn.get(visit.url) ?? null) !== (layer?.id ?? null)) {

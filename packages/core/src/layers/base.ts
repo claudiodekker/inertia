@@ -7,7 +7,7 @@ import { page as currentPage } from '../page'
 import type { Page, PendingVisit, VisitOptions } from '../types'
 import { hrefToUrl } from '../url'
 import { blankPage, type BootPlan } from './entry'
-import { against, isInterstitial, rereads } from './facts'
+import { baseChange, isInterstitial, isRefresh } from './facts'
 import { reduce } from './reduce'
 import { baseScope } from './scope'
 import type { Stack } from './stack'
@@ -16,8 +16,8 @@ import { idle, type Answer, type Origin, type StackEffect, type StackEvent, type
 const isServer = typeof window === 'undefined'
 
 export class Base {
-  /** The base page each interstitial pin set aside. */
-  protected pinned = new Map<Token, Page>()
+  /** The base page set aside while an interstitial prompt is on screen, by token. */
+  protected held = new Map<Token, Page>()
   /** The next base commit is the document load's restore of a history entry, so it keeps the stack. */
   protected restoredLoad = false
   /** What each response still landing answers, by visit: its base commit reads this. */
@@ -46,12 +46,12 @@ export class Base {
 
   /** 3.x lands this response on its own. A layer that opens before it commits still has to read a refresh as one. */
   public passes(visit: PendingVisit): void {
-    this.passedRefresh = rereads(visit, currentPage.get()) ? visit.id : null
+    this.passedRefresh = isRefresh(visit, currentPage.get()) ? visit.id : null
   }
 
   /** `own` is the page of the scope the visit was made in. */
   public answering(visit: PendingVisit, own: Page): void {
-    this.answers.set(visit.id, rereads(visit, own) ? 'refresh' : 'navigation')
+    this.answers.set(visit.id, isRefresh(visit, own) ? 'refresh' : 'navigation')
   }
 
   public answered(visit: PendingVisit): void {
@@ -88,7 +88,7 @@ export class Base {
       mode: replace ? 'replace' : 'push',
       interstitial: isInterstitial(page),
       initial,
-      against: against(currentPage.get(), page),
+      change: baseChange(currentPage.get(), page),
       answer: this.answerOf(visitId),
     }
   }
@@ -150,15 +150,15 @@ export class Base {
   }
 
   protected pageFrom(source: Extract<StackEffect, { type: 'installBase' }>['source']): Page {
-    if (source.kind === 'pinned') {
-      return { ...this.pinned.get(source.pin)!, flash: {} }
+    if (source.kind === 'held') {
+      return { ...this.held.get(source.token)!, flash: {} }
     }
 
     if (source.kind === 'promote') {
       return this.stack.instance(source.layer).page.get()
     }
 
-    // A blank carries the version its layer arrived on: the walk's first hop sends it.
+    // A blank carries the version its layer arrived on: the first base fetch sends it.
     const { expect } = this.stack.state
     const waiting = expect?.kind === 'base' ? this.stack.instance(expect.layer) : null
 
@@ -166,21 +166,21 @@ export class Base {
   }
 
   /** Inside baseCommitting, before the write: still the outgoing base. */
-  public pin(token: Token): void {
-    this.pinned.set(token, currentPage.get())
+  public hold(token: Token): void {
+    this.held.set(token, currentPage.get())
   }
 
-  public unpin(token: Token): void {
-    this.pinned.delete(token)
+  public release(token: Token): void {
+    this.held.delete(token)
   }
 
-  /** A walk hop or a recovery: a background base visit replacing the blank. A failed hop shows no overlay. */
-  public fetch(tag: { kind: 'walk' | 'recover' }, url: string): void {
+  /** A background base visit replacing the blank. A failed fetch shows no overlay. */
+  public fetch(tag: { kind: 'fetchBase' | 'recover' }, url: string): void {
     let id: VisitId | null = null
     const failed =
-      tag.kind === 'walk'
+      tag.kind === 'fetchBase'
         ? () => {
-            this.stack.dispatch({ type: 'walkHopFailed', visit: id! })
+            this.stack.dispatch({ type: 'baseFetchFailed', visit: id! })
 
             return false
           }
@@ -197,8 +197,8 @@ export class Base {
     id = this.stack.visits.follow(tag, options, (followed) => baseScope.router.visit(url, followed))
   }
 
-  /** The blank takes the url the walk fetches next, and 3.x resolves it again: the loading resolver sees that url. */
-  public retargetBlank(url: string): void {
+  /** The blank takes the url fetched next, and 3.x resolves it again: the loading resolver sees that url. */
+  public setBlankUrl(url: string): void {
     void currentPage.set({ ...currentPage.get(), url }, { replace: true, preserveScroll: true, preserveState: true })
   }
 
@@ -207,7 +207,7 @@ export class Base {
    * after the initial navigate event. A load that restores a history entry announces none.
    */
   public announceFlash(plan: BootPlan): void {
-    const flashes = plan.seeds.map((seed) => seed.page.flash).filter((flash) => Object.keys(flash).length > 0)
+    const flashes = plan.layers.map((layer) => layer.page.flash).filter((flash) => Object.keys(flash).length > 0)
 
     if (flashes.length === 0) {
       return

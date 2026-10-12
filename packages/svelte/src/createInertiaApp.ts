@@ -136,24 +136,24 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   // server and the hydrating client render the same tree.
   const boot = async (response: Page) => {
     const plan = layerSlot.planBoot(response, isServer ? '' : window.location.hash)
-    const [initialComponent, ...seedComponents] = await Promise.all([
+    const [initialComponent, ...layerComponents] = await Promise.all([
       resolveComponent(plan.base.component, plan.base, plan.info),
-      ...plan.seeds.map((seed) => resolvePage(seed.page.component, seed.page)),
+      ...plan.layers.map((layer) => resolvePage(layer.page.component, layer.page)),
     ])
 
-    return { plan, initialComponent, seedComponents }
+    return { plan, initialComponent, layerComponents }
   }
 
   // SSR render function factory - when on server without page, return a render function
   // This is used by the Vite plugin's SSR transform
   if (isServer && !page) {
     return async (page: Page<SharedProps>, render: SvelteServerRender) => {
-      const { plan, initialComponent, seedComponents } = await boot(page)
+      const { plan, initialComponent, layerComponents } = await boot(page)
 
       const props: InertiaAppProps<SharedProps> = {
         initialPage: plan.base as Page<SharedProps>,
         initialComponent,
-        initialLayers: layerSlot.ssrViews(plan, seedComponents),
+        initialLayers: layerSlot.ssrViews(plan, layerComponents),
         resolveComponent,
         defaultLayout: layout,
         serverRendered: true,
@@ -189,7 +189,7 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
 
   const initialPage = page || getInitialPageFromDOM<Page<SharedProps>>(id)!
 
-  const [{ plan, initialComponent, seedComponents }] = await Promise.all([
+  const [{ plan, initialComponent, layerComponents }] = await Promise.all([
     boot(initialPage),
     router.decryptHistory().catch(() => {}),
   ])
@@ -207,13 +207,13 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
   const el = isServer ? null : document.getElementById(id)!
 
   if (!isServer) {
-    layerSlot.boot(plan, seedComponents)
+    layerSlot.boot(plan, layerComponents)
   }
 
   const props: InertiaAppProps<SharedProps> = {
     initialPage: plan.base as Page<SharedProps>,
     initialComponent,
-    initialLayers: isServer ? layerSlot.ssrViews(plan, seedComponents) : undefined,
+    initialLayers: isServer ? layerSlot.ssrViews(plan, layerComponents) : undefined,
     resolveComponent,
     defaultLayout: layout,
     serverRendered: isServer || el!.hasAttribute('data-server-rendered'),

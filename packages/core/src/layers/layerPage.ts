@@ -6,7 +6,7 @@ import { stripMark } from './facts'
 import type { LayerInstance } from './instance'
 
 /** A 3.x CurrentPage that overrides only the hooks whose 3.x body touches the browser, the global page or the global history. */
-export type LayerPage = CurrentPage & { seed(page: Page): void }
+export type LayerPage = CurrentPage & { setWithoutSwap(page: Page): void }
 
 const unopenedUrl = new URL('about:blank')
 
@@ -43,7 +43,7 @@ function defineLayerPage() {
       return this
     }
 
-    public seed(page: Page): void {
+    public setWithoutSwap(page: Page): void {
       this.page = withRecords(page)
     }
 

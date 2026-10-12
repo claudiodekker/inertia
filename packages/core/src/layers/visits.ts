@@ -1,4 +1,4 @@
-// Visits the stack follows: opens, walk hops, recoveries and refreshes. A followed visit carries a tag
+// Visits the stack follows: open requests, base fetches, recoveries and refreshes. A followed visit carries a tag
 // from its onBefore until its scope captures it at dispatch, which is what tells the reducer it left.
 
 import type { PendingVisit } from '../types'

@@ -475,7 +475,7 @@ describe('resolveInitialPage', () => {
     const response = asPage(users)
 
     expect(planBoot(response, '').base).toBe(response)
-    expect(planBoot(response, '').seeds).toEqual([])
+    expect(planBoot(response, '').layers).toEqual([])
 
     const app = await ported(users, {}, { boot: true })
 

@@ -34,7 +34,7 @@ const kinds: [StackEvent['type'], number][] = [
   ['localOpened', 2],
   ['visitDispatched', 6],
   ['visitFinished', 5],
-  ['walkHopFailed', 1],
+  ['baseFetchFailed', 1],
   ['restoredOnLoad', 1],
   ['anchored', 2],
   ['writeRefused', 1],
@@ -49,10 +49,14 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
   const bit = (i: number) => ((f >> i) & 1) === 1
   const fresh = (prefix: string) => `${prefix}${n}`
   const rowIds = s.rows.map((r) => r.id)
-  const anyId = [...rowIds, ...s.ghosts, id('gone')]
-  const visits: VisitId[] = [...s.ops.keys(), ...(s.walk?.visit ? [s.walk.visit] : [])]
+  const anyId = [...rowIds, ...s.dismissed, id('gone')]
+  const visits: VisitId[] = [...s.ops.keys(), ...(s.baseFetch?.visit ? [s.baseFetch.visit] : [])]
   const someVisit = () =>
-    s.walk?.visit && bit(26) ? s.walk.visit : visits.length > 0 && a % 4 !== 0 ? pick(visits, a)! : visit(fresh('v'))
+    s.baseFetch?.visit && bit(26)
+      ? s.baseFetch.visit
+      : visits.length > 0 && a % 4 !== 0
+        ? pick(visits, a)!
+        : visit(fresh('v'))
   const owner = () => (bit(0) ? 'base' : (pick(rowIds, b) ?? 'base'))
 
   switch (wheel[k % wheel.length]) {
@@ -79,7 +83,7 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
           aimed: bit(9),
           baseMatches: bit(10),
           cycles: bit(11) && bit(12),
-          matchesAddressTier: bit(13),
+          matchesAddressOwner: bit(13),
           hasErrors: bit(14),
           partial: bit(15) && bit(16),
           async: bit(17) && bit(25),
@@ -106,7 +110,7 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
                 ? null
                 : visit(fresh('v')),
         mode: bit(0) ? 'push' : 'replace',
-        against: (['same', 'moved', 'elsewhere', 'other'] as const)[b % 4],
+        change: (['same', 'moved', 'elsewhere', 'other'] as const)[b % 4],
         answer: ([null, 'refresh', 'navigation'] as const)[b % 3],
         interstitial: b % 5 === 0,
         initial: b % 17 === 0,
@@ -147,18 +151,18 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
       const exiting = [...s.closes.values()]
         .filter((close) => close.phase.kind === 'exiting')
         .flatMap((close) => close.layers.filter((layer) => !close.exited.includes(layer)))
-      const candidates = [...exiting, ...s.ghosts]
+      const candidates = [...exiting, ...s.dismissed]
 
       return { type: 'exited', id: candidates.length > 0 && a % 5 !== 0 ? pick(candidates, b)! : pick(anyId, b)! }
     }
     case 'openRequested':
-      return { type: 'openRequested', ticket: id(fresh('t')), owner: owner() }
+      return { type: 'openRequested', request: id(fresh('t')), owner: owner() }
     case 'openRefused':
-      return { type: 'openRefused', ticket: pick([...s.tickets.keys()], a) ?? id(fresh('t')) }
+      return { type: 'openRefused', request: pick([...s.openRequests.keys()], a) ?? id(fresh('t')) }
     case 'placeholderOpened':
       return {
         type: 'placeholderOpened',
-        ticket: pick([...s.tickets.keys()], a) ?? id(fresh('t')),
+        request: pick([...s.openRequests.keys()], a) ?? id(fresh('t')),
         ownsAddress: bit(0),
       }
     case 'localOpened':
@@ -169,12 +173,12 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
         .map((close) => close.id)
       const tag = (
         [
-          { kind: 'open', ticket: pick([...s.tickets.keys()], b) ?? id(fresh('t')) },
-          { kind: 'walk' },
+          { kind: 'open', request: pick([...s.openRequests.keys()], b) ?? id(fresh('t')) },
+          { kind: 'fetchBase' },
           { kind: 'refresh', close: pick(refreshing, b) ?? cid(fresh('c')) },
           { kind: 'recover' },
         ] as const
-      )[s.walk && s.walk.visit === null && bit(1) ? 1 : a % 4]
+      )[s.baseFetch && s.baseFetch.visit === null && bit(1) ? 1 : a % 4]
 
       return { type: 'visitDispatched', visit: bit(0) ? someVisit() : visit(fresh('v')), tag }
     }
@@ -184,8 +188,8 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
       return { type: 'anchored' }
     case 'writeRefused':
       return { type: 'writeRefused', id: pick(anyId, a)! }
-    case 'walkHopFailed':
-      return { type: 'walkHopFailed', visit: s.walk?.visit && bit(0) ? s.walk.visit : visit(fresh('v')) }
+    case 'baseFetchFailed':
+      return { type: 'baseFetchFailed', visit: s.baseFetch?.visit && bit(0) ? s.baseFetch.visit : visit(fresh('v')) }
     default:
       return { type: 'baseSwapped' }
   }
@@ -216,7 +220,7 @@ function entryFor(s: StackState, a: number, b: number, c: number, f: number, n: 
     () => [...live, extra(1), ...(c % 2 ? [extra(2)] : [])],
     () => live.map((layer, i) => (i === live.length - 1 ? { ...layer, key: 'changed' } : layer)),
     () => [],
-    () => [...live.slice(0, -1), ...s.ghosts.map((ghost) => ({ ...extra(0), id: ghost }))],
+    () => [...live.slice(0, -1), ...s.dismissed.map((ghost) => ({ ...extra(0), id: ghost }))],
   ][a % 5]()
 
   return {
@@ -230,11 +234,11 @@ function entryFor(s: StackState, a: number, b: number, c: number, f: number, n: 
 
 const booted: StackEvent = {
   type: 'booted',
-  seeds: [
-    { id: id('seed'), type: 'routed', key: 'k1', owner: 'base', standalone: true, ownsAddress: true, entries: 0 },
+  layers: [
+    { id: id('layer'), type: 'routed', key: 'k1', owner: 'base', standalone: true, ownsAddress: true, entries: 0 },
   ],
   blank: true,
-  walkTo: '/base',
+  declaredBase: '/base',
 }
 
 const counts = {
@@ -243,13 +247,13 @@ const counts = {
   effects: {} as Record<string, number>,
   stepsWith: {
     rows: 0,
-    ghosts: 0,
+    dismissed: 0,
     closes: 0,
-    walk: 0,
-    pin: 0,
+    baseFetch: 0,
+    interstitial: 0,
     unwind: 0,
     baseInstall: 0,
-    tickets: 0,
+    openRequests: 0,
     blank: 0,
   } as Record<string, number>,
   closePhases: {} as Record<string, number>,
@@ -262,7 +266,7 @@ function violations(s: StackState, step: Step, event: StackEvent): string[] {
   const out: string[] = []
   const rowIds = s.rows.map((r) => r.id)
 
-  if (s.walk !== null && !s.base.blank) {
+  if (s.baseFetch !== null && !s.base.blank) {
     out.push('walk !== null but base is not blank')
   }
 
@@ -321,13 +325,13 @@ function violations(s: StackState, step: Step, event: StackEvent): string[] {
     out.push(`a drop landing emitted ${JSON.stringify(step.effects)}`)
   }
 
-  const ids = [...rowIds, ...s.ghosts, ...(s.pin?.suspended.map((r) => r.id) ?? [])]
+  const ids = [...rowIds, ...s.dismissed, ...(s.interstitial?.suspended.map((r) => r.id) ?? [])]
 
   if (new Set(ids).size !== ids.length) {
     out.push(`row ids are not unique: ${ids.join(',')}`)
   }
 
-  for (const rows of [s.rows, s.pin?.suspended ?? []]) {
+  for (const rows of [s.rows, s.interstitial?.suspended ?? []]) {
     rows.forEach((r, index) => {
       if (r.owner !== 'base' && !rows.slice(0, index).some((below) => below.id === r.owner)) {
         out.push(`row ${r.id} is owned by ${r.owner}, which is not a row below it`)
@@ -348,13 +352,13 @@ function record(s: StackState, step: Step, event: StackEvent) {
 
   const flags: [string, boolean][] = [
     ['rows', s.rows.length > 0],
-    ['ghosts', s.ghosts.length > 0],
+    ['dismissed', s.dismissed.length > 0],
     ['closes', s.closes.size > 0],
-    ['walk', s.walk !== null],
-    ['pin', s.pin !== null],
+    ['fetchBase', s.baseFetch !== null],
+    ['interstitial', s.interstitial !== null],
     ['unwind', s.expect?.kind === 'unwind'],
     ['baseInstall', s.expect?.kind === 'base'],
-    ['tickets', s.tickets.size > 0],
+    ['openRequests', s.openRequests.size > 0],
     ['blank', s.base.blank],
   ]
 

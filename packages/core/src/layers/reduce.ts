@@ -10,7 +10,7 @@ import { responseArrived } from './route'
 import type { LayerRow, Op, StackEvent, StackState, Step } from './state'
 import {
   assertNever,
-  mint,
+  issueToken,
   only,
   openingRow,
   paint,
@@ -42,8 +42,8 @@ export function reduce(s: StackState, e: StackEvent): Step {
       return visitDispatched(s, e)
     case 'visitFinished':
       return visitFinished(s, e)
-    case 'walkHopFailed':
-      return run(s, (t, fx) => (t.walk?.visit === e.visit ? walkFailed(t, fx) : t))
+    case 'baseFetchFailed':
+      return run(s, (t, fx) => (t.baseFetch?.visit === e.visit ? failBaseFetch(t, fx) : t))
     case 'responseArrived':
       return responseArrived(s, e)
     case 'baseCommitting':
@@ -53,7 +53,7 @@ export function reduce(s: StackState, e: StackEvent): Step {
     case 'layerCommitting':
       return layerCommitting(s, e)
     case 'layerSwapped':
-      return run(s, (t, fx) => (row(t, e.id) || t.ghosts.includes(e.id) ? paint(t, fx) : t))
+      return run(s, (t, fx) => (row(t, e.id) || t.dismissed.includes(e.id) ? paint(t, fx) : t))
     case 'popstate':
       return popstate(s, e)
     case 'anchored':
@@ -83,62 +83,65 @@ export function reduce(s: StackState, e: StackEvent): Step {
 // ---------------------------------------------------------------------------------------------------
 
 function booted(s: StackState, e: E<'booted'>): Step {
-  const rows = e.seeds.map((seed): LayerRow => ({ ...seed, phase: 'open', close: null, renderKey: 0 }))
+  const rows = e.layers.map((layer): LayerRow => ({ ...layer, phase: 'open', close: null, renderKey: 0 }))
 
   return only({
     ...s,
     rows,
     base: { ...s.base, blank: e.blank },
-    walk: e.blank && e.walkTo !== null ? { target: e.walkTo, visit: null, startOnSwap: true } : null,
+    baseFetch: e.blank && e.declaredBase !== null ? { url: e.declaredBase, visit: null, startOnSwap: true } : null,
     paint: { gated: true, owed: rows.length > 0 },
   })
 }
 
 // ---------------------------------------------------------------------------------------------------
-// Tickets and tagged visits
+// Open requests and followed visits
 // ---------------------------------------------------------------------------------------------------
 
 function openRequested(s: StackState, e: E<'openRequested'>): Step {
-  if (s.tickets.has(e.ticket) || row(s, e.ticket)) {
+  if (s.openRequests.has(e.request) || row(s, e.request)) {
     return only(s)
   }
 
-  return only({ ...s, tickets: put(s.tickets, e.ticket, { id: e.ticket, owner: e.owner, state: 'pending' }) })
+  return only({
+    ...s,
+    openRequests: put(s.openRequests, e.request, { id: e.request, owner: e.owner, state: 'pending' }),
+  })
 }
 
 function openRefused(s: StackState, e: E<'openRefused'>): Step {
   return run(s, (t, fx) => {
-    const out = [...t.ops.values()].some((op) => op.kind === 'open' && op.ticket === e.ticket)
+    const out = [...t.ops.values()].some((op) => op.kind === 'open' && op.request === e.request)
 
-    if (!t.tickets.has(e.ticket) || out) {
+    if (!t.openRequests.has(e.request) || out) {
       return t
     }
 
-    fx.push({ type: 'refuse', ticket: e.ticket })
+    fx.push({ type: 'refuse', request: e.request })
 
-    return { ...t, tickets: without(t.tickets, e.ticket) }
+    return { ...t, openRequests: without(t.openRequests, e.request) }
   })
 }
 
 function placeholderOpened(s: StackState, e: E<'placeholderOpened'>): Step {
-  const ticket = s.tickets.get(e.ticket)
+  const request = s.openRequests.get(e.request)
 
-  if (!ticket || row(s, ticket.id)) {
+  if (!request || row(s, request.id)) {
     return only(s)
   }
 
-  const owner = ticket.owner === 'base' || row(s, ticket.owner) ? ticket.owner : 'base'
+  const owner = request.owner === 'base' || row(s, request.owner) ? request.owner : 'base'
 
   return only({
     ...s,
-    tickets: without(s.tickets, ticket.id),
-    rows: [...s.rows, openingRow(ticket.id, ticket.id, owner, { ownsAddress: e.ownsAddress })],
+    openRequests: without(s.openRequests, request.id),
+    rows: [...s.rows, openingRow(request.id, request.id, owner, { ownsAddress: e.ownsAddress })],
   })
 }
 
 function localOpened(s: StackState, e: E<'localOpened'>): Step {
   return run(s, (t) => {
-    if (row(t, e.id) || t.ghosts.includes(e.id)) {
+    if (row(t, e.id) || t.dismissed.includes(e.id)) {
       return t
     }
 
@@ -165,11 +168,11 @@ function visitDispatched(s: StackState, e: E<'visitDispatched'>): Step {
   let t = s
 
   if (!known) {
-    if (tag.kind === 'open' && !s.tickets.has(tag.ticket)) {
+    if (tag.kind === 'open' && !s.openRequests.has(tag.request)) {
       return only(s)
     }
 
-    if (tag.kind === 'walk' && !s.walk) {
+    if (tag.kind === 'fetchBase' && !s.baseFetch) {
       return only(s)
     }
 
@@ -181,9 +184,9 @@ function visitDispatched(s: StackState, e: E<'visitDispatched'>): Step {
   const op: Op = known
     ? { ...known, inFlight: known.inFlight + 1 }
     : tag.kind === 'open'
-      ? { kind: 'open', ticket: tag.ticket, inFlight: 1 }
-      : tag.kind === 'walk'
-        ? { kind: 'walk', inFlight: 1, landed: false }
+      ? { kind: 'open', request: tag.request, inFlight: 1 }
+      : tag.kind === 'fetchBase'
+        ? { kind: 'fetchBase', inFlight: 1, landed: false }
         : tag.kind === 'refresh'
           ? { kind: 'refresh', close: tag.close, inFlight: 1 }
           : { kind: 'recover', inFlight: 1 }
@@ -191,15 +194,15 @@ function visitDispatched(s: StackState, e: E<'visitDispatched'>): Step {
   t = { ...t, ops: put(t.ops, e.visit, op) }
 
   if (op.kind === 'open') {
-    const ticket = t.tickets.get(op.ticket)
+    const request = t.openRequests.get(op.request)
 
-    if (ticket?.state === 'pending') {
-      t = { ...t, tickets: put(t.tickets, ticket.id, { ...ticket, state: 'dispatched' }) }
+    if (request?.state === 'pending') {
+      t = { ...t, openRequests: put(t.openRequests, request.id, { ...request, state: 'dispatched' }) }
     }
   }
 
-  if (op.kind === 'walk' && t.walk) {
-    t = { ...t, walk: { ...t.walk, visit: e.visit } }
+  if (op.kind === 'fetchBase' && t.baseFetch) {
+    t = { ...t, baseFetch: { ...t.baseFetch, visit: e.visit } }
   }
 
   if (op.kind === 'refresh') {
@@ -227,18 +230,18 @@ function visitFinished(s: StackState, e: E<'visitFinished'>): Step {
   return run({ ...s, ops: without(s.ops, e.visit) }, (t, fx) => {
     switch (op.kind) {
       case 'open': {
-        const ticket = t.tickets.get(op.ticket)
+        const request = t.openRequests.get(op.request)
 
-        if (!ticket || t.pin?.ticket === ticket.id) {
+        if (!request || t.interstitial?.request === request.id) {
           return t
         }
 
-        fx.push({ type: 'refuse', ticket: ticket.id })
+        fx.push({ type: 'refuse', request: request.id })
 
-        return { ...t, tickets: without(t.tickets, ticket.id) }
+        return { ...t, openRequests: without(t.openRequests, request.id) }
       }
-      case 'walk':
-        return t.walk?.visit === e.visit && !op.landed ? walkFailed(t, fx) : t
+      case 'fetchBase':
+        return t.baseFetch?.visit === e.visit && !op.landed ? failBaseFetch(t, fx) : t
       case 'refresh':
         return t.closes.get(op.close)?.phase.kind === 'refreshing' ? finishClose(t, fx, op.close) : t
       case 'recover':
@@ -249,26 +252,26 @@ function visitFinished(s: StackState, e: E<'visitFinished'>): Step {
   })
 }
 
-/** A walk hop failed (no error overlay): promote the deepest layer to the page, or fetch the base again. */
-function walkFailed(s: StackState, fx: Fx): StackState {
-  const target = s.walk!.target
+/** The base could not be fetched (no error overlay): promote the deepest layer to the page, or fetch the base again. */
+function failBaseFetch(s: StackState, fx: Fx): StackState {
+  const { url } = s.baseFetch!
   const bottom = s.rows[0]
-  const t: StackState = { ...s, walk: null }
+  const t: StackState = { ...s, baseFetch: null }
 
   if (bottom && bottom.phase === 'open' && bottom.close === null && t.expect === null) {
-    const [token, minted] = mint(t)
+    const [token, issued] = issueToken(t)
 
     fx.push({ type: 'installBase', token, source: { kind: 'promote', layer: bottom.id }, mode: 'replace' })
 
     return {
-      ...minted,
-      rows: withoutRows(minted.rows, [bottom.id]),
+      ...issued,
+      rows: withoutRows(issued.rows, [bottom.id]),
       expect: { kind: 'base', token, mode: 'replace', layer: bottom.id, source: { kind: 'promote', layer: bottom.id } },
       paint: { gated: true, owed: true },
     }
   }
 
-  fx.push({ type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: target })
+  fx.push({ type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url })
 
   return t
 }

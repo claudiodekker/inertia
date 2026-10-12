@@ -1,14 +1,14 @@
-// What a commit does to the stack: a base page's, which keeps, drops or pins it, and a layer's, which
+// What a commit does to the stack: a base page's, which keeps, drops or suspends it, and a layer's, which
 // writes its history entry.
 
 import { startQueued } from './close'
 import type { Op, StackState, Step } from './state'
-import { clearStack, mint, row, run, setRow, settleAll, withoutRows, type E, type Fx } from './update'
+import { clearStack, issueToken, row, run, setRow, settleAll, withoutRows, type E, type Fx } from './update'
 
 /**
  * Made before the base history write. The stack is kept by an install it asked for, a visit it follows,
  * the initial commit, the answer to a partial or a reload that stays on the component (or fills a blank),
- * and a client replace of the same page. A prompt pins it. Anything else drops it: the answer to a
+ * and a client replace of the same page. An interstitial prompt suspends it. Anything else drops it: the answer to a
  * navigation does so even when it lands on the very same page. The gate holds the stack's paint until
  * the base swaps, so both change in one frame.
  */
@@ -21,8 +21,8 @@ export function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
     if (expect?.kind === 'base' && e.visit !== null && String(expect.token) === e.visit) {
       t = { ...t, expect: null }
 
-      if (expect.source.kind === 'pinned') {
-        fx.push({ type: 'releasePin', token: expect.source.pin })
+      if (expect.source.kind === 'held') {
+        fx.push({ type: 'releaseBase', token: expect.source.token })
         t = { ...t, base: { ...t.base, blank: false } }
       }
 
@@ -36,12 +36,12 @@ export function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
 
     const op = e.visit === null ? undefined : t.ops.get(e.visit)
 
-    if (op?.kind === 'walk' && op.landed) {
-      return { ...t, base: { ...t.base, blank: false }, walk: null }
+    if (op?.kind === 'fetchBase' && op.landed) {
+      return { ...t, base: { ...t.base, blank: false }, baseFetch: null }
     }
 
     if (op?.kind === 'recover') {
-      return { ...t, base: { ...t.base, blank: false }, walk: null }
+      return { ...t, base: { ...t.base, blank: false }, baseFetch: null }
     }
 
     if (op?.kind === 'refresh' || e.initial) {
@@ -49,23 +49,23 @@ export function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
     }
 
     if (e.interstitial && !t.base.blank) {
-      return pinned(t, fx, e, op)
+      return interstitialCommitting(t, fx, e, op)
     }
 
-    if (e.answer === 'refresh' && (e.against !== 'other' || t.base.blank)) {
+    if (e.answer === 'refresh' && (e.change !== 'other' || t.base.blank)) {
       const top = t.rows.filter((r) => r.phase === 'open').at(-1)
 
       // An entry pushed beneath a stack that owns no address is one more for the top layer's close to step over.
       t = e.mode === 'push' && top ? setRow(t, { ...top, entries: top.entries + 1 }) : t
 
-      return { ...t, base: { blank: false, gen: t.base.gen + (e.against === 'same' ? 0 : 1) }, walk: null }
+      return { ...t, base: { blank: false, gen: t.base.gen + (e.change === 'same' ? 0 : 1) }, baseFetch: null }
     }
 
-    if (e.answer === null && e.mode === 'replace' && (e.against === 'same' || e.against === 'moved')) {
+    if (e.answer === null && e.mode === 'replace' && (e.change === 'same' || e.change === 'moved')) {
       return t
     }
 
-    const dropped = t.rows.length > 0 || t.ghosts.length > 0
+    const dropped = t.rows.length > 0 || t.dismissed.length > 0
 
     t = clearStack(t, fx, 'navigated')
 
@@ -73,40 +73,44 @@ export function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
   })
 }
 
-/** An interstitial prompt replaces the screen: the live rows wait in the pin for the layer it leads to. */
-function pinned(s: StackState, fx: Fx, e: E<'baseCommitting'>, op: Op | undefined): StackState {
+/** An interstitial prompt replaces the screen: the live rows are suspended until the layer it leads to arrives. */
+function interstitialCommitting(s: StackState, fx: Fx, e: E<'baseCommitting'>, op: Op | undefined): StackState {
   const push = e.mode === 'push' ? 1 : 0
   const gen = s.base.gen + 1
 
-  if (s.pin) {
-    return { ...s, pin: { ...s.pin, gen, pushes: s.pin.pushes + push }, base: { ...s.base, gen } }
+  if (s.interstitial) {
+    return {
+      ...s,
+      interstitial: { ...s.interstitial, gen, pushes: s.interstitial.pushes + push },
+      base: { ...s.base, gen },
+    }
   }
 
-  const [token, minted] = mint(s)
+  const [token, issued] = issueToken(s)
 
-  fx.push({ type: 'capturePin', token })
+  fx.push({ type: 'holdBase', token })
 
-  const closing = minted.rows.filter((r) => r.close !== null || r.phase === 'opening').map((r) => r.id)
-  const gone = [...closing, ...minted.ghosts]
+  const closing = issued.rows.filter((r) => r.close !== null || r.phase === 'opening').map((r) => r.id)
+  const gone = [...closing, ...issued.dismissed]
 
   if (gone.length > 0) {
     fx.push({ type: 'dispose', ids: gone, reason: 'navigated' })
   }
 
-  const t = settleAll(minted, fx, 'closed')
-  const owed = t.rows.length > 0 || t.ghosts.length > 0
+  const t = settleAll(issued, fx, 'closed')
+  const owed = t.rows.length > 0 || t.dismissed.length > 0
 
   return {
     ...t,
     rows: [],
-    ghosts: [],
+    dismissed: [],
     closes: new Map(),
     expect: t.expect?.kind === 'unwind' ? null : t.expect,
-    pin: {
+    interstitial: {
       token,
       gen,
       pushes: push,
-      ticket: op?.kind === 'open' ? op.ticket : null,
+      request: op?.kind === 'open' ? op.request : null,
       suspended: withoutRows(t.rows, closing),
     },
     base: { ...t.base, gen },
@@ -126,9 +130,9 @@ export function baseSwapped(s: StackState): Step {
 
     const installing = t.expect?.kind === 'base' && t.expect.source.kind === 'blank'
 
-    if (t.walk?.startOnSwap && !installing) {
-      fx.push({ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: t.walk.target })
-      t = { ...t, walk: { ...t.walk, startOnSwap: false } }
+    if (t.baseFetch?.startOnSwap && !installing) {
+      fx.push({ type: 'startVisit', tag: { kind: 'fetchBase' }, via: 'base', url: t.baseFetch.url })
+      t = { ...t, baseFetch: { ...t.baseFetch, startOnSwap: false } }
     }
 
     return t

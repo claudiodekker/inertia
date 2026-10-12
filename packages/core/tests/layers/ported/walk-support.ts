@@ -222,7 +222,7 @@ export async function world(options: {
 
       core.layerSlot.boot(
         plan,
-        plan.seeds.map((seed) => ({ name: seed.page.component })),
+        plan.layers.map((layer) => ({ name: layer.page.component })),
       )
       initialise(plan.base)
       await settled()

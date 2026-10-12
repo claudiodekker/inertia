@@ -98,7 +98,7 @@ describe('planBoot', () => {
 
     expect(plan.base).toBe(response)
     expect(plan.top).toBe(response)
-    expect(plan).toMatchObject({ seeds: [], walkTo: null, info: [] })
+    expect(plan).toMatchObject({ layers: [], declaredBase: null, info: [] })
   })
 
   it('renders a mark that declares no base as a plain page, the mark stripped', () => {
@@ -106,8 +106,8 @@ describe('planBoot', () => {
 
     expect(plan.base).toEqual(page('Layers/Panel', '/layers/panel/first', { name: 'first' }))
     expect('layer' in plan.base).toBe(false)
-    expect(plan.seeds).toEqual([])
-    expect(plan.walkTo).toBeNull()
+    expect(plan.layers).toEqual([])
+    expect(plan.declaredBase).toBeNull()
   })
 
   it.each(['/layers/panel/first', 'https://app.test/layers/panel/first', '/layers/panel/first#notes'])(
@@ -116,7 +116,7 @@ describe('planBoot', () => {
       const plan = planBoot(marked({ key: 'own', base }), '')
 
       expect(plan.base).toEqual(page('Layers/Panel', '/layers/panel/first', { name: 'first' }))
-      expect(plan).toMatchObject({ seeds: [], walkTo: null, info: [] })
+      expect(plan).toMatchObject({ layers: [], declaredBase: null, info: [] })
     },
   )
 
@@ -127,11 +127,11 @@ describe('planBoot', () => {
       '',
     )
 
-    expect(plan.seeds[0].page).toMatchObject({ flash: {}, rescuedProps: [] })
+    expect(plan.layers[0].page).toMatchObject({ flash: {}, rescuedProps: [] })
   })
 
   it('walks for a base that differs from its own url only in the query', () => {
-    expect(planBoot(marked({ key: 'own', base: '/layers/panel/first?tab=2' }), '').walkTo).toBe(
+    expect(planBoot(marked({ key: 'own', base: '/layers/panel/first?tab=2' }), '').declaredBase).toBe(
       '/layers/panel/first?tab=2',
     )
   })
@@ -149,8 +149,8 @@ describe('planBoot', () => {
       rescuedProps: [],
       rememberedState: {},
     })
-    expect(plan.walkTo).toBe('/layers/base')
-    expect(plan.seeds).toEqual([
+    expect(plan.declaredBase).toBe('/layers/base')
+    expect(plan.layers).toEqual([
       {
         row: {
           id: 'layer-boot-36rcm2',
@@ -164,7 +164,7 @@ describe('planBoot', () => {
         page: { ...page('Layers/Panel', '/layers/panel/first#notes', { name: 'first' }), version: 'v7' },
       },
     ])
-    expect(plan.top).toBe(plan.seeds[0].page)
+    expect(plan.top).toBe(plan.layers[0].page)
     expect(plan.info).toEqual([
       {
         id: 'layer-boot-36rcm2',
@@ -177,7 +177,7 @@ describe('planBoot', () => {
   })
 
   it('keys a layer with no key of its own by its component', () => {
-    expect(planBoot(marked({ base: '/layers/base' }), '').seeds[0].row.key).toBe('Layers/Panel')
+    expect(planBoot(marked({ base: '/layers/base' }), '').layers[0].row.key).toBe('Layers/Panel')
   })
 
   it('gives the server (no hash) and the client (with its hash) the same layer id for one document', () => {
@@ -185,10 +185,10 @@ describe('planBoot', () => {
     const server = planBoot(response, '')
     const client = planBoot(response, '#section')
 
-    expect(server.seeds.map((seed) => seed.row.id)).toEqual(['layer-boot-36rcm2'])
-    expect(client.seeds.map((seed) => seed.row.id)).toEqual(['layer-boot-36rcm2'])
-    expect(server.seeds[0].page.url).toBe('/layers/panel/first')
-    expect(client.seeds[0].page.url).toBe('/layers/panel/first#section')
+    expect(server.layers.map((layer) => layer.row.id)).toEqual(['layer-boot-36rcm2'])
+    expect(client.layers.map((layer) => layer.row.id)).toEqual(['layer-boot-36rcm2'])
+    expect(server.layers[0].page.url).toBe('/layers/panel/first')
+    expect(client.layers[0].page.url).toBe('/layers/panel/first#section')
   })
 })
 

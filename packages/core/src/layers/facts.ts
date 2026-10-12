@@ -5,7 +5,7 @@ import { RequestParams } from '../requestParams'
 import type { Page, PendingVisit } from '../types'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
 import { isBlank, type LayerEntry } from './entry'
-import type { Against, EntryFacts, LayerId, LayerRow, Marks, Owner, RouteFacts } from './state'
+import type { BaseChange, EntryFacts, LayerId, LayerRow, Marks, Owner, RouteFacts } from './state'
 
 type Marked = Page & { layer?: { key?: string; base?: string }; close?: unknown }
 
@@ -33,14 +33,14 @@ export function isInterstitial(page: Page): boolean {
 interface Screen {
   readonly base: Page
   readonly live: readonly Page[]
-  readonly addressTier: Page
+  readonly addressOwner: Page
 }
 
 export function routeFacts(
   visit: PendingVisit,
   page: Page | string,
   marks: Marks,
-  { base: basePage, live: livePages, addressTier }: Screen,
+  { base: basePage, live: livePages, addressOwner }: Screen,
 ): RouteFacts {
   const pageUrl = typeof page === 'object' ? hrefToUrl(page.url) : null
   const declared = marks.layer?.base ? hrefToUrl(marks.layer.base) : null
@@ -58,10 +58,10 @@ export function routeFacts(
     preserveState: typeof page === 'object' && RequestParams.resolvePreserveOption(visit.preserveState, page),
     preserveUrl: visit.preserveUrl,
     replace: visit.replace,
-    matchesAddressTier:
+    matchesAddressOwner:
       pageUrl !== null &&
-      (page as Page).component === addressTier.component &&
-      isSameUrlWithoutHash(pageUrl, hrefToUrl(addressTier.url)),
+      (page as Page).component === addressOwner.component &&
+      isSameUrlWithoutHash(pageUrl, hrefToUrl(addressOwner.url)),
     hasErrors: typeof page === 'object' && Object.keys(page.props?.errors ?? {}).length > 0,
   }
 }
@@ -118,7 +118,7 @@ export function snapshot(row: LayerRow, historyPage: Page): LayerEntry {
  * A partial or a reload reads a page again in place, where any other visit navigates. A reload is a
  * background visit that keeps state and asks for the path its own page is at.
  */
-export function rereads(visit: PendingVisit, own: Page): boolean {
+export function isRefresh(visit: PendingVisit, own: Page): boolean {
   const partial = visit.only.length > 0 || visit.except.length > 0 || visit.reset.length > 0
   const from = hrefToUrl(own.url)
 
@@ -131,7 +131,7 @@ export function rereads(visit: PendingVisit, own: Page): boolean {
   )
 }
 
-export function against(live: Page | undefined, page: Page): Against {
+export function baseChange(live: Page | undefined, page: Page): BaseChange {
   if (!live || live.component !== page.component) {
     return 'other'
   }

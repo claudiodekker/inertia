@@ -43,7 +43,7 @@ const noInfo: readonly LayerInfo[] = []
 type ShellActions = Pick<LayerShellProps, 'close' | 'done'>
 
 /** Holds the views the adapters last saw, and tells them when a new set is ready. */
-export class Painter {
+export class LayerViews {
   protected listeners = new Set<() => void | Promise<void>>()
   protected painted: { views: readonly LayerView[]; info: readonly LayerInfo[] } = { views: noViews, info: noInfo }
   protected cache = new Map<LayerId, LayerView>()
@@ -55,12 +55,12 @@ export class Painter {
 
   paint(
     rows: readonly LayerRow[],
-    ghostIds: readonly LayerId[],
+    dismissedIds: readonly LayerId[],
     instances: ReadonlyMap<LayerId, LayerInstance>,
     baseUrl: string,
   ): Promise<void> {
     const rendered = rows.filter((row) => instances.get(row.id)?.view)
-    const ghosts = ghostIds.filter((id) => instances.get(id)?.view)
+    const dismissed = dismissedIds.filter((id) => instances.get(id)?.view)
     let address = baseUrl
     const views = [
       ...rendered.map((row, index) => {
@@ -76,7 +76,7 @@ export class Painter {
 
         return view
       }),
-      ...ghosts.map((id, index) => this.view(instances.get(id)!, rendered.length + index, false, false, address)),
+      ...dismissed.map((id, index) => this.view(instances.get(id)!, rendered.length + index, false, false, address)),
     ]
     const leaving = this.leaving
     const before = this.painted.info
@@ -109,7 +109,7 @@ export class Painter {
   }
 
   /** A disposed instance: its close listeners fire once the paint removing its view has landed, or at once when none shows it. */
-  left(instance: LayerInstance): void {
+  removed(instance: LayerInstance): void {
     if (this.painted.views.some((view) => view.id === instance.id)) {
       this.leaving.push(instance)
     } else {
@@ -145,7 +145,7 @@ export class Painter {
     return view
   }
 
-  views(): readonly LayerView[] {
+  current(): readonly LayerView[] {
     return this.painted.views
   }
 
