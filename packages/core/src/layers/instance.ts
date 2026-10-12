@@ -24,6 +24,7 @@ import type {
   VisitOptions,
 } from '../types'
 import { hrefToUrl } from '../url'
+import { madeInLayer } from './deferred'
 import { Inbox } from './handles'
 import { baseScope, type HistoryPort, type PageScope } from './scope'
 import { stack } from './stack'
@@ -94,6 +95,8 @@ export class LayerInstance {
       },
       reloadUrl: () => this.page.get().url,
       capture: (visit, previous) => {
+        madeInLayer(visit, id)
+
         if (!previous) {
           port.captured(visit)
         }

@@ -1,4 +1,4 @@
-import { hrefToUrl, isSameUrlWithoutQueryOrHash, partialReloadRequestsSomeProps, router } from '@inertiajs/core'
+import { layerSlot, router } from '@inertiajs/core'
 import { get } from 'es-toolkit/compat'
 import { computed, defineComponent, Fragment, h, onMounted, onUnmounted, ref, type SlotsType } from 'vue'
 import { usePage } from './app'
@@ -32,11 +32,7 @@ export default defineComponent({
       removeStartListener = router.on('start', (e) => {
         const visit = e.detail.visit
 
-        if (
-          visit.preserveState === true &&
-          isSameUrlWithoutQueryOrHash(visit.url, layer ? hrefToUrl(page.url) : window.location) &&
-          partialReloadRequestsSomeProps(visit, keys.value)
-        ) {
+        if (layerSlot.fillsDeferred(visit, layer, keys.value)) {
           activeReloads.add(visit)
           reloading.value = true
         }

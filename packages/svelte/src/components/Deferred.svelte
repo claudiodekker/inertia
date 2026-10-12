@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { hrefToUrl, isSameUrlWithoutQueryOrHash, partialReloadRequestsSomeProps } from '@inertiajs/core'
+  import { layerSlot } from '@inertiajs/core'
   import { get } from 'es-toolkit/compat'
   import { useLayer, useRouter } from '../layerContext.svelte'
   import { usePage } from '../page.svelte'
@@ -29,11 +29,7 @@
     const removeStartListener = router.on('start', (e) => {
       const visit = e.detail.visit
 
-      if (
-        visit.preserveState === true &&
-        isSameUrlWithoutQueryOrHash(visit.url, layer ? hrefToUrl(page.url) : window.location) &&
-        partialReloadRequestsSomeProps(visit, keys)
-      ) {
+      if (layerSlot.fillsDeferred(visit, layer, keys)) {
         activeReloads.add(visit)
         reloading = true
       }

@@ -1,4 +1,4 @@
-import { hrefToUrl, isSameUrlWithoutQueryOrHash, partialReloadRequestsSomeProps } from '@inertiajs/core'
+import { layerSlot } from '@inertiajs/core'
 import { get } from 'es-toolkit/compat'
 import { ReactNode, useEffect, useMemo, useRef, useState } from 'react'
 import { useLayer, useRouter } from './layerContext'
@@ -29,8 +29,6 @@ const Deferred = ({ children, data, rescue, fallback }: DeferredProps) => {
   const router = useRouter()
   const layer = useLayer()
   const page = usePage()
-  const pageUrl = useRef(page.url)
-  pageUrl.current = page.url
   const pageProps = page.props
   const keys = useMemo(() => (Array.isArray(data) ? data : [data]), [data])
   const rescuedKeys = useMemo(() => new Set(page.rescuedProps), [page.rescuedProps])
@@ -39,11 +37,7 @@ const Deferred = ({ children, data, rescue, fallback }: DeferredProps) => {
     const removeStartListener = router.on('start', (e) => {
       const visit = e.detail.visit
 
-      if (
-        visit.preserveState === true &&
-        isSameUrlWithoutQueryOrHash(visit.url, layer ? hrefToUrl(pageUrl.current) : window.location) &&
-        partialReloadRequestsSomeProps(visit, keys)
-      ) {
+      if (layerSlot.fillsDeferred(visit, layer, keys)) {
         activeReloads.current.add(visit)
         setReloading(true)
       }

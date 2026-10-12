@@ -1,4 +1,5 @@
 import { ssrViews, wrapResolver } from './boot'
+import { fillsDeferred } from './deferred'
 import { planBoot, type BootPlan } from './entry'
 import { stack } from './stack'
 
@@ -13,6 +14,7 @@ export const layerSlot = {
   topPage: () => stack.painter.topPage(),
   bindElement: (id: string, el: Element | null) => stack.bindElement(id, el),
   scopeOf: (el: Element) => stack.scopeOf(el),
+  fillsDeferred,
   planBoot,
   /** Client, before mount. */
   boot: (plan: BootPlan, components: readonly unknown[]) => stack.boot(plan, components),
