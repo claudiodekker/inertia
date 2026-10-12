@@ -49,7 +49,10 @@ export function routeFacts(
     aimed: pageUrl !== null && isSameUrlWithoutHash(visit.url, pageUrl),
     baseMatches: declared !== null && isSameUrlWithoutHash(declared, hrefToUrl(basePage.url)),
     cycles:
-      declared !== null && livePages.some((live) => !!live.url && isSameUrlWithoutHash(hrefToUrl(live.url), declared)),
+      declared !== null &&
+      [...livePages.map((live) => live.url), pageUrl?.href].some(
+        (url) => !!url && isSameUrlWithoutHash(hrefToUrl(url), declared),
+      ),
     partial: visit.only.length > 0 || visit.except.length > 0 || visit.reset.length > 0,
     async: visit.async,
     preserveState: typeof page === 'object' && RequestParams.resolvePreserveOption(visit.preserveState, page),

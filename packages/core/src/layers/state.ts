@@ -147,7 +147,7 @@ export interface RouteFacts {
   readonly aimed: boolean
   /** The declared base equals the live base url, without the hash. */
   readonly baseMatches: boolean
-  /** The declared base equals the url of a live row (a walk cycle). */
+  /** The declared base equals the url of a live row or the answer's own, so fetching it would walk in a circle. */
   readonly cycles: boolean
   /** Response component and url equal the address tier's page (top address-owning row, else base). */
   readonly matchesAddressTier: boolean

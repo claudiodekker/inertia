@@ -81,7 +81,9 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
         return { kind: 'drop' }
       }
 
-      return marks.layer.base ? { kind: 'cold', id: ticket ? ticket.id : e.newId } : { kind: 'promote' }
+      return marks.layer.base && !facts.cycles
+        ? { kind: 'cold', id: ticket ? ticket.id : e.newId }
+        : { kind: 'promote' }
     }
 
     if (ticket && !row(ticket.id)) {
@@ -102,7 +104,7 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
       return { kind: 'open', id: e.newId, owner: top ?? 'base' }
     }
 
-    return marks.layer.base ? { kind: 'cold', id: ticket ? ticket.id : e.newId } : { kind: 'promote' }
+    return marks.layer.base && !facts.cycles ? { kind: 'cold', id: ticket ? ticket.id : e.newId } : { kind: 'promote' }
   }
 
   if (from) {
