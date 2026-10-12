@@ -55,7 +55,7 @@ const LayerFrame = defineComponent({
         h('div', { ...view.attributes, ref: (el) => layerSlot.bindElement(view.id, el as Element | null) }, [
           renderPage(
             view.component as DefineComponent,
-            view.page,
+            view.layoutPage,
             view.renderKey,
             {
               get shared() {

@@ -9,8 +9,10 @@ export interface LayerView {
   readonly id: string
   readonly scope: LayerScope
   readonly component: unknown
-  /** What usePage() returns inside the layer. */
+  /** What usePage() returns inside the layer. A layer with no url of its own reads the address beneath it. */
   readonly page: Page
+  /** What the layer's layouts are resolved with: its own page, whose url is '' when it has none. */
+  readonly layoutPage: Page
   readonly renderKey: number
   readonly layout: LayerInstance['layout']
   readonly shell: LayerShellProps
@@ -18,14 +20,16 @@ export interface LayerView {
   readonly attributes: { 'data-layer-id': string; style: { viewTransitionName: string } }
 }
 
-export function viewOf(instance: LayerInstance, shell: LayerShellProps): LayerView {
+/** `address` is the address beneath the layer, which a layer with no url of its own reads as its url. */
+export function viewOf(instance: LayerInstance, shell: LayerShellProps, address?: string): LayerView {
   const { component, page, renderKey } = instance.view!
 
   return {
     id: instance.id,
     scope: instance.public,
     component,
-    page,
+    page: instance.type === 'local' && address !== undefined ? { ...page, url: address } : page,
+    layoutPage: page,
     renderKey,
     layout: instance.layout,
     shell,
@@ -53,14 +57,20 @@ export class Painter {
     rows: readonly LayerRow[],
     ghostIds: readonly LayerId[],
     instances: ReadonlyMap<LayerId, LayerInstance>,
+    baseUrl: string,
   ): Promise<void> {
     const rendered = rows.filter((row) => instances.get(row.id)?.view)
     const ghosts = ghostIds.filter((id) => instances.get(id)?.view)
+    let address = baseUrl
     const views = [
-      ...rendered.map((row, index) =>
-        this.view(instances.get(row.id)!, index, index === rendered.length - 1, row.close === null),
-      ),
-      ...ghosts.map((id, index) => this.view(instances.get(id)!, rendered.length + index, false, false)),
+      ...rendered.map((row, index) => {
+        const view = this.view(instances.get(row.id)!, index, index === rendered.length - 1, row.close === null, address)
+
+        address = row.type === 'routed' && row.ownsAddress ? view.page.url : address
+
+        return view
+      }),
+      ...ghosts.map((id, index) => this.view(instances.get(id)!, rendered.length + index, false, false, address)),
     ]
     const leaving = this.leaving
     const before = this.painted.info
@@ -101,14 +111,15 @@ export class Painter {
     }
   }
 
-  protected view(instance: LayerInstance, index: number, isTop: boolean, open: boolean): LayerView {
+  protected view(instance: LayerInstance, index: number, isTop: boolean, open: boolean, address: string): LayerView {
     const { component, page, renderKey } = instance.view!
     const cached = this.cache.get(instance.id)
 
     if (
       cached &&
       cached.component === component &&
-      cached.page === page &&
+      cached.layoutPage === page &&
+      cached.page.url === (instance.type === 'local' ? address : page.url) &&
       cached.renderKey === renderKey &&
       cached.shell.index === index &&
       cached.shell.isTop === isTop &&
@@ -121,7 +132,7 @@ export class Painter {
 
     this.shells.set(instance.id, shell)
 
-    const view = viewOf(instance, { open, index, isTop, type: instance.type, ...shell })
+    const view = viewOf(instance, { open, index, isTop, type: instance.type, ...shell }, address)
 
     this.cache.set(instance.id, view)
 

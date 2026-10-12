@@ -56,7 +56,7 @@ function LayerFrame({
         createElement(
           'div',
           { ...view.attributes, ref: bind },
-          renderPage(view.component as ReactComponent, view.page, view.renderKey, layout, defaultLayout),
+          renderPage(view.component as ReactComponent, view.layoutPage, view.renderKey, layout, defaultLayout),
         ),
       ),
     ),

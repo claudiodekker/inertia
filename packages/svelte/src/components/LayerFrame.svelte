@@ -44,7 +44,7 @@
     },
   }
 
-  const rendered = $derived(renderPage(view.component as any, view.page, view.renderKey, snapshot, defaultLayout))
+  const rendered = $derived(renderPage(view.component as any, view.layoutPage, view.renderKey, snapshot, defaultLayout))
 
   function bind(node: HTMLElement, id: string) {
     layerSlot.bindElement(id, node)

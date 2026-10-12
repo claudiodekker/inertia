@@ -9,21 +9,6 @@ import { failure, page, ported, settled } from './support'
 describe('resolveLayers, the layout page', () => {
   const localEdit = { component: 'Users/Edit', props: { user: { id: 5 }, errors: { name: 'required' } } }
 
-  it('leaves the url empty for a layer with no url of its own, so it never reaches the address (layout page)', async () => {
-    const app = await ported(users, {})
-
-    app.router.layer(localEdit)
-    await settled()
-
-    expect(app.views()[0].page).toMatchObject({
-      component: 'Users/Edit',
-      props: { user: { id: 5 }, errors: { name: 'required' } },
-      url: '',
-    })
-    expect(window.location.pathname).toBe('/users')
-    expect(app.written().at(-1)).toEqual(['push', '/users'])
-  })
-
   it('keeps the layer url when the layer has one', async () => {
     const app = await ported(users, { '/users/5/edit': edit() })
 

@@ -163,7 +163,10 @@ export class Stack implements StackPort {
   }
 
   protected paint(): Promise<void> {
-    return this.painter.paint(this.state.rows, this.state.ghosts, this.instances)
+    // The boot paints its seeds before the router gives the page beneath them to the page store.
+    const baseUrl = currentPage.get()?.url ?? ''
+
+    return this.painter.paint(this.state.rows, this.state.ghosts, this.instances, baseUrl)
   }
 
   protected dispose(id: LayerId): void {
@@ -216,7 +219,7 @@ export class Stack implements StackPort {
         ? blankPage(source.url, waiting!.historyPage!)
         : source.kind === 'pinned'
           ? { ...this.pinned.get(source.pin)!, flash: {} }
-          : stripMark(this.instance(source.layer).page.get())
+          : this.instance(source.layer).page.get()
 
     void currentPage.set(page, {
       replace: mode === 'replace',
@@ -423,8 +426,15 @@ export class Stack implements StackPort {
   }
 
   public baseSwapped(): void {
-    if (!isServer) {
-      this.dispatch({ type: 'baseSwapped' })
+    if (isServer) {
+      return
+    }
+
+    this.dispatch({ type: 'baseSwapped' })
+
+    // A layer with no url of its own reads the address beneath it, which this page may just have moved.
+    if ([...this.instances.values()].some((instance) => instance.type === 'local')) {
+      void this.paint()
     }
   }
 

@@ -228,5 +228,7 @@ describe('resolveLayers, the layout page', () => {
     expect(view.layoutPage.url).toBe('')
     expect(view.page.url).toBe('/users')
     expect(app.entry().layers![0].url).toBe('')
+    expect(window.location.pathname).toBe('/users')
+    expect(app.written().at(-1)).toEqual(['push', '/users'])
   })
 })
