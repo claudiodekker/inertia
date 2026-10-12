@@ -1,0 +1,29 @@
+// FINDING c-6 (PR row 2106 'does not put a standalone layer back on screen when the step back restores the entry holding it'):
+// PR outcome: a standalone layer with entries 1 closed: history.go(-1) is issued, the popstate restoring the entry that still holds the layer
+// leaves the page Users/Index with no layers, and the page beneath is pushed.
+// Rebuilt outcome: same root cause as c-2/c-5: for a standalone bottom row removeOrUnwind pushes the base and never calls history.go,
+// so go calls are [] (the final page and layers match, the unwind does not happen).
+// Helpers: ./layer-handles-support (ported, base, edit, layerAt, settled, holdBack)
+import { describe, expect, it } from 'vitest'
+import { base, edit, layerAt, ported, settled } from './layer-handles-support'
+
+describe('finding c-6', () => {
+  it('does not put a standalone layer back on screen when the step back restores the entry holding it', async () => {
+    const app = await ported(base(), {
+      '/users/5/edit': edit(),
+      '/users/5/notes': layerAt('Users/Notes', '/users/5/notes'),
+      '/users': base(),
+    })
+    const cold = app.router.layer('http://localhost/users/5/edit', { component: 'Users/Loading' } as never)
+    await settled()
+    app.router.layer('http://localhost/users/5/notes')
+    await settled()
+    const go = app.go()
+    await app.closing(cold)
+    await settled()
+
+    expect(go).toEqual([-1])
+    expect(app.layers()).toEqual([])
+    expect((await app.basePage()).component).toBe('Users/Index')
+  })
+})

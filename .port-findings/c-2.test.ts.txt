@@ -1,0 +1,24 @@
+// FINDING c-2 (PR row 1560 'unwinds the steps taken over a cold layer before writing the page beneath it'):
+// PR outcome: [standalone layer-1 (entries 0), layer-2 (entries 1)] closing layer-1 calls history.go(-1), then writes the page beneath.
+// Rebuilt outcome: go calls [], written after the close: [..., ['push','/users/5/notes'], ['push','/users']]; location '/users'; layers 0.
+// Same root cause as c-5 (close.ts removeOrUnwind skips the unwind when covered[0].standalone).
+describe('finding c-2', () => {
+  it('unwinds the steps taken over a cold layer before writing the page beneath it', async () => {
+    const app = await ported(base(), {
+      '/users/5/edit': edit(),
+      '/users/5/notes': layerAt('Users/Notes', '/users/5/notes'),
+      '/users': base(),
+    })
+    const cold = app.router.layer('http://localhost/users/5/edit', { component: 'Users/Loading' } as never)
+
+    await settled()
+    app.router.layer('http://localhost/users/5/notes')
+    await settled()
+
+    const go = app.go()
+
+    await app.closing(cold)
+
+    expect(go).toEqual([-1])
+  })
+})
