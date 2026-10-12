@@ -34,7 +34,7 @@ export const useInfiniteScrollQueryString = (options: {
             return resolve()
           }
 
-          if (stack.urlless(options.scope.router)) {
+          if (stack.isLocal(options.scope.router)) {
             return resolve()
           }
 

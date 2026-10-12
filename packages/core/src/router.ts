@@ -303,7 +303,7 @@ export class Router {
         (request) =>
           !request.isPrefetch() &&
           !request.isOptimistic() &&
-          !stack.fetchesBase(request.getVisit().id) &&
+          !stack.isBaseFetch(request.getVisit().id) &&
           isSameUrlWithoutQueryOrHash(request.getUrl(), currentPageUrl),
       )
     }

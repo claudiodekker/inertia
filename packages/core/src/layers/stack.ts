@@ -290,7 +290,7 @@ export class Stack implements StackPort {
    * A base fetch asks for the page beneath the stack. The blank base carries its url, so a visit would
    * take the fetch for a request aimed at the page it leaves, and cancel it.
    */
-  public fetchesBase(visit: string): boolean {
+  public isBaseFetch(visit: string): boolean {
     return this.state.ops.get(visit as VisitId)?.kind === 'fetchBase'
   }
 
@@ -306,7 +306,7 @@ export class Stack implements StackPort {
   }
 
   /** True for the router of a layer with no url of its own: nothing it shows can be written to the address. */
-  public urlless(router: Router): boolean {
+  public isLocal(router: Router): boolean {
     return [...this.instances.values()].some((instance) => instance.router === router && instance.type === 'local')
   }
 
