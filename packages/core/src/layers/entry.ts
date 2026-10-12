@@ -4,6 +4,8 @@
 // stored as the base page, and a blank base with no layers is stored as the placeholder itself.
 
 import type { Page } from '../types'
+import type { LayerId, Seed } from './state'
+import type { LayerInfo } from './types'
 
 export type LayerEntry = Omit<Page, 'flash'> & {
   id: string
@@ -79,4 +81,90 @@ function pageOf(layer: LayerEntry): Omit<Page, 'flash'> {
 /** The page a layer entry stores, as its instance holds it. */
 export function layerPage(layer: LayerEntry): Page {
   return { ...pageOf(layer), flash: {} }
+}
+
+// ---------------------------------------------------------------------------------------------------
+// Boot: the document load. Runs on the server per request and on the client before mount, so both
+// derive the same plan, ids included, from the same response.
+// ---------------------------------------------------------------------------------------------------
+
+export interface BootSeed {
+  readonly row: Seed
+  /** The layer's page: the response without its `layer` mark, plus the client's hash. */
+  readonly page: Page
+}
+
+export interface BootPlan {
+  /** What the app and router.init receive as the initial page. The response itself when it is no layer. */
+  readonly base: Page
+  readonly seeds: readonly BootSeed[]
+  /** The declared base the walk fetches first, once the blank base is on screen. */
+  readonly walkTo: string | null
+  /** The page head and title come from: the top seed's, else the base. */
+  readonly top: Page
+  /** The seeds as the loading resolver sees them. */
+  readonly info: readonly LayerInfo[]
+}
+
+type Marked = Page & { layer?: { key?: string; base?: string | null } }
+
+export function planBoot(response: Page, hash: string): BootPlan {
+  const { layer: mark, ...page } = response as Marked
+
+  if (!mark) {
+    return { base: response, seeds: [], walkTo: null, top: response, info: [] }
+  }
+
+  if (!mark.base) {
+    return { base: page, seeds: [], walkTo: null, top: page, info: [] }
+  }
+
+  const base = blankPage(mark.base, response)
+  const seed: BootSeed = {
+    row: {
+      id: bootId(response.url),
+      type: 'routed',
+      key: mark.key || response.component,
+      owner: 'base',
+      standalone: true,
+      ownsAddress: true,
+      entries: 0,
+    },
+    page: { ...page, url: hash && !page.url.includes('#') ? page.url + hash : page.url },
+  }
+  const info: LayerInfo = {
+    id: seed.row.id,
+    key: seed.row.key,
+    component: seed.page.component,
+    url: seed.page.url,
+    type: 'routed',
+  }
+
+  return { base, seeds: [seed], walkTo: mark.base, top: seed.page, info: [info] }
+}
+
+/** The placeholder a cold layer stands on until the walk lands its base. It carries the layer's version. */
+export function blankPage(url: string, from: Pick<Page, 'version' | 'encryptHistory'>): Page {
+  return {
+    component: '',
+    props: { errors: {} },
+    url,
+    version: from.version,
+    encryptHistory: from.encryptHistory,
+    flash: {},
+    rescuedProps: [],
+    rememberedState: {},
+  }
+}
+
+/** Deterministic per document load, so the server markup and the hydrating client share layer ids. */
+export function bootId(url: string): LayerId {
+  const path = url.split('#')[0]
+  let hash = 5381
+
+  for (let i = 0; i < path.length; i++) {
+    hash = ((hash << 5) + hash + path.charCodeAt(i)) >>> 0
+  }
+
+  return `layer-boot-${hash.toString(36)}` as LayerId
 }

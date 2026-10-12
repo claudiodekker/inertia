@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { addressOf, compose, decompose, isBlank, type LayerEntry } from '../../src/layers/entry'
+import { addressOf, bootId, compose, decompose, isBlank, planBoot, type LayerEntry } from '../../src/layers/entry'
 import type { Page } from '../../src/types'
 
 const page = (component: string, url: string, props: object = {}): Page => ({
@@ -86,5 +86,90 @@ describe('isBlank', () => {
   it('is true only for the placeholder component', () => {
     expect(isBlank(page('', '/base'))).toBe(true)
     expect(isBlank(page('Base', '/base'))).toBe(false)
+  })
+})
+
+describe('planBoot', () => {
+  const marked = (layer: object) => ({ ...page('Layers/Panel', '/layers/panel/first', { name: 'first' }), layer })
+
+  it('returns the response object itself as the base when it carries no layer mark', () => {
+    const response = page('Base', '/base')
+    const plan = planBoot(response, '#top')
+
+    expect(plan.base).toBe(response)
+    expect(plan.top).toBe(response)
+    expect(plan).toMatchObject({ seeds: [], walkTo: null, info: [] })
+  })
+
+  it('renders a mark that declares no base as a plain page, the mark stripped', () => {
+    const plan = planBoot(marked({ key: 'promote' }), '')
+
+    expect(plan.base).toEqual(page('Layers/Panel', '/layers/panel/first', { name: 'first' }))
+    expect('layer' in plan.base).toBe(false)
+    expect(plan.seeds).toEqual([])
+    expect(plan.walkTo).toBeNull()
+  })
+
+  it('puts a declared base under a blank placeholder that carries the layer version, and seeds the layer', () => {
+    const plan = planBoot({ ...marked({ key: 'panel:first', base: '/layers/base' }), version: 'v7' }, '#notes')
+
+    expect(plan.base).toEqual({
+      component: '',
+      props: { errors: {} },
+      url: '/layers/base',
+      version: 'v7',
+      encryptHistory: false,
+      flash: {},
+      rescuedProps: [],
+      rememberedState: {},
+    })
+    expect(plan.walkTo).toBe('/layers/base')
+    expect(plan.seeds).toEqual([
+      {
+        row: {
+          id: 'layer-boot-36rcm2',
+          type: 'routed',
+          key: 'panel:first',
+          owner: 'base',
+          standalone: true,
+          ownsAddress: true,
+          entries: 0,
+        },
+        page: { ...page('Layers/Panel', '/layers/panel/first#notes', { name: 'first' }), version: 'v7' },
+      },
+    ])
+    expect(plan.top).toBe(plan.seeds[0].page)
+    expect(plan.info).toEqual([
+      {
+        id: 'layer-boot-36rcm2',
+        key: 'panel:first',
+        component: 'Layers/Panel',
+        url: '/layers/panel/first#notes',
+        type: 'routed',
+      },
+    ])
+  })
+
+  it('keys a layer with no key of its own by its component', () => {
+    expect(planBoot(marked({ base: '/layers/base' }), '').seeds[0].row.key).toBe('Layers/Panel')
+  })
+
+  it('gives the server (no hash) and the client (with its hash) the same layer id for one document', () => {
+    const response = marked({ key: 'panel:first', base: '/layers/base' })
+    const server = planBoot(response, '')
+    const client = planBoot(response, '#section')
+
+    expect(server.seeds.map((seed) => seed.row.id)).toEqual(['layer-boot-36rcm2'])
+    expect(client.seeds.map((seed) => seed.row.id)).toEqual(['layer-boot-36rcm2'])
+    expect(server.seeds[0].page.url).toBe('/layers/panel/first')
+    expect(client.seeds[0].page.url).toBe('/layers/panel/first#section')
+  })
+})
+
+describe('bootId', () => {
+  it('is a djb2 hash of the url without its hash, in base 36', () => {
+    expect(bootId('/layers/panel/first')).toBe('layer-boot-36rcm2')
+    expect(bootId('/layers/panel/first#anything')).toBe('layer-boot-36rcm2')
+    expect(bootId('/layers/panel/second')).toBe('layer-boot-16hpofi')
   })
 })
