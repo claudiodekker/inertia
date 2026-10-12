@@ -14,9 +14,13 @@ import { idle, type EntryFacts, type LayerId, type LayerRow, type Outcome, type 
 
 const isServer = typeof window === 'undefined'
 
+type Write = (data: Page | ArrayBuffer) => Promise<void>
+
 export class StackHistory {
   /** The layers of the entry a popstate is applying, for its reopen and rewind effects. */
   protected restoring: readonly LayerEntry[] = []
+  /** The row that counted the base push 3.x makes next. */
+  protected chargedForNextPush: LayerId | undefined
 
   constructor(protected stack: Stack) {}
 
@@ -38,15 +42,44 @@ export class StackHistory {
     return { data: composed(stored).data, url: composed(addressed).url }
   }
 
-  /** `charged` is the row that counted this push: a push the browser refuses is given back to it. */
+  /** `charged` is the row that counted this push. */
   public write(mode: 'push' | 'replace', charged?: LayerId): Promise<void> {
     const { data, url } = this.compose(currentPage.getWithoutFlashData())
 
-    return history.writeEntry(data, url, mode).then((written) => {
-      if (!written && charged) {
-        this.stack.dispatch({ type: 'writeRefused', id: charged })
-      }
-    })
+    return history.writeEntry(data, url, mode, (write) => this.givingBack(charged, write))
+  }
+
+  public watchNextPush(charged: LayerId): void {
+    this.chargedForNextPush = charged
+  }
+
+  /** The history hook for a base page 3.x pushes. */
+  public watchPush(push: Write): Write {
+    const charged = this.chargedForNextPush
+
+    this.chargedForNextPush = undefined
+
+    return this.givingBack(charged, push)
+  }
+
+  /**
+   * A push the browser accepted leaves a new state object behind. One it refused (throttled or over
+   * quota) added no entry, so the row that counted it gets it back.
+   */
+  protected givingBack(charged: LayerId | undefined, push: Write): Write {
+    if (!charged) {
+      return push
+    }
+
+    return (data) => {
+      const before = window.history.state
+
+      return push(data).then(() => {
+        if (window.history.state === before) {
+          this.stack.dispatch({ type: 'writeRefused', id: charged })
+        }
+      })
+    }
   }
 
   public go(delta: number, token: Token): void {

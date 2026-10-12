@@ -272,6 +272,8 @@ export type StackEffect =
    * push; a push the browser refuses comes back as `writeRefused` for it.
    */
   | { type: 'writeEntry'; mode: 'push' | 'replace'; charged?: LayerId }
+  /** 3.x is about to push the base page. `charged` counted that push, and gets it back if the browser refuses it. */
+  | { type: 'watchBasePush'; charged: LayerId }
   | { type: 'historyGo'; delta: number; token: Token }
   /** A visit the stack starts itself: through the base router (fetchBase, recover) or a reload on the router of the page or layer beneath (refresh). */
   | { type: 'startVisit'; tag: VisitTag; via: Owner; url: string | null }

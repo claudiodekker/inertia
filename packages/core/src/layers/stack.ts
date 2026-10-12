@@ -79,6 +79,8 @@ export class Stack implements StackPort {
         return this.history.write(effect.mode, effect.charged)
       case 'dispose':
         return effect.ids.forEach((id) => this.dispose(id))
+      case 'watchBasePush':
+        return this.history.watchNextPush(effect.charged)
       case 'historyGo':
         return this.history.go(effect.delta, effect.token)
       case 'startVisit':

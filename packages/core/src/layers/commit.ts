@@ -56,7 +56,10 @@ export function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
       const top = t.rows.filter((r) => r.phase === 'open').at(-1)
 
       // An entry pushed beneath a stack that owns no address is one more for the top layer's close to step over.
-      t = e.mode === 'push' && top ? setRow(t, { ...top, entries: top.entries + 1 }) : t
+      if (e.mode === 'push' && top) {
+        fx.push({ type: 'watchBasePush', charged: top.id })
+        t = setRow(t, { ...top, entries: top.entries + 1 })
+      }
 
       return { ...t, base: { blank: false, gen: t.base.gen + (e.change === 'same' ? 0 : 1) }, baseFetch: null }
     }

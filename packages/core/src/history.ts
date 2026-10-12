@@ -10,11 +10,13 @@ const isServer = typeof window === 'undefined'
 const queue = new Queue<Promise<void>>()
 const isChromeIOS = !isServer && /CriOS/.test(window.navigator.userAgent)
 
+type Write = (data: Page | ArrayBuffer) => Promise<void>
+
 class History {
   public rememberedState = 'rememberedState' as const
   public scrollRegions = 'scrollRegions' as const
   public preserveUrl = false
-  public composer: { compose(page: Page): { data: Page; url: string } } | null = null
+  public composer: { compose(page: Page): { data: Page; url: string }; watchPush(push: Write): Write } | null = null
   protected current: Partial<Page> = {}
   protected goAnswer: (() => void) | null = null
   // We need initialState for `restore`
@@ -52,10 +54,12 @@ class History {
 
     const { data: entry, url } = this.composer?.compose(page) ?? { data: page, url: page.url }
 
-    this.queueWrite(entry, (data) => this.doPushState({ page: data }, url).then(() => cb?.()))
+    const push: Write = (data) => this.doPushState({ page: data }, url).then(() => cb?.())
+
+    this.queueWrite(entry, this.composer?.watchPush(push) ?? push)
   }
 
-  protected queueWrite(entry: Page, write: (data: Page | ArrayBuffer) => Promise<void>): Promise<void> {
+  protected queueWrite(entry: Page, write: Write): Promise<void> {
     return queue.add(() => {
       return this.getPageData(entry).then((data) => {
         // Defer the history write to the next event loop tick to prevent timing conflicts.
@@ -198,26 +202,21 @@ class History {
     this.queueWrite(entry, (data) => this.doReplaceState({ page: data }, url).then(() => cb?.()))
   }
 
-  /** Resolves false when the browser refused a push (throttled or over quota), so no entry was added. */
-  public writeEntry(entry: Page, url: string, mode: 'push' | 'replace'): Promise<boolean> {
+  /** `watch` wraps the write, as the composer's watchPush wraps a pushState. */
+  public writeEntry(
+    entry: Page,
+    url: string,
+    mode: 'push' | 'replace',
+    watch: (write: Write) => Write = (write) => write,
+  ): Promise<void> {
     if (isServer) {
-      return Promise.resolve(true)
+      return Promise.resolve()
     }
 
-    if (mode === 'replace') {
-      return this.queueWrite(entry, (data) => this.doReplaceState({ page: data }, url)).then(() => true)
-    }
-
-    let written = true
-
-    return this.queueWrite(entry, (data) => {
-      // A push the browser accepted leaves a new state object behind.
-      const before = window.history.state
-
-      return this.doPushState({ page: data }, url).then(() => {
-        written = window.history.state !== before
-      })
-    }).then(() => written)
+    return this.queueWrite(
+      entry,
+      watch((data) => (mode === 'replace' ? this.doReplaceState({ page: data }, url) : this.doPushState({ page: data }, url))),
+    )
   }
 
   public go(delta: number): Promise<'answered' | 'timeout'> {
