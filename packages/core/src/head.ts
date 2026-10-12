@@ -198,7 +198,13 @@ export default function createHeadManager(
       }
 
       return {
-        reconnect: () => reconnect(id),
+        reconnect: () => {
+          reconnect(id)
+
+          if (rank) {
+            ranks[id] = rank
+          }
+        },
         update: (elements) => update(id, elements),
         disconnect: () => disconnect(id),
       }

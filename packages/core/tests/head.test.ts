@@ -162,4 +162,18 @@ describe('createHeadManager provider order', () => {
 
     expect(last()).toEqual(['<meta name="other">'])
   })
+
+  it('keeps a provider ranked when it disconnects and reconnects', () => {
+    const { manager, last } = setup()
+    const ranked = manager.createProvider(() => 1)
+    const base = manager.createProvider()
+
+    ranked.update(['<meta name="ranked">'])
+    ranked.disconnect()
+    ranked.reconnect()
+    ranked.update(['<meta name="ranked">'])
+    base.update(['<meta name="base">'])
+
+    expect(last()).toEqual(['<meta name="base">', '<meta name="ranked">'])
+  })
 })
