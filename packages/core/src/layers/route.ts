@@ -1,5 +1,5 @@
 import {
-  MAX_WALK,
+  MAX_LAYER_CHAIN,
   type Landing,
   type LayerId,
   type LayerRow,
@@ -22,7 +22,7 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
       return { kind: 'drop' }
     }
 
-    return marks.layer?.base && !facts.cycles && s.walk.hops < MAX_WALK
+    return marks.layer?.base && !facts.cycles && s.rows.length + 1 < MAX_LAYER_CHAIN
       ? { kind: 'walk-beneath', id: e.newId }
       : { kind: 'walk-base' }
   }

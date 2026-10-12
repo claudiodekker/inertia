@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { entryRows } from '../../src/layers/close'
 import { reduce } from '../../src/layers/reduce'
-import { MAX_WALK, type StackState } from '../../src/layers/state'
+import { MAX_LAYER_CHAIN, type StackState } from '../../src/layers/state'
 import {
   arrival,
   arrived,
@@ -30,7 +30,7 @@ const walking = (overrides: Partial<StackState> = {}) =>
   state({
     rows: [row('a', { standalone: true, entries: 0 })],
     base: { blank: true, gen: 0 },
-    walk: { target: '/base', hops: 1, visit: visit('v1'), startOnSwap: false },
+    walk: { target: '/base', visit: visit('v1'), startOnSwap: false },
     ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: false }]]),
     ...overrides,
   })
@@ -438,7 +438,7 @@ describe('cold boot and the walk', () => {
       state({
         rows: [row('a', { key: 'panel', standalone: true, entries: 0 })],
         base: { blank: true, gen: 0 },
-        walk: { target: '/base', hops: 1, visit: null, startOnSwap: true },
+        walk: { target: '/base', visit: null, startOnSwap: true },
         paint: { gated: true, owed: true },
       }),
     )
@@ -469,7 +469,7 @@ describe('cold boot and the walk', () => {
           row('inner', { key: 'inner', standalone: true, phase: 'opening', entries: 0 }),
           row('a', { standalone: true, entries: 0 }),
         ],
-        walk: { target: '/deeper', hops: 2, visit: null, startOnSwap: false },
+        walk: { target: '/deeper', visit: null, startOnSwap: false },
         ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: true }]]),
       }),
       effects: [{ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/deeper' }],
@@ -477,12 +477,22 @@ describe('cold boot and the walk', () => {
     })
   })
 
-  it(`stops a walk at ${MAX_WALK} hops, landing the last answer as the base with a warning`, () => {
-    const s = walking({ walk: { target: '/base', hops: MAX_WALK, visit: visit('v1'), startOnSwap: false } })
+  it(`stops a walk whose next layer would make the stack ${MAX_LAYER_CHAIN} deep, landing the answer as the base with a warning`, () => {
+    const s = walking({
+      rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) =>
+        row(`r${depth}`, { standalone: true, entries: 0 }),
+      ),
+    })
 
     expect(arrived(s, { visit: 'v1', layer: { key: 'deep', base: '/deeper' } })).toEqual({
       state: { ...s, ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: true }]]) },
-      effects: [{ type: 'warn', message: 'A layer walk stopped after 10 declared bases.' }],
+      effects: [
+        {
+          type: 'warn',
+          message:
+            'A layer chain more than 10 layers deep was declared, so "/deeper" was not fetched. The deepest layer that loaded is being used as the page.',
+        },
+      ],
       outcome: landing('walk-base'),
     })
   })
@@ -610,7 +620,7 @@ describe('cold boot and the walk', () => {
         nextToken: 2,
         rows: [row('new', { key: 'guarded', standalone: true, entries: 0 })],
         base: { blank: true, gen: 1 },
-        walk: { target: '/layers/base', hops: 1, visit: null, startOnSwap: false },
+        walk: { target: '/layers/base', visit: null, startOnSwap: false },
       }),
     )
   })
@@ -1357,7 +1367,7 @@ describe('hazards', () => {
 
   it('a stale walk hop drops: its answer, its failure and its finish change nothing', () => {
     const s = walking({
-      walk: { target: '/base', hops: 1, visit: visit('v2'), startOnSwap: false },
+      walk: { target: '/base', visit: visit('v2'), startOnSwap: false },
       ops: new Map([
         [visit('v1'), { kind: 'walk', inFlight: 1, landed: false }],
         [visit('v2'), { kind: 'walk', inFlight: 1, landed: false }],

@@ -17,7 +17,8 @@ export type Token = Brand<number, 'Token'>
 
 export type Owner = LayerId | 'base'
 
-export const MAX_WALK = 10
+/** The deepest stack a walk builds. A base declared beneath it is not fetched. */
+export const MAX_LAYER_CHAIN = 10
 
 export interface StackState {
   readonly nextToken: number
@@ -91,7 +92,6 @@ export type Op =
 export interface WalkRow {
   /** The declared base being fetched. */
   readonly target: string
-  readonly hops: number
   readonly visit: VisitId | null
   /** The first hop starts at the first baseSwapped after the blank base is on screen. */
   readonly startOnSwap: boolean

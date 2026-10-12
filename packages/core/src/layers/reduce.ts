@@ -16,7 +16,7 @@ import {
 import { popstate, restoredOnLoad } from './restore'
 import { classify } from './route'
 import type { LayerId, LayerRow, Op, Owner, StackEvent, StackState, Step } from './state'
-import { MAX_WALK } from './state'
+import { MAX_LAYER_CHAIN } from './state'
 import {
   assertNever,
   clearStack,
@@ -97,7 +97,7 @@ function booted(s: StackState, e: E<'booted'>): Step {
     ...s,
     rows,
     base: { ...s.base, blank: e.blank },
-    walk: e.blank && e.walkTo !== null ? { target: e.walkTo, hops: 1, visit: null, startOnSwap: true } : null,
+    walk: e.blank && e.walkTo !== null ? { target: e.walkTo, visit: null, startOnSwap: true } : null,
     paint: { gated: true, owed: rows.length > 0 },
   })
 }
@@ -281,7 +281,10 @@ function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
     s,
     (t, fx) => {
       if (capped) {
-        fx.push({ type: 'warn', message: `A layer walk stopped after ${MAX_WALK} declared bases.` })
+        fx.push({
+          type: 'warn',
+          message: `A layer chain more than ${MAX_LAYER_CHAIN} layers deep was declared, so "${e.marks.layer!.base}" was not fetched. The deepest layer that loaded is being used as the page.`,
+        })
       }
 
       switch (landing.kind) {
@@ -325,7 +328,7 @@ function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
               ...minted,
               rows: [opening(landing.id, key, 'base', { standalone: true })],
               base: { blank: true, gen: minted.base.gen + 1 },
-              walk: { target: url, hops: 1, visit: null, startOnSwap: true },
+              walk: { target: url, visit: null, startOnSwap: true },
               expect: {
                 kind: 'base',
                 token,
@@ -374,7 +377,6 @@ function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
         case 'walk-base':
           return landed(t, e)
         case 'walk-beneath': {
-          const walk = t.walk!
           const target = e.marks.layer!.base!
 
           fx.push({ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: target })
@@ -383,7 +385,7 @@ function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
             {
               ...t,
               rows: [opening(landing.id, key, 'base', { standalone: true }), ...t.rows],
-              walk: { target, hops: walk.hops + 1, visit: null, startOnSwap: false },
+              walk: { target, visit: null, startOnSwap: false },
             },
             e,
           )

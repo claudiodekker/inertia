@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { classify } from '../../src/layers/route'
-import { MAX_WALK, type Landing, type StackState } from '../../src/layers/state'
+import { MAX_LAYER_CHAIN, type Landing, type StackState } from '../../src/layers/state'
 import { arrival, baseOrigin, id, layerOrigin, row, state, tok, visit, type Arrival } from './fixtures'
 
 const walk = (overrides: Partial<StackState> = {}) =>
   state({
     rows: [row('a', { standalone: true })],
     base: { blank: true, gen: 0 },
-    walk: { target: '/base', hops: 1, visit: visit('w'), startOnSwap: false },
+    walk: { target: '/base', visit: visit('w'), startOnSwap: false },
     ops: new Map([[visit('w'), { kind: 'walk', inFlight: 1, landed: false }]]),
     ...overrides,
   })
@@ -36,8 +36,8 @@ const cases: [string, StackState, Arrival, Landing][] = [
     { kind: 'walk-beneath', id: id('new') },
   ],
   [
-    'a walk hop at the cap lands as the base',
-    walk({ walk: { target: '/base', hops: MAX_WALK, visit: visit('w'), startOnSwap: false } }),
+    'a walk hop that would make the stack ten deep lands as the base',
+    walk({ rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) => row(`r${depth}`, { standalone: true })) }),
     { visit: 'w', layer: layer('deep', '/deeper') },
     { kind: 'walk-base' },
   ],
@@ -49,7 +49,7 @@ const cases: [string, StackState, Arrival, Landing][] = [
   ],
   [
     'a walk hop of a superseded walk drops',
-    walk({ walk: { target: '/base', hops: 1, visit: visit('w2'), startOnSwap: false } }),
+    walk({ walk: { target: '/base', visit: visit('w2'), startOnSwap: false } }),
     { visit: 'w' },
     { kind: 'drop' },
   ],
