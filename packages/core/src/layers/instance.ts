@@ -16,8 +16,11 @@ import type {
   PageHandler,
   PageResolver,
   PendingVisit,
+  RequestPayload,
   RouterInitParams,
   ScrollRegion,
+  UrlMethodPair,
+  VisitOptions,
 } from '../types'
 import { hrefToUrl } from '../url'
 import { Inbox } from './handles'
@@ -336,9 +339,12 @@ export class LayerRouter extends Router {
     this.loadDeferredProps(deferred)
   }
 
-  /** A closed layer has no page to swap, so its placeholder goes up as the page, as a visit that names no layer does. */
-  protected performInstantSwap(visit: PendingVisit): Promise<void> {
-    return this.scope.disposed ? new LayerRouter(baseScope).performInstantSwap(visit) : super.performInstantSwap(visit)
+  /** A closed layer has no page to put a placeholder on, so an instant visit made from it is the page's own. */
+  public visit<T extends RequestPayload = RequestPayload>(
+    href: string | URL | UrlMethodPair,
+    options: VisitOptions<T> = {},
+  ): void {
+    return this.scope.disposed && options.component ? baseScope.router.visit(href, options) : super.visit(href, options)
   }
 }
 

@@ -777,6 +777,26 @@ describe("an instant visit that opens a layer or is made from one", () => {
     expect((await app.basePage()).component).toBe("Users/Edit");
     expect(app.layers()).toEqual([]);
   });
+
+  it("lands the answer to a closed layer's instant visit as it lands the page's own", async () => {
+    const { app, next } = await stood();
+    const gone = scopeOf(app);
+    const closing = gone.close();
+
+    exitShells(app);
+    await closing;
+    await settled();
+
+    gone.router.visit("/users/9/edit", instant);
+    await settled();
+    next.release(
+      edit({ url: "/users/9/edit", layer: { key: "Users/Edit", base: "/users" } }),
+    );
+    await settled();
+
+    expect((await app.basePage()).component).toBe("Users/Index");
+    expect(app.layers().map((layer) => layer.url)).toEqual(["/users/9/edit"]);
+  });
 });
 
 describe("a close: true response runs the close flow instead of installing", () => {
