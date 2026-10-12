@@ -4,7 +4,7 @@
 
 import { get } from 'es-toolkit/compat'
 import { history } from '../history'
-import { page as currentPage } from '../page'
+import { page as currentPage, type CurrentPage } from '../page'
 import type { Response } from '../response'
 import { Scroll } from '../scroll'
 import type { CancelToken, Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
@@ -510,6 +510,17 @@ export class Stack implements StackPort {
    */
   public walking(visit: string): boolean {
     return this.state.ops.get(visit as VisitId)?.kind === 'walk'
+  }
+
+  /**
+   * The page whose once props a response would land among: the page's own for a plain answer, the layer
+   * open under its key for a layer's, and none for a layer nothing has opened yet.
+   */
+  public oncePage(response: Page): CurrentPage | null {
+    const { layer } = marksOf(response)
+    const row = layer && this.state.rows.find((row) => row.type === 'routed' && row.key === layer.key)
+
+    return layer ? ((row && this.instances.get(row.id)?.page) ?? null) : currentPage
   }
 
   /** The history composer: the base page with every committed layer that is not being closed. Pure read. */

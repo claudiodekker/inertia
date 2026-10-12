@@ -1,7 +1,8 @@
 import { cloneDeep } from 'es-toolkit'
 import { get } from 'es-toolkit/compat'
 import { HttpCancelledError } from './httpErrors'
-import { baseScope, type Origin, type PageScope } from './layers/scope'
+import type { Origin, PageScope } from './layers/scope'
+import { stack } from './layers/stack'
 import { objectsAreEqual } from './objectUtils'
 import { Response } from './response'
 import { timeToMs } from './time'
@@ -80,7 +81,7 @@ class PrefetchedRequests {
 
       const pageResponse = response.getPageResponse()
 
-      response.scope.page.mergeOncePropsIntoResponse(pageResponse)
+      stack.oncePage(pageResponse)?.mergeOncePropsIntoResponse(pageResponse)
 
       this.cached.push({
         params: { ...params },
@@ -320,14 +321,12 @@ class PrefetchedRequests {
     )
   }
 
-  public updateCachedOncePropsFromCurrentPage(
-    source: Pick<PageScope['page'], 'mergeOncePropsIntoResponse'> = baseScope.page,
-  ): void {
+  public updateCachedOncePropsFromCurrentPage(): void {
     this.cached.forEach((prefetched) => {
       prefetched.response.then((response) => {
         const pageResponse = response.getPageResponse()
 
-        source.mergeOncePropsIntoResponse(pageResponse, { force: true })
+        stack.oncePage(pageResponse)?.mergeOncePropsIntoResponse(pageResponse, { force: true })
 
         for (const [group, deferredProps] of Object.entries(pageResponse.deferredProps ?? {})) {
           const remaining = deferredProps.filter((prop) => get(pageResponse.props, prop) === undefined)
