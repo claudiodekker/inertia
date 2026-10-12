@@ -243,8 +243,10 @@ export type VisitTag =
 export type StackEffect =
   /** Publish views to the adapters. Emitted only while the gate is open; otherwise `paint.owed`. */
   | { type: 'paint' }
-  /** history.writeEntry(the live composite, its address, mode). */
-  /** `charged`: the row that counted this push, told (`writeRefused`) when the browser refuses it. */
+  /**
+   * history.writeEntry(the live composite, its address, mode). `charged` is the row that counted this
+   * push; a push the browser refuses comes back as `writeRefused` for it.
+   */
   | { type: 'writeEntry'; mode: 'push' | 'replace'; charged?: LayerId }
   | { type: 'historyGo'; delta: number; token: Token }
   /** A visit the stack starts itself: through the base router (walk, recover) or a tier's router reload (refresh). */

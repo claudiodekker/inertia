@@ -130,6 +130,7 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
   }
 
   t = forgetInCloses(t, fx, [...plan.drop, ...(plan.dismiss ? [plan.dismiss] : [])])
+
   // A row that stays is at the entry's point in history now: it has pushed what that entry counted.
   const counted = new Map(e.entry.layers.map((layer) => [layer.id, layer.entries]))
 
