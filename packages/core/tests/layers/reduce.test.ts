@@ -563,6 +563,22 @@ describe('cold boot and the walk', () => {
     })
   })
 
+  it.each([
+    ['with nothing on it', walking({ rows: [] }), entry([], { url: '/base', blank: true })],
+    ['of another base', walking(), entry([], { url: '/other', blank: true, baseSame: false })],
+  ])('Back onto a blank placeholder %s fetches its page once: the recovery ends the walk', (_, from, blank) => {
+    const { state: s, effects } = script(from, [
+      { type: 'popstate', entry: blank },
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(effects.filter((effect) => effect.type === 'startVisit')).toEqual([
+      { type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: blank.url },
+    ])
+    expect(s.walk).toBeNull()
+    expect(s.base.blank).toBe(true)
+  })
+
   it('L:2165 a close during the walk landing still lets the walk commit land the base', () => {
     const { state: s } = script(walking(), [
       arrival({ visit: 'v1' }),

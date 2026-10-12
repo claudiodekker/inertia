@@ -113,7 +113,8 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
     fx.push({ type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: plan.url })
 
     return {
-      state: { ...t, base: { blank: true, gen: t.base.gen + 1 }, paint: { ...t.paint, gated: true } },
+      // The recovery fetches the base now. The hop still out is cancelled by this popstate's own cancelAll.
+      state: { ...t, base: { blank: true, gen: t.base.gen + 1 }, walk: null, paint: { ...t.paint, gated: true } },
       effects: fx,
       outcome: { kind: 'restore', restore: { kind: 'base' } },
     }
@@ -166,7 +167,7 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
       state: {
         ...t,
         base: { blank: e.entry.blank, gen: t.base.gen + 1 },
-        walk: e.entry.blank ? t.walk : null,
+        walk: null,
         paint: { gated: true, owed: true },
       },
       effects: fx,
