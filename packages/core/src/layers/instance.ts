@@ -20,6 +20,7 @@ import type {
   ScrollRegion,
 } from '../types'
 import { hrefToUrl } from '../url'
+import { Inbox } from './handles'
 import { baseScope, type HistoryPort, type PageScope } from './scope'
 import { stack } from './stack'
 import type { LayerId } from './state'
@@ -310,32 +311,6 @@ export class LayerHistory implements HistoryPort {
 export class LayerRouter extends Router {
   public loadDeferred(deferred: Page['deferredProps']): void {
     this.loadDeferredProps(deferred)
-  }
-}
-
-export class Inbox {
-  protected listeners = new Map<string, Set<LayerMessageListener>>()
-
-  on(name: string, listener: LayerMessageListener): () => void {
-    const listeners = this.listeners.get(name) ?? new Set()
-
-    listeners.add(listener)
-    this.listeners.set(name, listeners)
-
-    return () => listeners.delete(listener)
-  }
-
-  once(name: string, listener: LayerMessageListener): () => void {
-    const off = this.on(name, (payload, from) => {
-      off()
-      listener(payload, from)
-    })
-
-    return off
-  }
-
-  deliver(name: string, payload: unknown, from: LayerInfo): void {
-    ;[...(this.listeners.get(name) ?? [])].forEach((listener) => listener(payload, from))
   }
 }
 

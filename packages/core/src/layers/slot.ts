@@ -7,10 +7,10 @@ export type { BootPlan }
 
 /** @internal The adapters' single window onto the layer stack. */
 export const layerSlot = {
-  views: () => stack.views(),
-  info: () => stack.info(),
-  subscribe: (listener: () => void | Promise<void>) => stack.subscribe(listener),
-  topPage: () => stack.topPage(),
+  views: () => stack.painter.views(),
+  info: () => stack.painter.info(),
+  subscribe: (listener: () => void | Promise<void>) => stack.painter.subscribe(listener),
+  topPage: () => stack.painter.topPage(),
   bindElement: (id: string, el: Element | null) => stack.bindElement(id, el),
   scopeOf: (el: Element) => stack.scopeOf(el),
   planBoot,

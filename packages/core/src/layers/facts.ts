@@ -24,13 +24,23 @@ export function stripMark(page: Page): Page {
   return plain
 }
 
-/** `livePages` are the pages of the live rows, bottom first. */
+/** A prompt on the way to something else: read off the raw page, since Page has no such key. */
+export function isInterstitial(page: Page): boolean {
+  return (page as Page & { interstitial?: unknown }).interstitial === true
+}
+
+/** What is on screen: the base page, the live rows' pages bottom first, and the page owning the address. */
+export interface Screen {
+  readonly base: Page
+  readonly live: readonly Page[]
+  readonly addressTier: Page
+}
+
 export function routeFacts(
   visit: PendingVisit,
   page: Page | string,
   marks: Marks,
-  basePage: Page,
-  livePages: readonly Page[],
+  { base: basePage, live: livePages, addressTier }: Screen,
 ): RouteFacts {
   const pageUrl = typeof page === 'object' ? hrefToUrl(page.url) : null
   const declared = marks.layer?.base ? hrefToUrl(marks.layer.base) : null
@@ -45,8 +55,11 @@ export function routeFacts(
     preserveState: typeof page === 'object' && RequestParams.resolvePreserveOption(visit.preserveState, page),
     preserveUrl: visit.preserveUrl,
     replace: visit.replace,
-    matchesAddressTier: false,
-    hasErrors: false,
+    matchesAddressTier:
+      pageUrl !== null &&
+      (page as Page).component === addressTier.component &&
+      isSameUrlWithoutHash(pageUrl, hrefToUrl(addressTier.url)),
+    hasErrors: typeof page === 'object' && Object.keys(page.props?.errors ?? {}).length > 0,
   }
 }
 

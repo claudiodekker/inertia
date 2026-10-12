@@ -64,7 +64,7 @@ export function wrapResolver<C>(
   loading: LoadingResolver<C> | undefined,
   blank: C,
 ): (name: string, page?: Page, layers?: readonly LayerInfo[]) => Promise<C> {
-  return async (name, page, layers = stack.info()) => {
+  return async (name, page, layers = stack.painter.info()) => {
     if (name !== '') {
       return resolve(name, page)
     }
