@@ -1,4 +1,3 @@
-import { page as currentPage } from './page'
 import { Response } from './response'
 import {
   ActiveVisit,
@@ -127,13 +126,13 @@ export class RequestParams {
     return this.params
   }
 
-  public headers(): HttpRequestHeaders {
+  public headers(component: string): HttpRequestHeaders {
     const headers: HttpRequestHeaders = {
       ...this.params.headers,
     }
 
     if (this.isPartial()) {
-      headers['X-Inertia-Partial-Component'] = currentPage.get().component
+      headers['X-Inertia-Partial-Component'] = component
     }
 
     const only = this.params.only.concat(this.params.reset)

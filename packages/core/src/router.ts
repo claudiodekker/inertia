@@ -6,8 +6,8 @@ import { eventHandler } from './eventHandler'
 import { fireBeforeEvent, fireClientVisitEvent, fireFlashEvent } from './events'
 import { history } from './history'
 import { InitialVisit } from './initialVisit'
+import { baseScope, type PageScope } from './layers/scope'
 import { setPathPreservingIdentity, stripTopLevelUndefined } from './objectUtils'
-import { page as currentPage } from './page'
 import { polls } from './polls'
 import { prefetchedRequests } from './prefetched'
 import Queue from './queue'
@@ -53,20 +53,26 @@ import {
 
 const noop = () => {}
 
-export class Router {
-  protected syncRequestStream = new RequestStream({
-    maxConcurrent: 1,
-    interruptible: true,
-  })
+const syncRequestStream = new RequestStream({
+  maxConcurrent: 1,
+  interruptible: true,
+})
 
-  protected asyncRequestStream = new RequestStream({
-    maxConcurrent: Infinity,
-    interruptible: false,
-  })
+const asyncRequestStream = new RequestStream({
+  maxConcurrent: Infinity,
+  interruptible: false,
+})
+
+export class Router {
+  protected syncRequestStream = syncRequestStream
+
+  protected asyncRequestStream = asyncRequestStream
 
   protected clientVisitQueue = new Queue<Promise<void>>()
 
   protected pendingOptimisticCallback: OptimisticCallback | undefined = undefined
+
+  constructor(protected scope: PageScope = baseScope) {}
 
   public init<ComponentType = Component>({
     initialPage,
@@ -74,7 +80,7 @@ export class Router {
     swapComponent,
     onFlash,
   }: RouterInitParams<ComponentType>): void {
-    currentPage.init({
+    this.scope.page.init({
       initialPage,
       resolveComponent,
       swapComponent,
@@ -159,7 +165,7 @@ export class Router {
       return
     }
 
-    return this.visit(window.location.href, {
+    return this.visit(this.scope.reloadUrl(), {
       ...options,
       preserveScroll: true,
       preserveState: true,
@@ -172,11 +178,11 @@ export class Router {
   }
 
   public remember(data: unknown, key = 'default'): void {
-    history.remember(data, key)
+    ;(this?.scope ?? baseScope).history.remember(data, key)
   }
 
   public restore<T = unknown>(key = 'default'): T | undefined {
-    return history.restore(key) as T | undefined
+    return (this?.scope ?? baseScope).history.restore(key) as T | undefined
   }
 
   public on<TEventName extends GlobalEventNames>(
@@ -276,7 +282,9 @@ export class Router {
       return
     }
 
-    const currentPageUrl = hrefToUrl(currentPage.get().url)
+    let origin = this.scope.capture(visit)
+
+    const currentPageUrl = hrefToUrl(this.scope.page.get().url)
     const isPartialReload = visit.only.length > 0 || visit.except.length > 0 || visit.reset.length > 0
 
     // For partial reloads, only compare the base URL (origin + pathname) to allow
@@ -306,12 +314,12 @@ export class Router {
     let optimisticId: number | null = null
 
     if (options.optimistic) {
-      optimisticId = currentPage.nextOptimisticId()
+      optimisticId = this.scope.page.nextOptimisticId()
 
       this.applyOptimisticUpdate(options.optimistic, events, optimisticId)
     }
 
-    if (!currentPage.isCleared() && !visit.preserveUrl) {
+    if (!this.scope.page.isCleared() && !visit.preserveUrl) {
       // Save scroll regions for the current page
       Scroll.save()
     }
@@ -326,11 +334,13 @@ export class Router {
 
       if (prefetched) {
         progress.reveal(prefetched.inFlight)
-        prefetchedRequests.use(prefetched, requestParams)
+        prefetchedRequests.use(prefetched, requestParams, { scope: this.scope, origin })
       } else {
         progress.reveal(true)
         const requestStream = visit.async ? this.asyncRequestStream : this.syncRequestStream
-        requestStream.send(Request.create(requestParams, currentPage.get(), { optimisticId }))
+        requestStream.send(
+          Request.create(requestParams, this.scope.page.get(), { optimisticId, scope: this.scope, origin }),
+        )
       }
     }
 
@@ -344,6 +354,7 @@ export class Router {
     if (visit.component) {
       history.processQueue().then(() => {
         this.performInstantSwap(visit).then(() => {
+          origin = this.scope.capture(visit, origin)
           requestParams.preserveScroll = true
           requestParams.preserveState = true
           requestParams.replace = true
@@ -428,7 +439,7 @@ export class Router {
     const ensureCurrentPageIsSet = (): Promise<void> => {
       return new Promise((resolve) => {
         const checkIfPageIsDefined = () => {
-          if (currentPage.get()) {
+          if (this.scope.page.get()) {
             resolve()
           } else {
             setTimeout(checkIfPageIsDefined, 50)
@@ -443,7 +454,9 @@ export class Router {
       prefetchedRequests.add(
         requestParams,
         (params) => {
-          this.asyncRequestStream.send(Request.create(params, currentPage.get()))
+          this.asyncRequestStream.send(
+            Request.create(params, this.scope.page.get(), { scope: this.scope, origin: this.scope.capture(params) }),
+          )
         },
         {
           cacheFor: config.get('prefetch.cacheFor'),
@@ -464,7 +477,7 @@ export class Router {
   }
 
   public resolveComponent(component: string, page?: Page): Promise<Component> {
-    return currentPage.resolve(component, page)
+    return (this?.scope ?? baseScope).page.resolve(component, page)
   }
 
   public replace<TProps = Page['props']>(params: ClientSideVisitOptions<TProps>): void {
@@ -536,7 +549,8 @@ export class Router {
     keyOrData: string | ((flash: FlashData) => TFlash) | TFlash,
     value?: unknown,
   ): void {
-    const current = currentPage.get().flash
+    const scope = this?.scope ?? baseScope
+    const current = scope.page.get().flash
     let flash: PageFlashData
 
     if (typeof keyOrData === 'function') {
@@ -549,7 +563,7 @@ export class Router {
       return
     }
 
-    currentPage.setFlash(flash)
+    scope.page.setFlash(flash)
 
     if (Object.keys(flash).length) {
       fireFlashEvent(flash)
@@ -567,7 +581,7 @@ export class Router {
     params: ClientSideVisitOptions<TProps>,
     { replace = false }: { replace?: boolean } = {},
   ): Promise<void> {
-    const current = currentPage.get()
+    const current = this.scope.page.get()
 
     const onceProps =
       typeof params.props === 'function'
@@ -600,7 +614,7 @@ export class Router {
 
     const visitId = this.createVisitId()
 
-    return currentPage
+    return this.scope.page
       .set(page, {
         replace,
         preserveScroll,
@@ -609,19 +623,19 @@ export class Router {
         visitId,
       })
       .then(() => {
-        fireClientVisitEvent(currentPage.get(), { replace, visitId })
+        fireClientVisitEvent(this.scope.page.get(), { replace, visitId })
 
-        const currentFlash = currentPage.get().flash
+        const currentFlash = this.scope.page.get().flash
 
         if (Object.keys(currentFlash).length > 0) {
           fireFlashEvent(currentFlash)
           onFlash?.(currentFlash)
         }
 
-        const errors = currentPage.get().props.errors || {}
+        const errors = this.scope.page.get().props.errors || {}
 
         if (Object.keys(errors).length === 0) {
-          onSuccess?.(currentPage.get())
+          onSuccess?.(this.scope.page.get())
           return
         }
 
@@ -633,7 +647,7 @@ export class Router {
   }
 
   protected performInstantSwap(visit: PendingVisit): Promise<void> {
-    const current = currentPage.get()
+    const current = this.scope.page.get()
 
     const sharedProps = Object.fromEntries(
       (current.sharedProps ?? []).filter((key) => key in current.props).map((key) => [key, current.props[key]]),
@@ -665,7 +679,7 @@ export class Router {
       rememberedState: {},
     }
 
-    return currentPage.set(intermediatePage, {
+    return this.scope.page.set(intermediatePage, {
       replace: visit.replace,
       preserveScroll: RequestParams.resolvePreserveOption(visit.preserveScroll, intermediatePage),
       preserveState: false,
@@ -805,7 +819,7 @@ export class Router {
   }
 
   protected applyOptimisticUpdate(optimistic: OptimisticCallback, events: VisitCallbacks, id: number): void {
-    const currentProps = currentPage.get().props
+    const currentProps = this.scope.page.get().props
     const optimisticProps = optimistic(cloneDeep(currentProps))
 
     if (!optimisticProps) {
@@ -824,39 +838,39 @@ export class Router {
       return
     }
 
-    const component = currentPage.get().component
+    const component = this.scope.page.get().component
 
     for (const key of changedKeys) {
-      currentPage.setBaseline(key, cloneDeep(currentProps[key]))
+      this.scope.page.setBaseline(key, cloneDeep(currentProps[key]))
     }
 
-    currentPage.registerOptimistic(id, optimistic)
-    currentPage.setPropsQuietly({ ...currentProps, ...optimisticProps })
+    this.scope.page.registerOptimistic(id, optimistic)
+    this.scope.page.setPropsQuietly({ ...currentProps, ...optimisticProps })
 
     let shouldRestore = true
 
     const originalOnSuccess = events.onSuccess
     events.onSuccess = (page) => {
       shouldRestore = false
-      currentPage.markOptimisticConfirmed(id)
+      this.scope.page.markOptimisticConfirmed(id)
 
       return originalOnSuccess(page)
     }
 
     const originalOnFinish = events.onFinish
     events.onFinish = (visit) => {
-      currentPage.unregisterOptimistic(id)
+      this.scope.page.unregisterOptimistic(id)
 
-      if (shouldRestore && currentPage.get().component === component) {
-        const replayedProps = currentPage.replayOptimistics()
+      if (shouldRestore && this.scope.page.get().component === component) {
+        const replayedProps = this.scope.page.replayOptimistics()
 
         if (Object.keys(replayedProps).length > 0) {
-          currentPage.setPropsQuietly({ ...currentPage.get().props, ...replayedProps })
+          this.scope.page.setPropsQuietly({ ...this.scope.page.get().props, ...replayedProps })
         }
       }
 
-      if (currentPage.pendingOptimisticCount() === 0) {
-        currentPage.clearOptimisticState()
+      if (this.scope.page.pendingOptimisticCount() === 0) {
+        this.scope.page.clearOptimisticState()
       }
 
       return originalOnFinish(visit)

@@ -10,7 +10,7 @@ import { http } from './http'
 import { HttpCancelledError, HttpResponseError } from './httpErrors'
 import { interceptors } from './interceptors'
 import { containsBigInt, stringifyJson } from './json'
-import { page as currentPage } from './page'
+import { baseScope, type Origin, type PageScope } from './layers/scope'
 import { RequestParams } from './requestParams'
 import { Response } from './response'
 import type { ActiveVisit, Page } from './types'
@@ -23,18 +23,30 @@ export class Request {
   protected requestParams: RequestParams
   protected requestHasFinished = false
   protected optimisticId: number | null
+  protected scope: PageScope
+  protected origin: Origin
 
   constructor(
     params: ActiveVisit,
     protected page: Page,
-    { optimisticId = null }: { optimisticId?: number | null } = {},
+    {
+      optimisticId = null,
+      scope = baseScope,
+      origin,
+    }: { optimisticId?: number | null; scope?: PageScope; origin?: Origin } = {},
   ) {
     this.requestParams = RequestParams.create(params)
     this.cancelToken = new AbortController()
     this.optimisticId = optimisticId
+    this.scope = scope
+    this.origin = origin ?? scope.capture(params)
   }
 
-  public static create(params: ActiveVisit, page: Page, options?: { optimisticId?: number | null }): Request {
+  public static create(
+    params: ActiveVisit,
+    page: Page,
+    options?: { optimisticId?: number | null; scope?: PageScope; origin?: Origin },
+  ): Request {
     return new Request(params, page, options)
   }
 
@@ -98,14 +110,28 @@ export class Request {
       .getClient()
       .request(processedConfig)
       .then((response) => {
-        this.response = Response.create(this.requestParams, response, this.page, this.optimisticId)
+        this.response = Response.create(
+          this.requestParams,
+          response,
+          this.page,
+          this.optimisticId,
+          this.scope,
+          this.origin,
+        )
 
         return this.response.handle()
       })
       .catch((error) => {
         // Handle HTTP error responses (4xx/5xx)
         if (error instanceof HttpResponseError) {
-          this.response = Response.create(this.requestParams, error.response, this.page, this.optimisticId)
+          this.response = Response.create(
+            this.requestParams,
+            error.response,
+            this.page,
+            this.optimisticId,
+            this.scope,
+            this.origin,
+          )
 
           return this.response.handle()
         }
@@ -182,13 +208,13 @@ export class Request {
 
   protected getHeaders(): HttpRequestHeaders {
     const headers: HttpRequestHeaders = {
-      ...this.requestParams.headers(),
+      ...this.requestParams.headers(this.scope.page.get().component),
       Accept: 'text/html, application/xhtml+xml',
       'X-Requested-With': 'XMLHttpRequest',
       'X-Inertia': true,
     }
 
-    const page = currentPage.get()
+    const page = this.scope.page.get()
 
     if (page.version) {
       headers['X-Inertia-Version'] = page.version

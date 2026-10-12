@@ -1,8 +1,8 @@
 import { cloneDeep } from 'es-toolkit'
 import { get } from 'es-toolkit/compat'
 import { HttpCancelledError } from './httpErrors'
+import { baseScope, type Origin, type PageScope } from './layers/scope'
 import { objectsAreEqual } from './objectUtils'
-import { page as currentPage } from './page'
 import { Response } from './response'
 import { timeToMs } from './time'
 import {
@@ -80,7 +80,7 @@ class PrefetchedRequests {
 
       const pageResponse = response.getPageResponse()
 
-      currentPage.mergeOncePropsIntoResponse(pageResponse)
+      response.scope.page.mergeOncePropsIntoResponse(pageResponse)
 
       this.cached.push({
         params: { ...params },
@@ -209,7 +209,11 @@ class PrefetchedRequests {
     return this.findCached(params) || this.findInFlight(params)
   }
 
-  public use(prefetched: PrefetchedResponse | InFlightPrefetch, params: ActiveVisit) {
+  public use(
+    prefetched: PrefetchedResponse | InFlightPrefetch,
+    params: ActiveVisit,
+    binding?: { scope: PageScope; origin: Origin },
+  ) {
     const id = `${params.url.pathname}-${Date.now()}-${Math.random().toString(36).substring(7)}`
 
     this.currentUseId = id
@@ -227,7 +231,7 @@ class PrefetchedRequests {
           return
         }
 
-        response.mergeParams({ ...consumedParams, onPrefetched: () => {} })
+        response.mergeParams({ ...consumedParams, onPrefetched: () => {} }, binding)
 
         // If this was a one-time cache, remove it
         // (generally a prefetch="click" request with no specified cache value)
@@ -316,12 +320,14 @@ class PrefetchedRequests {
     )
   }
 
-  public updateCachedOncePropsFromCurrentPage(): void {
+  public updateCachedOncePropsFromCurrentPage(
+    source: Pick<PageScope['page'], 'mergeOncePropsIntoResponse'> = baseScope.page,
+  ): void {
     this.cached.forEach((prefetched) => {
       prefetched.response.then((response) => {
         const pageResponse = response.getPageResponse()
 
-        currentPage.mergeOncePropsIntoResponse(pageResponse, { force: true })
+        source.mergeOncePropsIntoResponse(pageResponse, { force: true })
 
         for (const [group, deferredProps] of Object.entries(pageResponse.deferredProps ?? {})) {
           const remaining = deferredProps.filter((prop) => get(pageResponse.props, prop) === undefined)
