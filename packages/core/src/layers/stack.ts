@@ -4,6 +4,7 @@
 
 import { get } from 'es-toolkit/compat'
 import { history } from '../history'
+import { interceptors } from '../interceptors'
 import { page as currentPage, type CurrentPage } from '../page'
 import type { Response } from '../response'
 import { Scroll } from '../scroll'
@@ -756,10 +757,10 @@ export class Stack implements StackPort {
   public emit(id: LayerId, name: string, payload: unknown): void {
     const owner = this.row(id)?.owner
     const from = this.instances.get(id)?.info()
+    const to = owner && owner !== 'base' && from ? this.instances.get(owner) : undefined
 
-    if (owner && owner !== 'base' && from) {
-      this.instances.get(owner)?.inbox.deliver(name, payload, from)
-    }
+    interceptors.fireLayerEvent({ type: 'event', from: id, to: to?.id ?? null, name, payload })
+    to?.inbox.deliver(name, payload, from!)
   }
 
   protected row(id: LayerId): LayerRow | undefined {

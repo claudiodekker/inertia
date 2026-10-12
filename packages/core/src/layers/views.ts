@@ -1,3 +1,4 @@
+import { interceptors } from '../interceptors'
 import type { Page } from '../types'
 import type { LayerInstance } from './instance'
 import type { LayerId, LayerRow } from './state'
@@ -62,12 +63,14 @@ export class Painter {
       ...ghosts.map((id, index) => this.view(instances.get(id)!, rendered.length + index, false, false)),
     ]
     const leaving = this.leaving
+    const before = this.painted.info
 
     this.leaving = []
     this.painted = {
       views: views.length > 0 ? views : noViews,
       info: rendered.length > 0 ? rendered.map((row) => instances.get(row.id)!.info()) : noInfo,
     }
+    this.announce(before, this.painted.info)
 
     for (const id of this.cache.keys()) {
       if (!instances.has(id)) {
@@ -79,6 +82,14 @@ export class Painter {
     return Promise.all([...this.listeners].map((listener) => listener())).then(() =>
       leaving.forEach((instance) => instance.fireClose()),
     )
+  }
+
+  /** Development tooling hears each layer that joined the stack and each that left it, bottom first. */
+  protected announce(before: readonly LayerInfo[], now: readonly LayerInfo[]): void {
+    const absentFrom = (stack: readonly LayerInfo[]) => (layer: LayerInfo) => !stack.some(({ id }) => id === layer.id)
+
+    now.filter(absentFrom(before)).forEach((layer) => interceptors.fireLayerEvent({ type: 'opened', layer }))
+    before.filter(absentFrom(now)).forEach((layer) => interceptors.fireLayerEvent({ type: 'closed', layer }))
   }
 
   /** A disposed instance: its close listeners fire once the paint removing its view has landed, or at once when none shows it. */
