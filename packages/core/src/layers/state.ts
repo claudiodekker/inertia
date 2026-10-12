@@ -189,7 +189,10 @@ export type StackEvent =
   | { type: 'booted'; seeds: readonly Seed[]; blank: boolean; walkTo: string | null }
   | { type: 'restoredOnLoad'; entry: EntryFacts }
   | { type: 'openRequested'; ticket: LayerId; owner: Owner }
-  /** The ticket's visit was never dispatched (onBefore or the before event refused it). */
+  /**
+   * The ticket is given up with no visit out: its gate refused the visit, or its handle was closed while
+   * it waited on a prompt. A ticket whose visit is out ends at that visit's finish instead.
+   */
   | { type: 'openRefused'; ticket: LayerId }
   /** After the local layer's component resolved. */
   | { type: 'localOpened'; id: LayerId; owner: Owner; key: string }

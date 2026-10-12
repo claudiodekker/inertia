@@ -959,6 +959,17 @@ describe('tickets', () => {
     expect(dispatched.state.tickets.get(id('t1'))).toEqual({ id: 't1', owner: 'base', state: 'dispatched' })
   })
 
+  it('gives up a ticket waiting on a prompt: the pin stays, and the layer answer after it returns under a fresh id', () => {
+    const givenUp = reduce(pinnedOver(), { type: 'openRefused', ticket: id('t1') })
+
+    expect(givenUp.effects).toEqual([{ type: 'refuse', ticket: 't1' }])
+    expect(givenUp.state).toEqual(pinnedOver({ tickets: new Map() }))
+    expect(
+      arrived(givenUp.state, { origin: baseOrigin({ gen: 1 }), layer: { key: 'guarded', base: '/layers/base' } })
+        .outcome,
+    ).toEqual(landing('return', { id: 'new' }))
+  })
+
   it('a plain page with errors answering a layer that owns no address hands its errors back to that layer', () => {
     const s = state({ rows: [row('a'), row('b', { ownsAddress: false })] })
 

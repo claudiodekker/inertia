@@ -107,7 +107,9 @@ function openRequested(s: StackState, e: E<'openRequested'>): Step {
 
 function openRefused(s: StackState, e: E<'openRefused'>): Step {
   return run(s, (t, fx) => {
-    if (t.tickets.get(e.ticket)?.state !== 'pending') {
+    const out = [...t.ops.values()].some((op) => op.kind === 'open' && op.ticket === e.ticket)
+
+    if (!t.tickets.has(e.ticket) || out) {
       return t
     }
 
