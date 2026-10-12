@@ -94,7 +94,7 @@ export class CurrentPage {
       page.rememberedState ??= {}
 
       const isServer = typeof window === 'undefined'
-      const location = !isServer ? this.location(page, replace, visitId) : new URL(page.url)
+      const location = !isServer ? this.location(page, replace, visitId, initialRender) : new URL(page.url)
       const scrollRegions = !isServer && preserveScroll ? Scroll.getScrollRegions() : []
       replace = replace || isSameUrlWithoutHash(hrefToUrl(page.url), location)
 
@@ -154,8 +154,8 @@ export class CurrentPage {
     }
   }
 
-  protected location(page: Page, replace: boolean, visitId?: string): URL | Location {
-    return stack.baseLocation(page, replace, visitId) ?? window.location
+  protected location(page: Page, replace: boolean, visitId?: string, initialRender = false): URL | Location {
+    return stack.baseLocation(page, replace, visitId, initialRender) ?? window.location
   }
 
   protected write(

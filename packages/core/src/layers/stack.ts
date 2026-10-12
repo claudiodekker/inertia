@@ -23,9 +23,10 @@ import {
   type CompositeEntry,
   type LayerEntry,
 } from './entry'
-import { against, entryFacts, isInterstitial, marksOf, rereads, routeFacts, snapshot, stripMark } from './facts'
+import { against, entryFacts, isInterstitial, marksOf, rereads, routeFacts, snapshot } from './facts'
 import { openLocal, TicketHandle } from './handles'
 import type { LayerInstance, StackPort } from './instance'
+import { land } from './land'
 import { reduce } from './reduce'
 import type { PageScope } from './scope'
 import {
@@ -33,7 +34,6 @@ import {
   initialState,
   type CloseId,
   type EntryFacts,
-  type Landing,
   type LayerId,
   type LayerRow,
   type Origin,
@@ -83,6 +83,8 @@ export class Stack implements StackPort {
   protected restoredLoad = false
   /** What each response still landing answers, by visit: its base commit reads this. */
   protected answers = new Map<string, 'refresh' | 'navigation'>()
+  /** The last refresh that arrived with nothing open, which 3.x lands on its own. Responses land one at a time. */
+  protected passedRefresh: string | null = null
 
   public connect(connection: Connection): void {
     this.connection = connection
@@ -278,11 +280,15 @@ export class Stack implements StackPort {
     const page = response.getPageResponse()
     const marks = marksOf(page)
 
+    const visit = response.getVisit()
+
     if (response.scope === baseScope && idle(this.state) && !marks.layer) {
+      // 3.x lands it. A layer that opens before it commits still has to read a refresh as one.
+      this.passedRefresh = rereads(visit, currentPage.get()) ? visit.id : null
+
       return undefined
     }
 
-    const visit = response.getVisit()
     const live = this.state.rows.filter((row) => this.instances.has(row.id))
     const addressTier = live.filter((row) => row.phase === 'open' && row.ownsAddress).at(-1)
     const facts = routeFacts(visit, page, marks, {
@@ -303,7 +309,14 @@ export class Stack implements StackPort {
 
     this.answers.set(visit.id, rereads(visit, response.scope.page.get()) ? 'refresh' : 'navigation')
 
-    const landed = (this.land(landing, response, page) ?? response.land()).finally(() => this.answers.delete(visit.id))
+    const tiers = {
+      base: baseScope,
+      create: (id: LayerId) => this.create(id),
+      layer: (id: LayerId) => this.instance(id),
+    }
+    const landed = (land(landing, response, page, tiers) ?? response.land()).finally(() =>
+      this.answers.delete(visit.id),
+    )
 
     if ('id' in landing && landing.kind !== 'close' && landing.kind !== 'handback') {
       this.bindHandles(landing.id, visit.id)
@@ -319,45 +332,6 @@ export class Stack implements StackPort {
         this.pending.delete(ticket)
         handle.bind(this.instance(id))
       }
-    }
-  }
-
-  protected land(landing: Landing, response: Response, page: Page): Promise<void> | undefined {
-    const { baseScope } = this.connected()
-
-    switch (landing.kind) {
-      case 'pass':
-        return undefined
-      case 'drop':
-        return Promise.resolve()
-      case 'base':
-        return response.retarget(baseScope).land()
-      case 'promote':
-      case 'walk-base':
-        return response.retarget(baseScope, stripMark(page)).land()
-      case 'open':
-      case 'cold':
-      case 'return':
-      case 'walk-beneath':
-        return response.retarget(this.create(landing.id).scope).land()
-      case 'rewrite':
-      case 'refresh':
-        return response.retarget(this.instance(landing.id).scope).land()
-      case 'close':
-        return response.succeed(
-          landing.beneath === 'base' ? currentPage.get() : this.instance(landing.beneath).page.get(),
-        )
-      case 'handback': {
-        // The layer keeps its page; only the answer's errors and flash land, on the layer that asked.
-        const instance = this.instance(landing.id)
-        const own = instance.page.get()
-
-        return response
-          .retarget(instance.scope, { ...own, props: { ...own.props, errors: page.props.errors }, flash: page.flash })
-          .land()
-      }
-      default:
-        return assertNever(landing)
     }
   }
 
@@ -385,9 +359,15 @@ export class Stack implements StackPort {
     }
 
     const restoredLoad = this.restoredLoad
+    const held = this.state.rows.length > 0 ? this.compose(currentPage.getWithoutFlashData()).data : null
 
     this.restoredLoad = false
     this.dispatch(this.committing(page, replace, visitId, initial || restoredLoad))
+
+    // 3.x skips the write of a page equal to the one it last wrote, and that entry held the stack this commit dropped.
+    if (held && this.state.rows.length === 0) {
+      history.setCurrent(held)
+    }
   }
 
   protected committing(page: Page, replace: boolean, visitId: string | undefined, initial: boolean): StackEvent {
@@ -398,8 +378,16 @@ export class Stack implements StackPort {
       interstitial: isInterstitial(page),
       initial,
       against: against(currentPage.get(), page),
-      answer: (visitId !== undefined && this.answers.get(visitId)) || null,
+      answer: this.answerOf(visitId),
     }
+  }
+
+  protected answerOf(visitId: string | undefined): 'refresh' | 'navigation' | null {
+    if (visitId === undefined) {
+      return null
+    }
+
+    return this.answers.get(visitId) ?? (visitId === this.passedRefresh ? 'refresh' : null)
   }
 
   public baseSwapped(): void {
@@ -465,18 +453,19 @@ export class Stack implements StackPort {
 
   /**
    * What a committing base page compares its url with to tell a replace from a push: the base url while a
-   * layer owns the address, else null (window.location). A refresh that moves the base beneath a stack it
-   * keeps is compared with its own url, so it rewrites the entry: the address is still the layer's.
+   * layer owns the address and the commit keeps the stack, else null (window.location), so a navigation
+   * that drops the stack pushes unless it lands on the address the layer held. A refresh that moves the
+   * base beneath a stack it keeps is compared with its own url, so it rewrites the entry: the address is
+   * still the layer's.
    */
-  public baseLocation(page: Page, replace: boolean, visitId?: string): URL | null {
-    if (!this.ownsAddress()) {
+  public baseLocation(page: Page, replace: boolean, visitId: string | undefined, initial: boolean): URL | null {
+    const commit = this.committing(page, replace, visitId, initial || this.restoredLoad)
+
+    if (!this.ownsAddress() || reduce(this.state, commit).state.rows.length === 0) {
       return null
     }
 
-    const refresh = visitId !== undefined && this.answers.get(visitId) === 'refresh'
-    const kept = refresh && reduce(this.state, this.committing(page, replace, visitId, false)).state.rows.length > 0
-
-    return hrefToUrl(kept ? page.url : currentPage.get().url)
+    return hrefToUrl(this.answerOf(visitId) === 'refresh' ? page.url : currentPage.get().url)
   }
 
   /**
