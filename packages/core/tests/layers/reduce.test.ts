@@ -209,13 +209,13 @@ describe('rewrites and refreshes', () => {
     })
   })
 
-  it('L:857 Back between wizard steps rewinds the row; closing unwinds every entry it pushed', () => {
+  it('L:857 Back between wizard steps rewinds the row to its entry; closing unwinds every entry it pushed', () => {
     const s = state({ rows: [row('a', { key: 'step', entries: 2 })] })
 
     expect(
       reduce(s, { type: 'popstate', entry: entry([entryLayer('a', { key: 'step' })], { sameSnapshot: new Set() }) }),
     ).toEqual({
-      state: s,
+      state: state({ rows: [row('a', { key: 'step', entries: 1 })] }),
       effects: [{ type: 'rewind', ids: ['a'] }, { type: 'cancelAll' }, { type: 'paint' }],
       outcome: handled,
     })
@@ -694,6 +694,18 @@ describe('history', () => {
       ],
       outcome: { kind: 'restore', restore: { kind: 'base' } },
     })
+  })
+})
+
+describe('the entries a restored row has pushed', () => {
+  it('are the ones its entry counted, for every row that stays', () => {
+    const step = reduce(state({ rows: [row('a', { entries: 3 }), row('b'), row('c')] }), {
+      type: 'popstate',
+      entry: entry([entryLayer('a', { entries: 2 }), entryLayer('b')]),
+    })
+
+    expect(step.state.rows).toEqual([row('a', { entries: 2 }), row('b')])
+    expect(step.state.ghosts).toEqual(['c'])
   })
 })
 
