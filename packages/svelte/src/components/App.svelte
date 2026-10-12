@@ -72,7 +72,7 @@
   const stack = useLayerViews(initialLayers)
 
   function currentLayoutSnapshot(): LayoutSnapshot {
-    // Getters keep the reactive reads inside the layout branch, as in 3.x
+    // Getters keep the reactive reads inside the layout branch
     return isServer
       ? { shared: {}, named: {} }
       : {

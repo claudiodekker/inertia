@@ -80,10 +80,6 @@ export function reduce(s: StackState, e: StackEvent): Step {
   }
 }
 
-// ---------------------------------------------------------------------------------------------------
-// Boot
-// ---------------------------------------------------------------------------------------------------
-
 function booted(s: StackState, e: E<'booted'>): Step {
   const rows = e.layers.map((layer): LayerRow => ({ ...layer, phase: 'open', close: null, renderKey: 0 }))
 
@@ -95,10 +91,6 @@ function booted(s: StackState, e: E<'booted'>): Step {
     paint: { gated: true, owed: rows.length > 0 },
   })
 }
-
-// ---------------------------------------------------------------------------------------------------
-// Open requests and followed visits
-// ---------------------------------------------------------------------------------------------------
 
 function openRequested(s: StackState, e: E<'openRequested'>): Step {
   if (s.openRequests.has(e.request) || row(s, e.request)) {

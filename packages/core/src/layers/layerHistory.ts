@@ -10,7 +10,7 @@ export class LayerHistory implements HistoryPort {
 
   /**
    * Before the first commit this reads false, so an opening response keeps its own url (the row records
-   * that it owns no address instead). After that it is the 3.x flag, scoped to this layer.
+   * that it owns no address instead). After that it is history.preserveUrl, scoped to this layer.
    */
   get preserveUrl(): boolean {
     return this.requested && this.layer.lastWrite !== null

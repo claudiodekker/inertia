@@ -19,12 +19,12 @@ type Write = (data: Page | ArrayBuffer) => Promise<void>
 export class StackHistory {
   /** The layers of the entry a popstate is applying, for its reopen and rewind effects. */
   protected restoring: readonly LayerEntry[] = []
-  /** The row that counted the base push 3.x makes next. */
+  /** The row that counted the base page's next push. */
   protected chargedForNextPush: LayerId | undefined
 
   constructor(protected stack: Stack) {}
 
-  /** From the first layer on, every 3.x history write stores the stack with the page. */
+  /** From the first layer on, every pushState and replaceState stores the stack with the page. */
   public composeWrites(): void {
     history.composer = this
   }
@@ -53,7 +53,7 @@ export class StackHistory {
     this.chargedForNextPush = charged
   }
 
-  /** The history hook for a base page 3.x pushes. */
+  /** The history hook for a pushState of the base page. */
   public watchPush(push: Write): Write {
     const charged = this.chargedForNextPush
 
@@ -104,7 +104,7 @@ export class StackHistory {
     }
   }
 
-  /** The eventHandler popstate hook. Returns what 3.x restores, or null when the stack handled the entry. */
+  /** The eventHandler popstate hook. Returns the page the handler goes on to restore, or null when the stack handled the entry. */
   public popstate(data: Page): Page | null {
     if (isServer) {
       return data
@@ -131,7 +131,7 @@ export class StackHistory {
     const { restore } = outcome as Extract<Outcome, { kind: 'restore' }>
 
     if (restore.kind === 'handled') {
-      // 3.x restores the entry's scroll on every traversal it runs; this one the stack ran.
+      // The popstate handler restores the entry's scroll on every traversal it runs; this one the stack ran.
       Scroll.restore(history.getScrollRegions())
 
       return null

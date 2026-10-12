@@ -1,6 +1,6 @@
 // The runtime. It holds the reducer state and the layer instances. It never decides: each hook reads its
 // inputs, dispatches one event, and runs the returned effects in order. Client only: on the server
-// every hook returns the 3.x value.
+// every hook returns what an app without layers gets.
 
 import { interceptors } from '../interceptors'
 import { page as currentPage, type CurrentPage } from '../page'
@@ -134,7 +134,7 @@ export class Stack implements StackPort {
     const { tag } = effect
 
     if (tag.kind === 'fetchBase' || tag.kind === 'recover') {
-      // After the task that asked for it: a popstate's own 3.x cancelAll runs right after its dispatch.
+      // After the task that asked for it: a popstate's own cancelAll runs right after its dispatch.
       return queueMicrotask(() => this.base.fetch(tag, effect.url!))
     }
 
@@ -287,8 +287,8 @@ export class Stack implements StackPort {
   }
 
   /**
-   * A base fetch asks for the page beneath the stack. The blank base carries its url, so 3.x would take
-   * the fetch for a request aimed at the page a visit leaves, and cancel it.
+   * A base fetch asks for the page beneath the stack. The blank base carries its url, so a visit would
+   * take the fetch for a request aimed at the page it leaves, and cancel it.
    */
   public fetchesBase(visit: string): boolean {
     return this.state.ops.get(visit as VisitId)?.kind === 'fetchBase'
@@ -343,8 +343,6 @@ export class Stack implements StackPort {
     return null
   }
 
-  // ---------------------------------------------------------------- adapters
-
   public bindElement(id: string, el: Element | null): void {
     const instance = this.instances.get(id as LayerId)
 
@@ -356,8 +354,6 @@ export class Stack implements StackPort {
       this.elements.set(el, id as LayerId)
     }
   }
-
-  // ---------------------------------------------------------------- the public surface
 
   public handle(id?: string): LayerScope | undefined {
     const row = id === undefined ? this.state.rows.at(-1) : this.row(id as LayerId)

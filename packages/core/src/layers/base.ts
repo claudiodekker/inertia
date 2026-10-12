@@ -1,5 +1,5 @@
-// The stack's side of the 3.x page beneath it: where a base visit was made, what a base commit does to
-// the stack, and the pages and visits the stack asks 3.x for.
+// The stack's side of the page beneath it: where a base visit was made, what a base commit does to the
+// stack, and the pages and visits the stack asks the page store and the base router for.
 
 import { fireFlashEvent } from '../events'
 import { history } from '../history'
@@ -22,7 +22,7 @@ export class Base {
   protected restoredLoad = false
   /** What each response still landing answers, by visit: its base commit reads this. */
   protected answers = new Map<string, 'refresh' | 'navigation'>()
-  /** The last refresh that arrived with nothing open, which 3.x lands on its own. Responses land one at a time. */
+  /** The last refresh that arrived with nothing open, which lands without the stack. Responses land one at a time. */
   protected passedRefresh: string | null = null
 
   constructor(protected stack: Stack) {}
@@ -44,7 +44,7 @@ export class Base {
     return { kind: 'base', top, gen: state.base.gen, instantGen: null }
   }
 
-  /** 3.x lands this response on its own. A layer that opens before it commits still has to read a refresh as one. */
+  /** This response lands without the stack. A layer that opens before it commits still has to read a refresh as one. */
   public passes(visit: PendingVisit): void {
     this.passedRefresh = isRefresh(visit, currentPage.get()) ? visit.id : null
   }
@@ -75,7 +75,7 @@ export class Base {
     this.restoredLoad = false
     this.stack.dispatch(this.commit(page, replace, visitId, initial || restoredLoad))
 
-    // 3.x skips the write of a page equal to the one it last wrote, and that entry held the stack this commit dropped.
+    // history skips the write of a page equal to the one it last wrote, and that entry held the stack this commit dropped.
     if (held && this.stack.state.rows.length === 0) {
       history.setCurrent(held)
     }
@@ -139,7 +139,7 @@ export class Base {
     return idle(this.stack.state) ? null : currentPage.get().url
   }
 
-  /** 3.x installs the base page the reducer asked for; its commit carries the token as its visit id. */
+  /** Sets the base page the reducer asked for. Its commit carries the token as its visit id. */
   public install({ token, source, mode }: Extract<StackEffect, { type: 'installBase' }>): void {
     void currentPage.set(this.pageFrom(source), {
       replace: mode === 'replace',
@@ -197,14 +197,14 @@ export class Base {
     id = this.stack.visits.follow(tag, options, (followed) => baseScope.router.visit(url, followed))
   }
 
-  /** The blank takes the url fetched next, and 3.x resolves it again: the loading resolver sees that url. */
+  /** The blank takes the url fetched next and is resolved again, so the loading resolver sees that url. */
   public setBlankUrl(url: string): void {
     void currentPage.set({ ...currentPage.get(), url }, { replace: true, preserveScroll: true, preserveState: true })
   }
 
   /**
-   * The flash a layer arrived with on the document is announced as 3.x announces the document's own:
-   * after the initial navigate event. A load that restores a history entry announces none.
+   * The flash a layer arrived with on the document is announced as the document's own is: after the
+   * initial navigate event. A load that restores a history entry announces none.
    */
   public announceFlash(plan: BootPlan): void {
     const flashes = plan.layers.map((layer) => layer.page.flash).filter((flash) => Object.keys(flash).length > 0)

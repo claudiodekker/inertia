@@ -1,6 +1,6 @@
-// The data plane of one layer: a 3.x CurrentPage, Router and layout store, bound to the layer by a
-// PageScope. Props, errors, flash, once, deferred, optimistic and remembered state are the 3.x fields
-// of this instance's CurrentPage.
+// The data of one layer: a CurrentPage, a Router and a layout store of its own, bound to the layer by a
+// PageScope. Props, errors, flash, once, deferred, optimistic and remembered state are the fields of
+// this instance's CurrentPage.
 
 import { get } from 'es-toolkit/compat'
 import { createLayoutPropsStore } from '../layout'
@@ -27,7 +27,7 @@ export interface StackPort {
   placeholderFailed(layer: LayerInstance, visit: PendingVisit): void
   /** Rewrite the live composite in place (remembered state changed). */
   rewriteEntry(layer: LayerInstance): void
-  /** A layer page carried `clearHistory`, which is global by decision. */
+  /** A layer page carried `clearHistory`, which clears the whole history. */
   clearHistory(): void
   key(id: LayerId): string
   index(id: LayerId): number
@@ -38,7 +38,7 @@ export interface StackPort {
 interface LayerPageView {
   readonly component: Component
   readonly page: Page
-  /** Bumped by every swap that does not preserve state, like the 3.x base key. */
+  /** Bumped by every swap that does not preserve state, like the base page's key. */
   readonly renderKey: number
 }
 

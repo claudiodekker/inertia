@@ -10,7 +10,7 @@ type Reload = Pick<PendingVisit, 'url' | 'preserveState' | 'only' | 'except'>
 
 /**
  * The layer each visit was made in, by the URL object every copy of the visit shares. The Visit itself
- * carries no layer, so a 3.x listener sees the 3.x visit. A visit the page made is not in here.
+ * carries no layer, so a listener sees the visit unchanged. A visit the page made is not in here.
  */
 const madeIn = new WeakMap<URL, string>()
 

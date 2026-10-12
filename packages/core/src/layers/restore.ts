@@ -8,7 +8,7 @@ type RestorePlan =
   | { kind: 'recover'; url: string }
   | {
       kind: 'restore'
-      /** The entry's base differs from the live one: 3.x restores it. */
+      /** The entry's base differs from the live one: the popstate handler restores it. */
       base: boolean
       /** Leaves the model and plays its exit (plain Back off the top layer). */
       dismiss: LayerId | null
@@ -20,7 +20,7 @@ type RestorePlan =
       reopen: readonly LayerId[]
     }
 
-/** How a popstate entry maps onto the live rows. Pure. */
+/** How a popstate entry maps onto the live rows. */
 export function planRestore(s: StackState, entry: EntryFacts): RestorePlan {
   const { rows } = s
   const target = entry.layers
@@ -69,10 +69,6 @@ function sameLayer(
 ): boolean {
   return a.id === b.id && a.key === b.key && a.type === b.type
 }
-
-// ---------------------------------------------------------------------------------------------------
-// The restore handlers
-// ---------------------------------------------------------------------------------------------------
 
 /** Document load onto a composite entry (Back or Forward into the app). Replaces the boot rows. */
 export function restoredOnLoad(s: StackState, e: E<'restoredOnLoad'>): Step {

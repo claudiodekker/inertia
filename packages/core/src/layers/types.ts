@@ -27,7 +27,7 @@ export interface LayerHandle {
 
 /** What a layer's context hands out (useLayer(), router.layerHandle()). */
 export interface LayerScope extends LayerInfo {
-  /** A 3.x Router bound to this layer's page store. */
+  /** A Router bound to this layer's page store. */
   readonly router: Router
   /** 0 = bottom. Live. */
   readonly index: number

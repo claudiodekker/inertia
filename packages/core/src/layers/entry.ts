@@ -1,7 +1,7 @@
-// The single history entry. Pure, SSR-safe. One entry holds the whole composite: the 3.x base page
-// shape plus `layers`. With no layer composed, `compose` returns the base page itself, so a layerless
-// entry is byte-identical to 3.x. A blank base is never stored under layers: the deepest layer is
-// stored as the base page, and a blank base with no layers is stored as the placeholder itself.
+// The single history entry. Pure, SSR-safe. One entry holds the whole composite: the base page plus
+// `layers`. With no layer composed, `compose` returns the base page itself, so an entry without layers
+// is stored as it always was. A blank base is never stored under layers: the deepest layer is stored
+// as the base page, and a blank base with no layers is stored as the placeholder itself.
 
 import type { Page } from '../types'
 import type { LayerId, InitialRow } from './state'
@@ -48,7 +48,7 @@ export function addressOf(base: Page, layers: readonly LayerEntry[]): string {
   return owner ? owner.url : base.url
 }
 
-/** The base view (the 3.x shape, no `layers` key) and the layer entries of a decrypted entry. */
+/** The base view (a plain page, no `layers` key) and the layer entries of a decrypted entry. */
 export function decompose(entry: CompositeEntry): { base: Page; layers: readonly LayerEntry[] } {
   if (!entry.layers) {
     return { base: entry, layers: [] }
@@ -83,10 +83,8 @@ export function layerPage(layer: LayerEntry): Page {
   return { ...pageOf(layer), flash: {} }
 }
 
-// ---------------------------------------------------------------------------------------------------
-// Boot: the document load. Runs on the server per request and on the client before mount, so both
-// derive the same plan, ids included, from the same response.
-// ---------------------------------------------------------------------------------------------------
+// The document load is planned on the server per request and on the client before mount, so both derive
+// the same plan, ids included, from the same response.
 
 export interface InitialLayer {
   readonly row: InitialRow
@@ -131,7 +129,7 @@ export function planBoot(response: Page, hash: string): BootPlan {
       ownsAddress: true,
       entries: 0,
     },
-    // A document may name no flash or rescued props: the layer gets what 3.x gives its initial page.
+    // A document may name no flash or rescued props: the layer gets what the initial page gets.
     page: {
       ...page,
       flash: page.flash ?? {},

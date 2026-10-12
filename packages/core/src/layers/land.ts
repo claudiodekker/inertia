@@ -1,4 +1,4 @@
-// Where the reducer said a response lands: the 3.x landing, run against the page or the layer it named.
+// Where the reducer said a response lands: Response.land(), run against the page or the layer it named.
 
 import type { Response } from '../response'
 import type { Page } from '../types'
@@ -14,7 +14,7 @@ interface Targets {
   layer(id: LayerId): LayerInstance
 }
 
-/** Undefined for a landing 3.x runs as it is. */
+/** Undefined for a landing the response runs on its own scope. */
 export function land(landing: Landing, response: Response, page: Page, targets: Targets): Promise<void> | undefined {
   switch (landing.kind) {
     case 'pass':

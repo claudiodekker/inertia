@@ -2,7 +2,7 @@ import { Router } from '../router'
 import type { Page, PendingVisit, ReloadOptions, RequestPayload, UrlMethodPair, VisitOptions } from '../types'
 import { baseScope, type PageScope } from './scope'
 
-/** A 3.x Router on the layer's scope. Shares the module request streams; never init()ed. */
+/** A Router on the layer's scope. Shares the module request streams; never init()ed. */
 export type LayerRouter = Router & { loadDeferred(deferred: Page['deferredProps']): void }
 
 interface Options {
@@ -51,7 +51,7 @@ function defineLayerRouter() {
       return this.options.local ? super.doReload.call(baseScope.router, options as never) : super.doReload(options)
     }
 
-    /** The rejection stays as 3.x has it for a page placeholder. */
+    /** The rejection stays unhandled, as it is for a page placeholder. */
     protected performInstantSwap(visit: PendingVisit): Promise<void> {
       return super.performInstantSwap(visit).catch((error) => {
         this.options.placeholderFailed(visit)

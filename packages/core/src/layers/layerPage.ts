@@ -5,7 +5,7 @@ import { hrefToUrl } from '../url'
 import { stripMark } from './facts'
 import type { LayerInstance } from './instance'
 
-/** A 3.x CurrentPage that overrides only the hooks whose 3.x body touches the browser, the global page or the global history. */
+/** A CurrentPage that overrides only the hooks whose body touches the browser, the global page or the global history. */
 export type LayerPage = CurrentPage & { setWithoutSwap(page: Page): void }
 
 const unopenedUrl = new URL('about:blank')
@@ -28,7 +28,7 @@ function defineLayerPage() {
       super()
     }
 
-    /** The 3.x field setup without the global historyQuotaExceeded listener. */
+    /** CurrentPage.init without the global historyQuotaExceeded listener. */
     public init<ComponentType = Component>({
       initialPage,
       swapComponent,
@@ -55,14 +55,14 @@ function defineLayerPage() {
       return super.set(withRecords(stripMark(page)), options)
     }
 
-    /** Clearing history is global by decision: the stack runs it, never this page. */
+    /** Clearing history clears the whole history: the stack runs it, never this page. */
     protected clearHistoryFor(page: Page): void {
       if (page.clearHistory) {
         this.layer.port.clearHistory()
       }
     }
 
-    /** Until the first commit, a url nothing matches, so 3.x's same-url replace reduces to visit.replace. */
+    /** Until the first commit, a url nothing matches, so set()'s same-url replace reduces to visit.replace. */
     protected location(_page: Page): URL {
       return this.layer.lastWrite === null ? unopenedUrl : hrefToUrl(this.page.url)
     }
@@ -116,7 +116,7 @@ function defineLayerPage() {
       }
     }
 
-    /** The 3.x restore without history.setCurrent, which belongs to the base. */
+    /** CurrentPage.setQuietly without history.setCurrent, which belongs to the base. */
     public setQuietly(page: Page, { preserveState = false }: { preserveState?: boolean } = {}) {
       this.componentId = {}
 

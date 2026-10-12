@@ -1,6 +1,6 @@
 // The control plane's one value, its events, effects and outcomes. Pure types.
 // StackState holds structure only, never a Page: layer pages live in their LayerInstance and the base
-// page in the 3.x `page` singleton. Facts a decision needs from page data arrive as event fields.
+// page in the `page` singleton. Facts a decision needs from page data arrive as event fields.
 // The one page reference is Interstitial.token, which names a page the runtime sets aside.
 
 declare const brand: unique symbol
@@ -8,7 +8,7 @@ type Brand<T, B extends string> = T & { readonly [brand]: B }
 
 /** Made by the runtime and carried in on events. */
 export type LayerId = Brand<string, 'LayerId'>
-/** The 3.x visit id. It survives getPendingVisit merges and 409 re-issues. */
+/** The visit's own id. It survives getPendingVisit merges and 409 re-issues. */
 export type VisitId = Brand<string, 'VisitId'>
 export type CloseId = Brand<string, 'CloseId'>
 export type WaiterId = Brand<string, 'WaiterId'>
@@ -36,7 +36,7 @@ export interface StackState {
   readonly ops: ReadonlyMap<VisitId, Op>
   readonly baseFetch: BaseFetch | null
   readonly interstitial: Interstitial | null
-  /** What only the browser or 3.x can complete. At most one at a time. */
+  /** What only the browser or the page store can complete. At most one at a time. */
   readonly expect: Expectation | null
   /** Closed while a base commit is between `baseCommitting` and `baseSwapped`. */
   readonly paint: { readonly gated: boolean; readonly owed: boolean }
@@ -119,7 +119,7 @@ export type Expectation =
   /** history.go(-n) issued for `close`; the next popstate, or the timeout answer, completes it. */
   | { readonly kind: 'unwind'; readonly close: CloseId; readonly token: Token }
   /**
-   * The stack asked 3.x to install a base page; the commit whose visit id is `token` is it.
+   * The stack asked the page store to set a base page; the commit whose visit id is `token` is it.
    * `layer` is the row the install waits on (cold, return) or promotes.
    */
   | {
@@ -247,7 +247,7 @@ export type StackEvent =
   | { type: 'layerCommitting'; id: LayerId; requestedReplace: boolean; urlChanged: boolean }
   /** A layer's view changed (swap, optimistic props, flash). */
   | { type: 'layerSwapped'; id: LayerId }
-  /** Every popstate after decrypt and the 3.x version check. `entry.layers` is empty for a plain entry. */
+  /** Every popstate after decrypt and the version check. `entry.layers` is empty for a plain entry. */
   | { type: 'popstate'; entry: EntryFacts }
   /** The browser refused the push `id` was charged for. */
   | { type: 'writeRefused'; id: LayerId }
@@ -272,10 +272,10 @@ export type StackEffect =
    * push; a push the browser refuses comes back as `writeRefused` for it.
    */
   | { type: 'writeEntry'; mode: 'push' | 'replace'; charged?: LayerId }
-  /** 3.x is about to push the base page. `charged` counted that push, and gets it back if the browser refuses it. */
+  /** The base page is about to be pushed. `charged` counted that push, and gets it back if the browser refuses it. */
   | { type: 'watchBasePush'; charged: LayerId }
   | { type: 'historyGo'; delta: number; token: Token }
-  /** A visit the stack starts itself: through the base router (fetchBase, recover) or a reload on the router of the page or layer beneath (refresh). */
+  /** A visit the stack starts itself: through the base router (fetchBase, recover), or a reload of the page or layer beneath (refresh). */
   | { type: 'startVisit'; tag: VisitTag; via: Owner; url: string | null }
   /** currentPage.set(page from source, { replace: mode === 'replace', visitId: String(token) }). */
   | { type: 'installBase'; token: Token; source: InstallSource; mode: 'push' | 'replace' }
@@ -297,7 +297,7 @@ export type StackEffect =
   | { type: 'warn'; message: string }
 
 export type Landing =
-  /** 3.x continues on the response's own scope, untouched. */
+  /** The response lands on its own scope, untouched. */
   | { kind: 'pass' }
   /** Discard: no set, no callbacks but the request's own finish. */
   | { kind: 'drop' }
@@ -324,11 +324,11 @@ export type Landing =
 export type CommitDecision = { kind: 'skip' } | { kind: 'write'; mode: 'push' | 'replace' } | { kind: 'none' }
 
 export type RestoreOutcome =
-  /** 3.x runs untouched. */
+  /** The popstate handler runs untouched. */
   | { kind: 'pass' }
-  /** 3.x restores the base view (the entry minus `layers`); the stack applied its rows beside it. */
+  /** The popstate handler restores the base view (the entry minus `layers`); the stack applied its rows beside it. */
   | { kind: 'base' }
-  /** The stack handled the entry; 3.x does nothing more. */
+  /** The stack handled the entry; nothing more is restored. */
   | { kind: 'handled' }
 
 export type Outcome =
