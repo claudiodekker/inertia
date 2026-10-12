@@ -58,6 +58,10 @@ export class Request {
     return this.requestParams.all().url
   }
 
+  public getVisit(): ActiveVisit {
+    return this.requestParams.all()
+  }
+
   public isOptimistic(): boolean {
     return this.optimisticId !== null
   }

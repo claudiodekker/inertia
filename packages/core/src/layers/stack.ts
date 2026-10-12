@@ -495,6 +495,14 @@ export class Stack implements StackPort {
     return this.state.rows.some((row) => row.phase === 'open' && row.type === 'routed' && row.ownsAddress)
   }
 
+  /**
+   * A walk hop fetches the page beneath the stack. The blank base carries the hop's url, so 3.x would
+   * take the hop for a request aimed at the page a visit leaves, and cancel it.
+   */
+  public walking(visit: string): boolean {
+    return this.state.ops.get(visit as VisitId)?.kind === 'walk'
+  }
+
   /** The history composer: the base page with every committed layer that is not being closed. Pure read. */
   public compose(page: Page): { data: CompositeEntry; url: string } {
     const { stored, addressed } = entryRows(this.state)
