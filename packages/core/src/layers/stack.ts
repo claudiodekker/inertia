@@ -484,7 +484,8 @@ export class Stack implements StackPort {
     return idle(this.state) ? null : currentPage.get().url
   }
 
-  protected ownsAddress(): boolean {
+  /** A layer's url is the address, so the browser's hash belongs to that layer and not to the base. */
+  public ownsAddress(): boolean {
     return this.state.rows.some((row) => row.phase === 'open' && row.type === 'routed' && row.ownsAddress)
   }
 

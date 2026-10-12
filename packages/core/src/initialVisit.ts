@@ -68,7 +68,7 @@ export class InitialVisit {
 
     SessionStorage.remove(SessionStorage.locationVisitKey)
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !stack.ownsAddress()) {
       currentPage.setUrlHash(window.location.hash)
     }
 
@@ -103,7 +103,7 @@ export class InitialVisit {
   }
 
   protected static handleDefault(): void {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && !stack.ownsAddress()) {
       currentPage.setUrlHash(window.location.hash)
     }
 
