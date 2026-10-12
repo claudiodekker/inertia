@@ -1,257 +1,367 @@
 import { describe, expect, it } from 'vitest'
 import { reduce } from '../../src/layers/reduce'
-import { initialState, type LayerId, type LayerRow, type RouteFacts, type StackState } from '../../src/layers/state'
+import { MAX_WALK, type StackState } from '../../src/layers/state'
+import {
+  arrival,
+  arrived,
+  baseOrigin,
+  cid,
+  close,
+  closes,
+  committing,
+  entry,
+  entryLayer,
+  id,
+  layerOrigin,
+  row,
+  script,
+  state,
+  tok,
+  visit,
+  wid,
+} from './fixtures'
 
-const id = (value: string) => value as LayerId
+const landing = (kind: string, extra: object = {}) => ({ kind: 'landing', landing: { kind, ...extra } })
+const none = { kind: 'none' }
+const handled = { kind: 'restore', restore: { kind: 'handled' } }
 
-const row = (value: string, overrides: Partial<LayerRow> = {}): LayerRow => ({
-  id: id(value),
-  type: 'routed',
-  key: `key:${value}`,
-  owner: 'base',
-  phase: 'open',
-  ownsAddress: true,
-  entries: 1,
-  renderKey: 0,
-  ...overrides,
-})
+const walking = (overrides: Partial<StackState> = {}) =>
+  state({
+    rows: [row('a', { standalone: true, entries: 0 })],
+    base: { blank: true, gen: 0 },
+    walk: { target: '/base', hops: 1, visit: visit('v1'), startOnSwap: false },
+    ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: false }]]),
+    ...overrides,
+  })
 
-const state = (overrides: Partial<StackState> = {}): StackState => ({ ...initialState, ...overrides })
+const pinnedOver = (overrides: Partial<StackState> = {}) =>
+  state({
+    base: { blank: false, gen: 1 },
+    nextToken: 2,
+    pin: { token: tok(1), gen: 1, pushes: 1, ticket: id('t1'), suspended: [row('a')] },
+    tickets: new Map([[id('t1'), { id: id('t1'), owner: 'base', state: 'dispatched' }]]),
+    ...overrides,
+  })
 
-const facts = (overrides: Partial<RouteFacts> = {}): RouteFacts => ({
-  aimed: false,
-  baseMatches: false,
-  partial: false,
-  async: false,
-  preserveState: false,
-  preserveUrl: false,
-  ...overrides,
-})
-
-const baseOrigin = (overrides: { top?: string | null; gen?: number; instantGen?: number | null } = {}) => ({
-  kind: 'base' as const,
-  top: overrides.top === undefined ? null : id(overrides.top!),
-  gen: overrides.gen ?? 0,
-  instantGen: overrides.instantGen ?? null,
-})
-
-const layerOrigin = (value: string, instant = false) => ({ kind: 'layer' as const, id: id(value), instant })
-
-const arrived = (
-  s: StackState,
-  origin: ReturnType<typeof baseOrigin> | ReturnType<typeof layerOrigin>,
-  layer: { key: string; base: string | null } | null,
-  f: Partial<RouteFacts> = {},
-) => reduce(s, { type: 'responseArrived', origin, marks: { layer }, facts: facts(f), newId: id('new') })
-
-describe('responseArrived', () => {
-  it('passes a plain page made from the base', () => {
-    const s = state({ rows: [row('a')] })
-
-    expect(arrived(s, baseOrigin({ top: 'a' }), null)).toEqual({
-      state: s,
+describe('opening over the page on screen', () => {
+  it('L:6 a layer response the base visit was aimed at opens as an opening row owned by the base', () => {
+    expect(arrived(state(), { layer: { key: 'panel', base: '/base' }, facts: { aimed: true } })).toEqual({
+      state: state({ rows: [row('new', { key: 'panel', phase: 'opening', entries: 0 })] }),
       effects: [],
-      outcome: { kind: 'landing', landing: { kind: 'pass' } },
+      outcome: landing('open', { id: 'new', owner: 'base' }),
     })
   })
 
-  it('lands a plain page made from a live layer on the base', () => {
-    const s = state({ rows: [row('a')] })
-
-    expect(arrived(s, layerOrigin('a'), null).outcome).toEqual({ kind: 'landing', landing: { kind: 'base' } })
-  })
-
-  it('drops a layer response made from a layer that is gone', () => {
-    const s = state({ rows: [row('b')] })
-
-    expect(arrived(s, layerOrigin('a'), { key: 'key:a', base: '/base' })).toEqual({
-      state: s,
-      effects: [],
-      outcome: { kind: 'landing', landing: { kind: 'drop' } },
-    })
-  })
-
-  it('opens a layer the visit was aimed at, as an opening row owned by the base', () => {
-    const step = arrived(state(), baseOrigin(), { key: 'panel', base: '/base' }, { aimed: true })
-
-    expect(step.outcome).toEqual({ kind: 'landing', landing: { kind: 'open', id: 'new', owner: 'base' } })
-    expect(step.state.rows).toEqual([
-      { id: 'new', type: 'routed', key: 'panel', owner: 'base', phase: 'opening', ownsAddress: true, entries: 0, renderKey: 0 },
-    ])
-    expect(step.effects).toEqual([])
-  })
-
-  it('opens over the top layer live at dispatch, owned by it, and records a preserveUrl open as owning no address', () => {
-    const step = arrived(state({ rows: [row('a')] }), baseOrigin({ top: 'a' }), { key: 'other', base: '/base' }, { preserveUrl: true })
-
-    expect(step.outcome).toEqual({ kind: 'landing', landing: { kind: 'open', id: 'new', owner: 'a' } })
-    expect(step.state.rows[1]).toEqual({
-      id: 'new',
-      type: 'routed',
-      key: 'other',
-      owner: 'a',
-      phase: 'opening',
-      ownsAddress: false,
-      entries: 0,
-      renderKey: 0,
-    })
-  })
-
-  it('opens a layer made from a layer as that layer’s child', () => {
-    const step = arrived(state({ rows: [row('a')] }), layerOrigin('a'), { key: 'child', base: '/base' })
-
-    expect(step.outcome).toEqual({ kind: 'landing', landing: { kind: 'open', id: 'new', owner: 'a' } })
-  })
-
-  it('rewrites the row with the same key, dismisses the rows above it as ghosts and paints', () => {
-    const s = state({ rows: [row('a', { key: 'step' }), row('b')] })
-    const step = arrived(s, baseOrigin({ top: 'b' }), { key: 'step', base: '/base' })
-
-    expect(step).toEqual({
-      state: state({ rows: [row('a', { key: 'step', entries: 2, renderKey: 1 })], ghosts: [id('b')] }),
-      effects: [{ type: 'paint' }],
-      outcome: { kind: 'landing', landing: { kind: 'rewrite', id: 'a', dismissed: ['b'], remount: true } },
-    })
-  })
-
-  it('rewrites in place without a remount when the visit preserves state', () => {
-    const s = state({ rows: [row('a', { key: 'step' })] })
-    const step = arrived(s, baseOrigin({ top: 'a' }), { key: 'step', base: '/base' }, { preserveState: true })
-
-    expect(step).toEqual({
-      state: s,
-      effects: [],
-      outcome: { kind: 'landing', landing: { kind: 'rewrite', id: 'a', dismissed: [], remount: false } },
-    })
-  })
-
-  it('refreshes the same-key row for a partial reload', () => {
-    const s = state({ rows: [row('a', { key: 'counted' })] })
-    const step = arrived(s, layerOrigin('a'), { key: 'counted', base: '/base' }, { partial: true, async: true, preserveState: true })
-
-    expect(step).toEqual({
-      state: s,
-      effects: [],
-      outcome: { kind: 'landing', landing: { kind: 'refresh', id: 'a', remount: false } },
-    })
-  })
-
-  it('refreshes the origin layer for the answer to its own instant visit', () => {
+  it('L:75 a layer answer to a visit made from a layer stacks above it as its child', () => {
     const s = state({ rows: [row('a', { key: 'panel:first' })] })
 
-    expect(arrived(s, layerOrigin('a', true), { key: 'panel:second', base: '/base' }).outcome).toEqual({
-      kind: 'landing',
-      landing: { kind: 'refresh', id: 'a', remount: false },
+    expect(arrived(s, { origin: layerOrigin('a'), layer: { key: 'panel:second', base: '/base' } })).toEqual({
+      state: state({
+        rows: [
+          row('a', { key: 'panel:first' }),
+          row('new', { key: 'panel:second', owner: id('a'), phase: 'opening', entries: 0 }),
+        ],
+      }),
+      effects: [],
+      outcome: landing('open', { id: 'new', owner: 'a' }),
     })
   })
 
-  it('drops a background refresh made from the base that matches no layer', () => {
+  it('L:491 L:624 a base-made answer opens over the top layer live at dispatch; a preserveUrl open owns no address', () => {
+    const s = state({ rows: [row('a')] })
+    const step = arrived(s, {
+      origin: baseOrigin({ top: 'a' }),
+      layer: { key: 'other', base: '/base' },
+      facts: { preserveUrl: true },
+    })
+
+    expect(step.outcome).toEqual(landing('open', { id: 'new', owner: 'a' }))
+    expect(step.state.rows).toEqual([
+      row('a'),
+      row('new', { key: 'other', owner: id('a'), phase: 'opening', entries: 0, ownsAddress: false }),
+    ])
+  })
+
+  it('L:201 L:212 a base-made answer that is neither aimed nor over a live layer lands cold', () => {
+    expect(arrived(state(), { layer: { key: 'guarded', base: '/base' } }).outcome).toEqual(
+      landing('cold', { id: 'new' }),
+    )
+    expect(arrived(state(), { layer: { key: 'guarded', base: '/base' }, facts: { aimed: true } }).outcome).toEqual(
+      landing('open', { id: 'new', owner: 'base' }),
+    )
+    expect(
+      arrived(state(), { layer: { key: 'guarded', base: '/base' }, facts: { baseMatches: true } }).outcome,
+    ).toEqual(landing('open', { id: 'new', owner: 'base' }))
+  })
+
+  it('L:184 a base push committing while a layer is still opening drops it, and its commit is skipped', () => {
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(state({ rows: [row('new', { phase: 'opening', entries: 0 })] }), [
+      committing({ mode: 'push' }),
+      { type: 'layerCommitting', id: id('new'), requestedReplace: false, urlChanged: false },
+    ])
+
+    expect(s).toEqual(state({ base: { blank: false, gen: 1 }, paint: { gated: true, owed: true } }))
+    expect(effects).toEqual([{ type: 'dispose', ids: ['new'], reason: 'navigated' }])
+    expect(last.outcome).toEqual({ kind: 'commit', decision: { kind: 'skip' } })
+  })
+
+  it('L:146 a client visit that installs another page drops every row and ghost and owes a paint', () => {
+    const s = state({ base: { blank: false, gen: 3 }, rows: [row('a'), row('b')], ghosts: [id('c')] })
+
+    expect(reduce(s, committing({ mode: 'push', sameAsLive: true }))).toEqual({
+      state: state({ base: { blank: false, gen: 4 }, paint: { gated: true, owed: true } }),
+      effects: [{ type: 'dispose', ids: ['a', 'b', 'c'], reason: 'navigated' }],
+      outcome: none,
+    })
+    expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', sameAsLive: false })).state.rows).toEqual(
+      [],
+    )
+  })
+
+  it('L:527 L:1144 L:1216 a replace of the same base page keeps the stack and closes the gate', () => {
+    expect(reduce(state({ rows: [row('a')] }), committing({ mode: 'replace', sameAsLive: true }))).toEqual({
+      state: state({ rows: [row('a')], paint: { gated: true, owed: false } }),
+      effects: [],
+      outcome: none,
+    })
+  })
+
+  it('L:1216 a plain page answering the global router with a layer open passes to 3.x', () => {
     const s = state({ rows: [row('a')] })
 
-    expect(arrived(s, baseOrigin({ top: 'a' }), { key: 'other', base: '/base' }, { async: true, preserveState: true }).outcome).toEqual({
-      kind: 'landing',
-      landing: { kind: 'drop' },
+    expect(arrived(s, { origin: baseOrigin({ top: 'a' }), facts: { partial: false } })).toEqual({
+      state: s,
+      effects: [],
+      outcome: landing('pass'),
     })
   })
 
-  it('drops a layer response dispatched over a base that has since been replaced', () => {
-    const s = state({ base: { gen: 2 } })
+  it('L:1468 a local layer opens with no request and pushes one entry; Back dismisses it; Forward reopens it', () => {
+    const opened = script(state(), [
+      { type: 'localOpened', id: id('l'), owner: 'base', key: 'Confirm' },
+      { type: 'layerCommitting', id: id('l'), requestedReplace: false, urlChanged: false },
+    ])
+    const local = row('l', { type: 'local', key: 'Confirm', ownsAddress: false })
 
-    expect(arrived(s, baseOrigin({ gen: 1 }), { key: 'panel', base: '/base' }, { aimed: true }).outcome).toEqual({
-      kind: 'landing',
-      landing: { kind: 'drop' },
-    })
-  })
+    expect(opened.state).toEqual(state({ rows: [local] }))
+    expect(opened.effects).toEqual([{ type: 'writeEntry', mode: 'push' }])
 
-  it('lands cold, or as a page without a declared base, when it cannot compose over the screen', () => {
-    expect(arrived(state(), baseOrigin(), { key: 'guarded', base: '/base' }).outcome).toEqual({
-      kind: 'landing',
-      landing: { kind: 'cold' },
+    const back = reduce(opened.state, { type: 'popstate', entry: entry([]) })
+
+    expect(back).toEqual({
+      state: state({ ghosts: [id('l')] }),
+      effects: [{ type: 'cancelAll' }, { type: 'paint' }],
+      outcome: handled,
     })
-    expect(arrived(state(), baseOrigin(), { key: 'guarded', base: null }).outcome).toEqual({
-      kind: 'landing',
-      landing: { kind: 'promote' },
+
+    const forward = reduce(back.state, {
+      type: 'popstate',
+      entry: entry([entryLayer('l', { type: 'local', key: 'Confirm', ownsAddress: false })]),
+    })
+
+    expect(forward).toEqual({
+      state: state({ rows: [local] }),
+      effects: [
+        { type: 'dispose', ids: ['l'], reason: 'restored-away' },
+        { type: 'reopen', ids: ['l'] },
+        { type: 'cancelAll' },
+        { type: 'paint' },
+      ],
+      outcome: handled,
     })
   })
 })
 
-describe('layerCommitting', () => {
-  const committing = (s: StackState, requestedReplace: boolean, urlChanged: boolean) =>
+describe('rewrites and refreshes', () => {
+  it('L:797 a same-key answer rewrites the row in place with a remount, and its new url pushes', () => {
+    const { state: s, effects } = script(state({ rows: [row('a', { key: 'step' })] }), [
+      arrival({ origin: baseOrigin({ top: 'a' }), layer: { key: 'step', base: '/base' } }),
+      { type: 'layerCommitting', id: id('a'), requestedReplace: false, urlChanged: true },
+    ])
+
+    expect(s).toEqual(state({ rows: [row('a', { key: 'step', entries: 2, renderKey: 1 })] }))
+    expect(effects).toEqual([{ type: 'writeEntry', mode: 'push' }])
+  })
+
+  it('L:818 L:105 L:476 a same-key answer that preserves state rewrites without a remount', () => {
+    const s = state({ rows: [row('a', { key: 'step' })] })
+
+    expect(
+      arrived(s, { origin: layerOrigin('a'), layer: { key: 'step', base: '/base' }, facts: { preserveState: true } }),
+    ).toEqual({
+      state: s,
+      effects: [],
+      outcome: landing('rewrite', { id: 'a', dismissed: [], remount: false }),
+    })
+  })
+
+  it('L:832 an answer for an earlier level dismisses the rows above as ghosts and takes over their entries', () => {
+    const s = state({ rows: [row('a', { key: 'step' }), row('b', { entries: 2 })] })
+
+    expect(arrived(s, { origin: baseOrigin({ top: 'b' }), layer: { key: 'step', base: '/base' } })).toEqual({
+      state: state({ rows: [row('a', { key: 'step', entries: 3, renderKey: 1 })], ghosts: [id('b')] }),
+      effects: [{ type: 'paint' }],
+      outcome: landing('rewrite', { id: 'a', dismissed: ['b'], remount: true }),
+    })
+  })
+
+  it('L:857 Back between wizard steps rewinds the row; closing unwinds every entry it pushed', () => {
+    const s = state({ rows: [row('a', { key: 'step', entries: 2 })] })
+
+    expect(
+      reduce(s, { type: 'popstate', entry: entry([entryLayer('a', { key: 'step' })], { sameSnapshot: new Set() }) }),
+    ).toEqual({
+      state: s,
+      effects: [{ type: 'rewind', ids: ['a'] }, { type: 'cancelAll' }, { type: 'paint' }],
+      outcome: handled,
+    })
+
+    const closed = script(s, [
+      { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('a') },
+    ])
+
+    expect(closed.effects).toEqual([{ type: 'paint' }, { type: 'historyGo', delta: -2, token: 1 }])
+  })
+
+  it('L:878 a remounting landing on a row whose close is still exiting abandons that close', () => {
+    const s = state({
+      rows: [row('a', { key: 'bottom', close: cid('c1') }), row('b', { close: cid('c1') })],
+      closes: closes(close('c1', ['a', 'b'], { exited: [id('b')], waiters: [wid('w1')] })),
+    })
+
+    expect(
+      arrived(s, {
+        origin: baseOrigin({ top: 'b' }),
+        layer: { key: 'bottom', base: '/base' },
+        facts: { partial: true },
+      }),
+    ).toEqual({
+      state: state({ rows: [row('a', { key: 'bottom', renderKey: 1 }), row('b')] }),
+      effects: [{ type: 'settle', waiters: ['w1'], result: 'abandoned' }, { type: 'paint' }],
+      outcome: landing('refresh', { id: 'a', remount: true }),
+    })
+  })
+
+  it('L:878 a state-preserving landing (poll, deferred) leaves a close the user started alone', () => {
+    const s = state({
+      rows: [row('a', { key: 'bottom', close: cid('c1') })],
+      closes: closes(close('c1', ['a'])),
+    })
+
+    expect(
+      arrived(s, {
+        origin: layerOrigin('a'),
+        layer: { key: 'bottom', base: '/base' },
+        facts: { partial: true, preserveState: true },
+      }),
+    ).toEqual({ state: s, effects: [], outcome: landing('refresh', { id: 'a', remount: false }) })
+  })
+
+  it('L:1167 L:1197 L:1298 a partial answer made from a layer refreshes that layer', () => {
+    const s = state({ rows: [row('a', { key: 'counted' })] })
+
+    expect(
+      arrived(s, {
+        origin: layerOrigin('a'),
+        layer: { key: 'counted', base: '/base' },
+        facts: { partial: true, async: true, preserveState: true },
+      }),
+    ).toEqual({ state: s, effects: [], outcome: landing('refresh', { id: 'a', remount: false }) })
+  })
+
+  it('L:1549 a layer owning no address reloads itself, not the base', () => {
+    const s = state({ rows: [row('a', { key: 'other', ownsAddress: false })] })
+
+    expect(
+      arrived(s, {
+        origin: layerOrigin('a'),
+        layer: { key: 'renamed', base: '/base' },
+        facts: { partial: true, preserveState: true },
+      }).outcome,
+    ).toEqual(landing('refresh', { id: 'a', remount: false }))
+  })
+
+  it('L:1527 an instant visit inside a layer lands on that layer and its new url pushes', () => {
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(state({ rows: [row('a', { key: 'panel:first' })] }), [
+      arrival({ origin: layerOrigin('a', true), layer: { key: 'panel:second', base: '/base' } }),
+    ])
+
+    expect(last.outcome).toEqual(landing('refresh', { id: 'a', remount: false }))
+    expect(reduce(s, { type: 'layerCommitting', id: id('a'), requestedReplace: false, urlChanged: true })).toEqual({
+      state: state({ rows: [row('a', { key: 'panel:first', entries: 2 })] }),
+      effects: [{ type: 'writeEntry', mode: 'push' }],
+      outcome: { kind: 'commit', decision: { kind: 'write', mode: 'push' } },
+    })
+    expect(effects).toEqual([])
+  })
+
+  it('drops a background answer made from the base that matches no layer', () => {
+    const s = state({ rows: [row('a')] })
+
+    expect(
+      arrived(s, {
+        origin: baseOrigin({ top: 'a' }),
+        layer: { key: 'other', base: '/base' },
+        facts: { async: true, preserveState: true },
+      }),
+    ).toEqual({ state: s, effects: [], outcome: landing('drop') })
+  })
+})
+
+describe('layer commits', () => {
+  const committingA = (s: StackState, requestedReplace: boolean, urlChanged: boolean) =>
     reduce(s, { type: 'layerCommitting', id: id('a'), requestedReplace, urlChanged })
 
-  it('pushes the first commit of an opening row and charges it one entry', () => {
-    expect(committing(state({ rows: [row('a', { phase: 'opening', entries: 0 })] }), false, false)).toEqual({
-      state: state({ rows: [row('a', { phase: 'open', entries: 1 })] }),
+  it('L:545 L:1491 the first commit of an opening row pushes and is charged one entry', () => {
+    expect(committingA(state({ rows: [row('a', { phase: 'opening', entries: 0 })] }), false, false)).toEqual({
+      state: state({ rows: [row('a')] }),
       effects: [{ type: 'writeEntry', mode: 'push' }],
       outcome: { kind: 'commit', decision: { kind: 'write', mode: 'push' } },
     })
   })
 
-  it('replaces for an opening visit that asked to replace, charging nothing', () => {
-    expect(committing(state({ rows: [row('a', { phase: 'opening', entries: 0 })] }), true, false)).toEqual({
-      state: state({ rows: [row('a', { phase: 'open', entries: 0 })] }),
+  it('an opening visit that asked to replace replaces and is charged nothing', () => {
+    expect(committingA(state({ rows: [row('a', { phase: 'opening', entries: 0 })] }), true, false)).toEqual({
+      state: state({ rows: [row('a', { entries: 0 })] }),
       effects: [{ type: 'writeEntry', mode: 'replace' }],
       outcome: { kind: 'commit', decision: { kind: 'write', mode: 'replace' } },
     })
   })
 
-  it('pushes an open row moving to a new url, and replaces one that stays', () => {
-    expect(committing(state({ rows: [row('a')] }), false, true)).toEqual({
-      state: state({ rows: [row('a', { entries: 2 })] }),
-      effects: [{ type: 'writeEntry', mode: 'push' }],
-      outcome: { kind: 'commit', decision: { kind: 'write', mode: 'push' } },
+  it('L:925 a standalone row inserted beneath by the walk replaces', () => {
+    expect(
+      committingA(state({ rows: [row('a', { phase: 'opening', entries: 0, standalone: true })] }), false, false),
+    ).toEqual({
+      state: state({ rows: [row('a', { entries: 0, standalone: true })] }),
+      effects: [{ type: 'writeEntry', mode: 'replace' }],
+      outcome: { kind: 'commit', decision: { kind: 'write', mode: 'replace' } },
     })
-    expect(committing(state({ rows: [row('a')] }), true, false)).toEqual({
+  })
+
+  it('an open row staying on its url replaces', () => {
+    expect(committingA(state({ rows: [row('a')] }), true, false)).toEqual({
       state: state({ rows: [row('a')] }),
       effects: [{ type: 'writeEntry', mode: 'replace' }],
       outcome: { kind: 'commit', decision: { kind: 'write', mode: 'replace' } },
     })
   })
 
-  it('skips a row that is no longer in the model', () => {
-    const s = state({ rows: [row('b')] })
+  it('a row no longer in the model is skipped', () => {
+    const s = state({ rows: [row('b')], ghosts: [id('a')] })
 
-    expect(committing(s, false, false)).toEqual({
+    expect(committingA(s, false, false)).toEqual({
       state: s,
       effects: [],
       outcome: { kind: 'commit', decision: { kind: 'skip' } },
-    })
-  })
-})
-
-describe('baseCommitting', () => {
-  it('keeps the stack for a replace of the same page and closes the gate', () => {
-    const s = state({ rows: [row('a')] })
-
-    expect(reduce(s, { type: 'baseCommitting', mode: 'replace', sameAsLive: true })).toEqual({
-      state: state({ rows: [row('a')], paint: { gated: true, owed: false } }),
-      effects: [],
-      outcome: { kind: 'none' },
-    })
-  })
-
-  it('drops every row and ghost for a push, bumps the base gen and owes a paint', () => {
-    const s = state({ base: { gen: 3 }, rows: [row('a'), row('b')], ghosts: [id('c')] })
-
-    expect(reduce(s, { type: 'baseCommitting', mode: 'push', sameAsLive: true })).toEqual({
-      state: state({ base: { gen: 4 }, paint: { gated: true, owed: true } }),
-      effects: [{ type: 'dispose', ids: ['a', 'b', 'c'], reason: 'navigated' }],
-      outcome: { kind: 'none' },
-    })
-  })
-
-  it('drops for a replace onto a different page', () => {
-    const step = reduce(state({ rows: [row('a')] }), { type: 'baseCommitting', mode: 'replace', sameAsLive: false })
-
-    expect(step.state.rows).toEqual([])
-    expect(step.effects).toEqual([{ type: 'dispose', ids: ['a'], reason: 'navigated' }])
-  })
-
-  it('bumps the gen of an idle base without owing a paint', () => {
-    expect(reduce(state(), { type: 'baseCommitting', mode: 'push', sameAsLive: false })).toEqual({
-      state: state({ base: { gen: 1 }, paint: { gated: true, owed: false } }),
-      effects: [],
-      outcome: { kind: 'none' },
     })
   })
 })
@@ -264,42 +374,867 @@ describe('the paint gate', () => {
     expect(swapped).toEqual({
       state: state({ rows: [row('a')], paint: { gated: true, owed: true } }),
       effects: [],
-      outcome: { kind: 'none' },
+      outcome: none,
     })
     expect(reduce(swapped.state, { type: 'baseSwapped' })).toEqual({
       state: state({ rows: [row('a')] }),
       effects: [{ type: 'paint' }],
-      outcome: { kind: 'none' },
+      outcome: none,
     })
   })
 
-  it('paints a layer swap at once while the gate is open', () => {
+  it('paints a layer swap at once while the gate is open, and ignores a layer that left', () => {
     const s = state({ rows: [row('a')] })
 
-    expect(reduce(s, { type: 'layerSwapped', id: id('a') })).toEqual({ state: s, effects: [{ type: 'paint' }], outcome: { kind: 'none' } })
+    expect(reduce(s, { type: 'layerSwapped', id: id('a') })).toEqual({
+      state: s,
+      effects: [{ type: 'paint' }],
+      outcome: none,
+    })
+    expect(reduce(state(), { type: 'layerSwapped', id: id('a') })).toEqual({
+      state: state(),
+      effects: [],
+      outcome: none,
+    })
   })
 
-  it('opens the gate without a paint when nothing changed while it was closed', () => {
+  it('opens without a paint when nothing changed while closed; an idle base commit still moves the gen', () => {
     expect(reduce(state({ paint: { gated: true, owed: false } }), { type: 'baseSwapped' })).toEqual({
       state: state(),
       effects: [],
-      outcome: { kind: 'none' },
+      outcome: none,
+    })
+    expect(reduce(state(), committing({ mode: 'push' }))).toEqual({
+      state: state({ base: { blank: false, gen: 1 }, paint: { gated: true, owed: false } }),
+      effects: [],
+      outcome: none,
     })
   })
 
-  it('ignores a swap of a layer that left the model', () => {
-    const s = state()
-
-    expect(reduce(s, { type: 'layerSwapped', id: id('a') })).toEqual({ state: s, effects: [], outcome: { kind: 'none' } })
-  })
-})
-
-describe('exited', () => {
-  it('disposes a ghost once its exit finished and paints it away', () => {
+  it('L:723 a ghost is disposed once its exit finished, and painted away', () => {
     expect(reduce(state({ rows: [row('a')], ghosts: [id('b')] }), { type: 'exited', id: id('b') })).toEqual({
       state: state({ rows: [row('a')] }),
       effects: [{ type: 'dispose', ids: ['b'], reason: 'closed' }, { type: 'paint' }],
-      outcome: { kind: 'none' },
+      outcome: none,
     })
+  })
+})
+
+describe('cold boot and the walk', () => {
+  it('S:394 L:914 a cold boot seeds the layer on a blank base, walks after the first swap, and the hop lands the base', () => {
+    const seed = {
+      id: id('a'),
+      type: 'routed' as const,
+      key: 'panel',
+      owner: 'base' as const,
+      standalone: true,
+      ownsAddress: true,
+      entries: 0,
+    }
+    const booted = reduce(state(), { type: 'booted', seeds: [seed], blank: true, walkTo: '/base' })
+
+    expect(booted.state).toEqual(
+      state({
+        rows: [row('a', { key: 'panel', standalone: true, entries: 0 })],
+        base: { blank: true, gen: 0 },
+        walk: { target: '/base', hops: 1, visit: null, startOnSwap: true },
+        paint: { gated: true, owed: true },
+      }),
+    )
+
+    const { state: s, effects } = script(booted.state, [
+      committing({ initial: true, mode: 'replace' }),
+      { type: 'baseSwapped' },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'walk' } },
+      arrival({ visit: 'v1' }),
+      committing({ visit: visit('v1'), mode: 'replace' }),
+      { type: 'baseSwapped' },
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/base' },
+    ])
+    expect(s).toEqual(state({ rows: [row('a', { key: 'panel', standalone: true, entries: 0 })] }))
+  })
+
+  it('L:925 a hop answered by a layer with its own base goes beneath, and the walk goes on', () => {
+    const step = arrived(walking(), { visit: 'v1', layer: { key: 'inner', base: '/deeper' }, newId: 'inner' })
+
+    expect(step).toEqual({
+      state: walking({
+        rows: [
+          row('inner', { key: 'inner', standalone: true, phase: 'opening', entries: 0 }),
+          row('a', { standalone: true, entries: 0 }),
+        ],
+        walk: { target: '/deeper', hops: 2, visit: null, startOnSwap: false },
+        ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: true }]]),
+      }),
+      effects: [{ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/deeper' }],
+      outcome: landing('walk-beneath', { id: 'inner' }),
+    })
+  })
+
+  it(`stops a walk at ${MAX_WALK} hops, landing the last answer as the base with a warning`, () => {
+    const s = walking({ walk: { target: '/base', hops: MAX_WALK, visit: visit('v1'), startOnSwap: false } })
+
+    expect(arrived(s, { visit: 'v1', layer: { key: 'deep', base: '/deeper' } })).toEqual({
+      state: { ...s, ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: true }]]) },
+      effects: [{ type: 'warn', message: 'A layer walk stopped after 10 declared bases.' }],
+      outcome: landing('walk-base'),
+    })
+  })
+
+  it('lands a hop whose declared base cycles back to a live row as the base, without a warning', () => {
+    expect(
+      arrived(walking(), { visit: 'v1', layer: { key: 'loop', base: '/panel' }, facts: { cycles: true } }).effects,
+    ).toEqual([])
+  })
+
+  it('L:1037 a failed hop promotes the deepest layer to the page, with no error overlay and no dialog', () => {
+    const { state: s, effects } = script(walking(), [
+      { type: 'walkHopFailed', visit: visit('v1') },
+      committing({ visit: visit('1'), mode: 'replace' }),
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'installBase', token: 1, source: { kind: 'promote', layer: 'a' }, mode: 'replace' },
+      { type: 'dispose', ids: ['a'], reason: 'closed' },
+    ])
+    expect(s).toEqual(state({ nextToken: 2, paint: { gated: true, owed: false } }))
+  })
+
+  it('L:1047 a hop that fails after its layer closed requests the base again, and that commit keeps the stack', () => {
+    const { state: s, effects } = script(walking({ rows: [] }), [
+      { type: 'walkHopFailed', visit: visit('v1') },
+      { type: 'visitFinished', visit: visit('v1') },
+      { type: 'visitDispatched', visit: visit('v2'), tag: { kind: 'recover' } },
+      committing({ visit: visit('v2'), mode: 'replace' }),
+      { type: 'visitFinished', visit: visit('v2') },
+    ])
+
+    expect(effects).toEqual([{ type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: '/base' }])
+    expect(s).toEqual(state({ paint: { gated: true, owed: false } }))
+  })
+
+  it('L:1047 a hop cancelled or answered by a 409 location fails the walk at its finish', () => {
+    expect(reduce(walking({ rows: [] }), { type: 'visitFinished', visit: visit('v1') }).effects).toEqual([
+      { type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: '/base' },
+    ])
+  })
+
+  it('L:1090 L:2140 closing a cold layer over the blank base pushes the placeholder and skips the refresh', () => {
+    const { state: s, effects } = script(walking(), [
+      { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('a') },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'paint' },
+      { type: 'writeEntry', mode: 'push' },
+      { type: 'paint' },
+      { type: 'dispose', ids: ['a'], reason: 'closed' },
+      { type: 'settle', waiters: ['w1'], result: 'closed' },
+    ])
+    expect(s).toEqual(walking({ rows: [] }))
+  })
+
+  it('L:2165 a close during the walk landing still lets the walk commit land the base', () => {
+    const { state: s } = script(walking(), [
+      arrival({ visit: 'v1' }),
+      { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('a') },
+      committing({ visit: visit('v1'), mode: 'replace' }),
+    ])
+
+    expect(s.base).toEqual({ blank: false, gen: 0 })
+    expect(s.walk).toBeNull()
+  })
+
+  it('L:212 an in-session cold landing installs the blank under the layer with one push, then walks', () => {
+    const { state: s, effects } = script(state(), [
+      arrival({ layer: { key: 'guarded', base: '/layers/base' } }),
+      { type: 'layerCommitting', id: id('new'), requestedReplace: false, urlChanged: false },
+      { type: 'layerSwapped', id: id('new') },
+      committing({ visit: visit('1'), mode: 'push' }),
+      { type: 'baseSwapped' },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'installBase', token: 1, source: { kind: 'blank', url: '/layers/base' }, mode: 'push' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/layers/base' },
+    ])
+    expect(s).toEqual(
+      state({
+        nextToken: 2,
+        rows: [row('new', { key: 'guarded', standalone: true, entries: 0 })],
+        base: { blank: true, gen: 1 },
+        walk: { target: '/layers/base', hops: 1, visit: null, startOnSwap: false },
+      }),
+    )
+  })
+
+  it('L:504 an answer over the visit’s own instant placeholder lands cold, replacing it', () => {
+    const step = arrived(state({ base: { blank: false, gen: 1 } }), {
+      origin: baseOrigin({ gen: 0, instantGen: 1 }),
+      layer: { key: 'panel', base: '/layers/base' },
+      facts: { replace: true },
+    })
+
+    expect(step.outcome).toEqual(landing('cold', { id: 'new' }))
+    expect(step.state.expect).toEqual({
+      kind: 'base',
+      token: 1,
+      mode: 'replace',
+      layer: 'new',
+      source: { kind: 'blank', url: '/layers/base' },
+    })
+  })
+
+  it('L:1120 an answer that cannot compose and declares no base lands as a plain page', () => {
+    expect(arrived(state(), { layer: { key: 'plain', base: null } })).toEqual({
+      state: state(),
+      effects: [],
+      outcome: landing('promote'),
+    })
+  })
+
+  it('a document load onto a composite entry replaces the boot rows with the entry’s', () => {
+    const s = state({ rows: [row('seed')], paint: { gated: true, owed: true } })
+
+    expect(
+      reduce(s, { type: 'restoredOnLoad', entry: entry([entryLayer('a'), entryLayer('b', { owner: id('a') })]) }),
+    ).toEqual({
+      state: state({ rows: [row('a'), row('b', { owner: id('a') })], paint: { gated: true, owed: true } }),
+      effects: [
+        { type: 'dispose', ids: ['seed'], reason: 'restored-away' },
+        { type: 'reopen', ids: ['a', 'b'] },
+      ],
+      outcome: none,
+    })
+  })
+})
+
+describe('history', () => {
+  it('L:545 L:585 L:723 Back off the top layer dismisses it through its exit, leaving the one beneath', () => {
+    expect(
+      reduce(state({ rows: [row('a'), row('b')] }), { type: 'popstate', entry: entry([entryLayer('a')]) }),
+    ).toEqual({
+      state: state({ rows: [row('a')], ghosts: [id('b')] }),
+      effects: [{ type: 'cancelAll' }, { type: 'paint' }],
+      outcome: handled,
+    })
+  })
+
+  it('L:566 L:605 Forward reopens the entry’s layers with no request', () => {
+    expect(
+      reduce(state({ rows: [row('a')] }), {
+        type: 'popstate',
+        entry: entry([entryLayer('a'), entryLayer('b', { owner: id('a') })]),
+      }),
+    ).toEqual({
+      state: state({ rows: [row('a'), row('b', { owner: id('a') })] }),
+      effects: [{ type: 'reopen', ids: ['b'] }, { type: 'cancelAll' }, { type: 'paint' }],
+      outcome: handled,
+    })
+  })
+
+  it('L:741 history.go(-2) past the entry beneath drops the stack at once, with no exit', () => {
+    expect(reduce(state({ rows: [row('a'), row('b')] }), { type: 'popstate', entry: entry([]) })).toEqual({
+      state: state(),
+      effects: [
+        { type: 'dispose', ids: ['a', 'b'], reason: 'restored-away' },
+        { type: 'cancelAll' },
+        { type: 'paint' },
+      ],
+      outcome: handled,
+    })
+  })
+
+  it('L:1455 a plain Back with no layer anywhere passes to 3.x', () => {
+    expect(reduce(state(), { type: 'popstate', entry: entry([]) })).toEqual({
+      state: state(),
+      effects: [],
+      outcome: { kind: 'restore', restore: { kind: 'pass' } },
+    })
+  })
+
+  it('restores another base: drops the live rows, reopens the entry’s, and lets 3.x restore the base', () => {
+    expect(
+      reduce(state({ rows: [row('a')] }), { type: 'popstate', entry: entry([entryLayer('b')], { baseSame: false }) }),
+    ).toEqual({
+      state: state({ rows: [row('b')], base: { blank: false, gen: 1 }, paint: { gated: true, owed: true } }),
+      effects: [
+        { type: 'dispose', ids: ['a'], reason: 'restored-away' },
+        { type: 'reopen', ids: ['b'] },
+      ],
+      outcome: { kind: 'restore', restore: { kind: 'base' } },
+    })
+  })
+})
+
+describe('closing', () => {
+  it('L:652 L:757 L:1572 L:1613 a close keeps its rows until every exit finished, unwinds, refreshes beneath, then settles', () => {
+    const marked = reduce(state({ rows: [row('a')] }), {
+      type: 'closeRequested',
+      target: 'top',
+      close: cid('c1'),
+      waiter: wid('w1'),
+    })
+
+    expect(marked).toEqual({
+      state: state({
+        rows: [row('a', { close: cid('c1') })],
+        closes: closes(close('c1', ['a'], { waiters: [wid('w1')] })),
+      }),
+      effects: [{ type: 'paint' }],
+      outcome: none,
+    })
+
+    const unwinding = reduce(marked.state, { type: 'exited', id: id('a') })
+
+    expect(unwinding).toEqual({
+      state: state({
+        nextToken: 2,
+        rows: [row('a', { close: cid('c1') })],
+        closes: closes(
+          close('c1', ['a'], { exited: [id('a')], waiters: [wid('w1')], phase: { kind: 'unwinding', token: tok(1) } }),
+        ),
+        expect: { kind: 'unwind', close: cid('c1'), token: tok(1) },
+      }),
+      effects: [{ type: 'historyGo', delta: -1, token: 1 }],
+      outcome: none,
+    })
+
+    const answered = reduce(unwinding.state, { type: 'popstate', entry: entry([]) })
+
+    expect(answered).toEqual({
+      state: state({
+        nextToken: 2,
+        closes: closes(
+          close('c1', ['a'], { exited: [id('a')], waiters: [wid('w1')], phase: { kind: 'refreshing', visit: null } }),
+        ),
+      }),
+      effects: [
+        { type: 'writeEntry', mode: 'replace' },
+        { type: 'paint' },
+        { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'base', url: null },
+      ],
+      outcome: handled,
+    })
+
+    const { state: s, effects } = script(answered.state, [
+      { type: 'unwindSettled', token: tok(1), how: 'answered' },
+      { type: 'visitDispatched', visit: visit('r1'), tag: { kind: 'refresh', close: cid('c1') } },
+      { type: 'visitFinished', visit: visit('r1') },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'dispose', ids: ['a'], reason: 'closed' },
+      { type: 'settle', waiters: ['w1'], result: 'closed' },
+    ])
+    expect(s).toEqual(state({ nextToken: 2 }))
+  })
+
+  it('L:673 closing a lower layer marks every layer above and waits for all their exits', () => {
+    const { state: s, effects } = script(state({ rows: [row('a'), row('b')] }), [
+      { type: 'closeRequested', target: id('a'), close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('b') },
+    ])
+
+    expect(effects).toEqual([{ type: 'paint' }])
+    expect(s.closes.get(cid('c1'))).toEqual(close('c1', ['a', 'b'], { exited: [id('b')], waiters: [wid('w1')] }))
+    expect(reduce(s, { type: 'exited', id: id('a') }).effects).toEqual([{ type: 'historyGo', delta: -2, token: 1 }])
+  })
+
+  it('L:694 L:1425 closing a middle layer removes it and everything above, and refreshes the routed row beneath', () => {
+    const { state: s, effects } = script(state({ rows: [row('a'), row('b'), row('c')] }), [
+      { type: 'closeRequested', target: id('b'), close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('c') },
+      { type: 'exited', id: id('b') },
+      { type: 'popstate', entry: entry([entryLayer('a')]) },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'paint' },
+      { type: 'historyGo', delta: -2, token: 1 },
+      { type: 'writeEntry', mode: 'replace' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'a', url: null },
+    ])
+    expect(s.rows).toEqual([row('a')])
+  })
+
+  it('L:773 L:1510 closing a layer that never moved the address unwinds only its own entry and leaves the one beneath', () => {
+    const { state: s, effects } = script(state({ rows: [row('a'), row('b', { ownsAddress: false })] }), [
+      { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('b') },
+    ])
+
+    expect(effects).toEqual([{ type: 'paint' }, { type: 'historyGo', delta: -1, token: 1 }])
+    expect(s.rows).toEqual([row('a'), row('b', { ownsAddress: false, close: cid('c1') })])
+  })
+
+  it('L:993 L:1586 closing a cold layer over a real base pushes the base as its own step and refreshes it', () => {
+    const { state: s, effects } = script(state({ rows: [row('a', { standalone: true, entries: 0 })] }), [
+      { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('a') },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'paint' },
+      { type: 'writeEntry', mode: 'push' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'base', url: null },
+    ])
+    expect(s.rows).toEqual([])
+  })
+
+  it('L:425 a local layer closes without a refresh beneath', () => {
+    const { effects } = script(state({ rows: [row('a'), row('l', { type: 'local', ownsAddress: false })] }), [
+      { type: 'closeRequested', target: id('l'), close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('l') },
+      { type: 'popstate', entry: entry([entryLayer('a')]) },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'paint' },
+      { type: 'historyGo', delta: -1, token: 1 },
+      { type: 'writeEntry', mode: 'replace' },
+      { type: 'paint' },
+      { type: 'dispose', ids: ['l'], reason: 'closed' },
+      { type: 'settle', waiters: ['w1'], result: 'closed' },
+    ])
+  })
+
+  it('L:1624 a server close answer closes its origin layer, succeeding against the tier beneath', () => {
+    expect(
+      arrived(state({ rows: [row('a'), row('b')] }), { origin: layerOrigin('b'), close: true, newClose: 'c9' }),
+    ).toEqual({
+      state: state({ rows: [row('a'), row('b', { close: cid('c9') })], closes: closes(close('c9', ['b'])) }),
+      effects: [{ type: 'paint' }],
+      outcome: landing('close', { id: 'b', beneath: 'a' }),
+    })
+  })
+
+  it('L:1624 a base-made close answer closes the top layer live at dispatch, and is ignored with nothing open', () => {
+    expect(arrived(state({ rows: [row('a')] }), { origin: baseOrigin({ top: 'a' }), close: true }).outcome).toEqual(
+      landing('close', { id: 'a', beneath: 'base' }),
+    )
+    expect(arrived(state(), { close: true })).toEqual({ state: state(), effects: [], outcome: landing('pass') })
+  })
+
+  it('L:1599 a plain answer to a write made from a layer that has since closed lands on the base', () => {
+    expect(arrived(state(), { origin: layerOrigin('a') }).outcome).toEqual(landing('base'))
+  })
+
+  it('L:1747 L:1759 Escape closes the top open layer only, skipping one still opening', () => {
+    const s = state({ rows: [row('a'), row('b'), row('c', { phase: 'opening', entries: 0 })] })
+
+    expect(
+      reduce(s, { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') }).state.closes,
+    ).toEqual(closes(close('c1', ['b', 'c'], { exited: [id('c')], waiters: [wid('w1')] })))
+  })
+
+  it('settles the waiter of a close whose layer is already gone', () => {
+    expect(reduce(state(), { type: 'closeRequested', target: id('a'), close: cid('c1'), waiter: wid('w1') })).toEqual({
+      state: state(),
+      effects: [{ type: 'settle', waiters: ['w1'], result: 'closed' }],
+      outcome: none,
+    })
+  })
+
+  it('L:1599 a close that finishes its exit while another unwinds queues, and starts when that one is answered', () => {
+    const s = state({
+      nextToken: 2,
+      rows: [row('a'), row('b', { close: cid('c1') })],
+      closes: closes(close('c1', ['b'], { exited: [id('b')], phase: { kind: 'unwinding', token: tok(1) } })),
+      expect: { kind: 'unwind', close: cid('c1'), token: tok(1) },
+    })
+    const { state: queued } = script(s, [
+      { type: 'closeRequested', target: id('a'), close: cid('c2'), waiter: wid('w2') },
+      { type: 'exited', id: id('a') },
+    ])
+
+    expect(queued.closes.get(cid('c2'))!.phase).toEqual({ kind: 'queued' })
+
+    const answered = reduce(queued, { type: 'popstate', entry: entry([entryLayer('a')]) })
+
+    expect(answered.effects).toEqual([
+      { type: 'writeEntry', mode: 'replace' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'a', url: null },
+      { type: 'historyGo', delta: -1, token: 2 },
+    ])
+    expect(answered.state.expect).toEqual({ kind: 'unwind', close: cid('c2'), token: tok(2) })
+  })
+})
+
+describe('tickets', () => {
+  it('L:1312 L:1391 a ticket’s answer opens with the ticket’s id, owned by its opener, and the ticket is done', () => {
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(state(), [
+      { type: 'openRequested', ticket: id('t1'), owner: 'base' },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      arrival({ visit: 'v1', layer: { key: 'panel', base: '/base' } }),
+    ])
+
+    expect(last.outcome).toEqual(landing('open', { id: 't1', owner: 'base' }))
+
+    const finished = reduce(s, { type: 'visitFinished', visit: visit('v1') })
+
+    expect(finished.state).toEqual(state({ rows: [row('t1', { key: 'panel', phase: 'opening', entries: 0 })] }))
+    expect([...effects, ...finished.effects]).toEqual([])
+  })
+
+  it('L:1376 a ticket opened from a layer is owned by that layer', () => {
+    const { last } = script(state({ rows: [row('a')] }), [
+      { type: 'openRequested', ticket: id('t1'), owner: id('a') },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      arrival({ visit: 'v1', origin: layerOrigin('a'), layer: { key: 'child', base: '/base' } }),
+    ])
+
+    expect(last.outcome).toEqual(landing('open', { id: 't1', owner: 'a' }))
+  })
+
+  it('L:1562 L:1961 a ticket whose visit finished without landing on a row is refused', () => {
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(state(), [
+      { type: 'openRequested', ticket: id('t1'), owner: 'base' },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      arrival({ visit: 'v1' }),
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(effects).toEqual([{ type: 'refuse', ticket: 't1' }])
+    expect(s).toEqual(state())
+    expect(last.outcome).toEqual(none)
+  })
+
+  it('refuses a ticket its gate never dispatched, and leaves a dispatched one to its finish', () => {
+    expect(
+      script(state(), [
+        { type: 'openRequested', ticket: id('t1'), owner: 'base' },
+        { type: 'openRefused', ticket: id('t1') },
+      ]),
+    ).toMatchObject({ state: state(), effects: [{ type: 'refuse', ticket: 't1' }] })
+
+    const dispatched = script(state(), [
+      { type: 'openRequested', ticket: id('t1'), owner: 'base' },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      { type: 'openRefused', ticket: id('t1') },
+    ])
+
+    expect(dispatched.effects).toEqual([])
+    expect(dispatched.state.tickets.get(id('t1'))).toEqual({ id: 't1', owner: 'base', state: 'dispatched' })
+  })
+
+  it('a plain page with errors answering a layer that owns no address hands its errors back to that layer', () => {
+    const s = state({ rows: [row('a'), row('b', { ownsAddress: false })] })
+
+    expect(arrived(s, { origin: layerOrigin('b'), facts: { matchesAddressTier: true, hasErrors: true } })).toEqual({
+      state: s,
+      effects: [],
+      outcome: landing('handback', { id: 'b' }),
+    })
+    expect(arrived(s, { origin: layerOrigin('b'), facts: { matchesAddressTier: true } }).outcome).toEqual(
+      landing('base'),
+    )
+    expect(
+      arrived(s, { origin: layerOrigin('a'), facts: { matchesAddressTier: true, hasErrors: true } }).outcome,
+    ).toEqual(landing('base'))
+  })
+})
+
+describe('interstitials', () => {
+  it('L:1937 L:2047 a prompt pins the stack; the layer answer after it returns the pinned base with the layer, one replace', () => {
+    const pinned = script(state({ rows: [row('a')] }), [
+      { type: 'openRequested', ticket: id('t1'), owner: 'base' },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      committing({ visit: visit('v1'), mode: 'push', interstitial: true }),
+      { type: 'visitFinished', visit: visit('v1') },
+      { type: 'baseSwapped' },
+    ])
+
+    expect(pinned.effects).toEqual([{ type: 'capturePin', token: 1 }, { type: 'paint' }])
+    expect(pinned.state).toEqual(
+      state({
+        nextToken: 2,
+        base: { blank: false, gen: 1 },
+        tickets: new Map([[id('t1'), { id: id('t1'), owner: 'base', state: 'dispatched' }]]),
+        pin: { token: tok(1), gen: 1, pushes: 1, ticket: id('t1'), suspended: [row('a')] },
+      }),
+    )
+
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(pinned.state, [
+      arrival({ visit: 'v2', origin: baseOrigin({ gen: 1 }), layer: { key: 'guarded', base: '/layers/base' } }),
+      { type: 'layerCommitting', id: id('t1'), requestedReplace: false, urlChanged: false },
+      committing({ visit: visit('2'), mode: 'replace' }),
+    ])
+
+    expect(effects).toEqual([
+      { type: 'installBase', token: 2, source: { kind: 'pinned', pin: 1 }, mode: 'replace' },
+      { type: 'releasePin', token: 1 },
+    ])
+    expect(last.outcome).toEqual(none)
+    expect(s).toEqual(
+      state({
+        nextToken: 3,
+        base: { blank: false, gen: 2 },
+        rows: [row('a'), row('t1', { key: 'guarded', owner: id('a'), entries: 1 })],
+        paint: { gated: true, owed: false },
+      }),
+    )
+  })
+
+  it('L:1975 a layer answer made while the prompt shows returns too, with a fresh id when no ticket waits', () => {
+    expect(
+      arrived(
+        pinnedOver({ tickets: new Map(), pin: { token: tok(1), gen: 1, pushes: 1, ticket: null, suspended: [] } }),
+        {
+          origin: baseOrigin({ gen: 1 }),
+          layer: { key: 'guarded', base: '/layers/base' },
+        },
+      ).outcome,
+    ).toEqual(landing('return', { id: 'new' }))
+  })
+
+  it('L:1992 the return consumes the pin, so the next layer answer opens over the page on screen', () => {
+    const returned = arrived(pinnedOver(), {
+      origin: baseOrigin({ gen: 1 }),
+      layer: { key: 'guarded', base: '/base' },
+    }).state
+
+    expect(returned.pin).toBeNull()
+    expect(
+      arrived(
+        { ...returned, expect: null },
+        { origin: baseOrigin({ gen: 2, top: 't1' }), layer: { key: 'next', base: '/base' } },
+      ).outcome,
+    ).toEqual(landing('open', { id: 'new', owner: 't1' }))
+  })
+
+  it('L:2013 navigating away from the prompt ends it: suspended rows go, the ticket is refused, the page released', () => {
+    expect(reduce(pinnedOver(), committing({ mode: 'push' }))).toEqual({
+      state: state({ nextToken: 2, base: { blank: false, gen: 2 }, paint: { gated: true, owed: false } }),
+      effects: [
+        { type: 'dispose', ids: ['a'], reason: 'navigated' },
+        { type: 'refuse', ticket: 't1' },
+        { type: 'releasePin', token: 1 },
+      ],
+      outcome: none,
+    })
+  })
+
+  it('a wrong-password re-render of the prompt keeps the pin and moves its gen', () => {
+    const step = reduce(pinnedOver(), committing({ mode: 'push', interstitial: true }))
+
+    expect(step.state.pin).toEqual({ token: 1, gen: 2, pushes: 2, ticket: 't1', suspended: [row('a')] })
+    expect(step.state.base).toEqual({ blank: false, gen: 2 })
+    expect(step.effects).toEqual([])
+  })
+
+  it('L:2115 a prompt with nothing open pins an empty stack and paints nothing', () => {
+    expect(reduce(state(), committing({ mode: 'push', interstitial: true }))).toEqual({
+      state: state({
+        nextToken: 2,
+        base: { blank: false, gen: 1 },
+        pin: { token: tok(1), gen: 1, pushes: 1, ticket: null, suspended: [] },
+        paint: { gated: true, owed: false },
+      }),
+      effects: [{ type: 'capturePin', token: 1 }],
+      outcome: none,
+    })
+  })
+
+  it('L:2103 a layer answer that is also marked interstitial opens as a layer', () => {
+    expect(arrived(state(), { layer: { key: 'prompted', base: '/base' }, facts: { aimed: true } }).outcome).toEqual(
+      landing('open', { id: 'new', owner: 'base' }),
+    )
+  })
+})
+
+describe('hazards', () => {
+  it('drops a layer answer, or a partial, made from a layer that closed: no state, no effects', () => {
+    const s = state({ rows: [row('b')], ghosts: [id('a')] })
+
+    expect(arrived(s, { origin: layerOrigin('a'), layer: { key: 'key:a', base: '/base' } })).toEqual({
+      state: s,
+      effects: [],
+      outcome: landing('drop'),
+    })
+    expect(arrived(s, { origin: layerOrigin('a'), facts: { partial: true } })).toEqual({
+      state: s,
+      effects: [],
+      outcome: landing('drop'),
+    })
+  })
+
+  it('overlapping closes: a wider close adopts the narrower one’s waiters, and one refresh settles both', () => {
+    const { state: s, effects } = script(state({ rows: [row('a'), row('b')] }), [
+      { type: 'closeRequested', target: id('b'), close: cid('c1'), waiter: wid('w1') },
+      { type: 'closeRequested', target: id('a'), close: cid('c2'), waiter: wid('w2') },
+      { type: 'exited', id: id('b') },
+    ])
+
+    expect(s.closes).toEqual(closes(close('c2', ['a', 'b'], { exited: [id('b')], waiters: [wid('w1'), wid('w2')] })))
+    expect(s.rows).toEqual([row('a', { close: cid('c2') }), row('b', { close: cid('c2') })])
+    expect(effects).toEqual([{ type: 'paint' }, { type: 'paint' }])
+
+    const done = script(s, [
+      { type: 'exited', id: id('a') },
+      { type: 'popstate', entry: entry([]) },
+      { type: 'visitDispatched', visit: visit('r'), tag: { kind: 'refresh', close: cid('c2') } },
+      { type: 'visitFinished', visit: visit('r') },
+    ])
+
+    expect(done.effects).toEqual([
+      { type: 'historyGo', delta: -2, token: 1 },
+      { type: 'writeEntry', mode: 'replace' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c2' }, via: 'base', url: null },
+      { type: 'dispose', ids: ['b', 'a'], reason: 'closed' },
+      { type: 'settle', waiters: ['w1', 'w2'], result: 'closed' },
+    ])
+  })
+
+  it('overlapping closes: a close already unwinding keeps its own refresh, and the wider one refreshes after it', () => {
+    const s = state({
+      nextToken: 2,
+      rows: [row('a'), row('b', { close: cid('c1') })],
+      closes: closes(
+        close('c1', ['b'], { exited: [id('b')], waiters: [wid('w1')], phase: { kind: 'unwinding', token: tok(1) } }),
+      ),
+      expect: { kind: 'unwind', close: cid('c1'), token: tok(1) },
+    })
+    const { effects } = script(s, [
+      { type: 'closeRequested', target: id('a'), close: cid('c2'), waiter: wid('w2') },
+      { type: 'exited', id: id('a') },
+      { type: 'popstate', entry: entry([entryLayer('a')]) },
+      { type: 'visitDispatched', visit: visit('r1'), tag: { kind: 'refresh', close: cid('c1') } },
+      { type: 'visitFinished', visit: visit('r1') },
+      { type: 'popstate', entry: entry([]) },
+      { type: 'visitDispatched', visit: visit('r2'), tag: { kind: 'refresh', close: cid('c2') } },
+      { type: 'visitFinished', visit: visit('r2') },
+    ])
+
+    expect(effects).toEqual([
+      { type: 'paint' },
+      { type: 'writeEntry', mode: 'replace' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'a', url: null },
+      { type: 'historyGo', delta: -1, token: 2 },
+      { type: 'dispose', ids: ['b'], reason: 'closed' },
+      { type: 'settle', waiters: ['w1'], result: 'closed' },
+      { type: 'writeEntry', mode: 'replace' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c2' }, via: 'base', url: null },
+      { type: 'dispose', ids: ['a'], reason: 'closed' },
+      { type: 'settle', waiters: ['w2'], result: 'closed' },
+    ])
+  })
+
+  it('a rewrite applies to its row while the layer it dismissed still plays its exit', () => {
+    const { state: s, effects } = script(state({ rows: [row('a', { key: 'step' }), row('b')] }), [
+      arrival({
+        origin: baseOrigin({ top: 'b' }),
+        layer: { key: 'step', base: '/base' },
+        facts: { preserveState: true },
+      }),
+      { type: 'layerCommitting', id: id('a'), requestedReplace: false, urlChanged: true },
+      { type: 'layerSwapped', id: id('a') },
+    ])
+
+    expect(s).toEqual(state({ rows: [row('a', { key: 'step', entries: 3 })], ghosts: [id('b')] }))
+    expect(effects).toEqual([{ type: 'paint' }, { type: 'writeEntry', mode: 'push' }, { type: 'paint' }])
+    expect(reduce(s, { type: 'exited', id: id('b') }).effects).toEqual([
+      { type: 'dispose', ids: ['b'], reason: 'closed' },
+      { type: 'paint' },
+    ])
+  })
+
+  it('Back clears the pin before anything else: suspended rows go, the ticket is refused, the page released', () => {
+    expect(reduce(pinnedOver(), { type: 'popstate', entry: entry([]) })).toEqual({
+      state: state({ nextToken: 2, base: { blank: false, gen: 1 } }),
+      effects: [
+        { type: 'dispose', ids: ['a'], reason: 'restored-away' },
+        { type: 'refuse', ticket: 't1' },
+        { type: 'releasePin', token: 1 },
+      ],
+      outcome: { kind: 'restore', restore: { kind: 'pass' } },
+    })
+  })
+
+  it('an unwind the browser never answers removes the rows at the timeout', () => {
+    const s = state({
+      nextToken: 2,
+      rows: [row('a', { close: cid('c1') })],
+      closes: closes(close('c1', ['a'], { exited: [id('a')], phase: { kind: 'unwinding', token: tok(1) } })),
+      expect: { kind: 'unwind', close: cid('c1'), token: tok(1) },
+    })
+
+    expect(reduce(s, { type: 'unwindSettled', token: tok(9), how: 'timeout' })).toEqual({
+      state: s,
+      effects: [],
+      outcome: none,
+    })
+    expect(reduce(s, { type: 'unwindSettled', token: tok(1), how: 'timeout' })).toEqual({
+      state: state({
+        nextToken: 2,
+        closes: closes(close('c1', ['a'], { exited: [id('a')], phase: { kind: 'refreshing', visit: null } })),
+      }),
+      effects: [
+        { type: 'writeEntry', mode: 'replace' },
+        { type: 'paint' },
+        { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'base', url: null },
+      ],
+      outcome: none,
+    })
+  })
+
+  it('a stale walk hop drops: its answer, its failure and its finish change nothing', () => {
+    const s = walking({
+      walk: { target: '/base', hops: 1, visit: visit('v2'), startOnSwap: false },
+      ops: new Map([
+        [visit('v1'), { kind: 'walk', inFlight: 1, landed: false }],
+        [visit('v2'), { kind: 'walk', inFlight: 1, landed: false }],
+      ]),
+    })
+
+    expect(arrived(s, { visit: 'v1' })).toEqual({ state: s, effects: [], outcome: landing('drop') })
+    expect(reduce(s, { type: 'walkHopFailed', visit: visit('v1') })).toEqual({ state: s, effects: [], outcome: none })
+    expect(reduce(s, { type: 'visitFinished', visit: visit('v1') }).effects).toEqual([])
+  })
+
+  it('a 409 re-issue does not refuse its ticket: the first leg’s finish leaves it waiting for the second', () => {
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(state(), [
+      { type: 'openRequested', ticket: id('t1'), owner: 'base' },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+      { type: 'visitFinished', visit: visit('v1') },
+      arrival({ visit: 'v1', layer: { key: 'panel', base: '/base' } }),
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(effects).toEqual([])
+    expect(s).toEqual(state({ rows: [row('t1', { key: 'panel', phase: 'opening', entries: 0 })] }))
+    expect(last.outcome).toEqual(none)
   })
 })

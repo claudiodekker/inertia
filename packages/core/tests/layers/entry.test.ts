@@ -1,0 +1,90 @@
+import { describe, expect, it } from 'vitest'
+import { addressOf, compose, decompose, isBlank, type LayerEntry } from '../../src/layers/entry'
+import type { Page } from '../../src/types'
+
+const page = (component: string, url: string, props: object = {}): Page => ({
+  component,
+  url,
+  props: { errors: {}, ...props },
+  version: 'v1',
+  flash: {},
+  rescuedProps: [],
+  clearHistory: false,
+  encryptHistory: false,
+  rememberedState: {},
+})
+
+const layer = (key: string, url: string, overrides: Partial<LayerEntry> = {}): LayerEntry => {
+  const { flash: _flash, ...rest } = page(`Layers/${key}`, url)
+
+  return { ...rest, id: `id-${key}`, key, type: 'routed', owner: null, entries: 1, ...overrides }
+}
+
+describe('compose', () => {
+  it('returns the base page object itself when no layer is composed', () => {
+    const base = page('Base', '/base')
+
+    expect(compose(base, [], false).data).toBe(base)
+    expect(compose(base, [], false).url).toBe('/base')
+  })
+
+  it('stores a blank base with no layers as the placeholder itself', () => {
+    const blank = page('', '/base')
+
+    expect(compose(blank, [], true)).toEqual({ data: blank, url: '/base' })
+  })
+
+  it('adds the layers to the base and takes the address of the top routed layer that moved it', () => {
+    const base = page('Base', '/base')
+    const a = layer('a', '/a')
+    const b = layer('b', '/b', { preservesUrl: true })
+
+    expect(compose(base, [a, b], false)).toEqual({ data: { ...base, layers: [a, b] }, url: '/a' })
+  })
+
+  it('never stores a blank base under layers: the deepest layer is stored as the base page', () => {
+    const blank = page('', '/base')
+    const deepest = layer('inner', '/inner')
+    const top = layer('outer', '/outer')
+
+    expect(compose(blank, [deepest, top], true)).toEqual({
+      data: { ...page('Layers/inner', '/inner'), layers: [top] },
+      url: '/outer',
+    })
+    expect(compose(blank, [deepest], true)).toEqual({ data: page('Layers/inner', '/inner'), url: '/inner' })
+  })
+})
+
+describe('addressOf', () => {
+  it('skips local layers and preserveUrl layers', () => {
+    const base = page('Base', '/base')
+
+    expect(addressOf(base, [layer('a', '/a'), layer('l', '', { type: 'local' })])).toBe('/a')
+    expect(addressOf(base, [layer('l', '', { type: 'local' }), layer('p', '/p', { preservesUrl: true })])).toBe('/base')
+  })
+})
+
+describe('decompose', () => {
+  it('returns a plain entry itself with no layers', () => {
+    const base = page('Base', '/base')
+
+    expect(decompose(base).base).toBe(base)
+    expect(decompose(base).layers).toEqual([])
+  })
+
+  it('splits a composite into the 3.x base view and its layers', () => {
+    const base = page('Base', '/base')
+    const a = layer('a', '/a')
+    const split = decompose({ ...base, layers: [a] })
+
+    expect(split).toEqual({ base, layers: [a] })
+    expect('layers' in split.base).toBe(false)
+  })
+})
+
+describe('isBlank', () => {
+  it('is true only for the placeholder component', () => {
+    expect(isBlank(page('', '/base'))).toBe(true)
+    expect(isBlank(page('Base', '/base'))).toBe(false)
+  })
+})

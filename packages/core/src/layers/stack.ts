@@ -16,6 +16,7 @@ import type { PageScope } from './scope'
 import {
   idle,
   initialState,
+  type CloseId,
   type Landing,
   type LayerId,
   type LayerRow,
@@ -25,6 +26,7 @@ import {
   type StackEffect,
   type StackEvent,
   type StackState,
+  type VisitId,
 } from './state'
 import type { LayerHandle, LayerInfo, LayerScope, LayerShellProps, LayerTarget } from './types'
 
@@ -108,6 +110,18 @@ export class Stack implements StackPort {
           }
         })
         return
+      case 'historyGo':
+      case 'startVisit':
+      case 'installBase':
+      case 'capturePin':
+      case 'releasePin':
+      case 'reopen':
+      case 'rewind':
+      case 'settle':
+      case 'refuse':
+      case 'cancelAll':
+      case 'warn':
+        throw new Error(`The layer effect "${effect.type}" is not wired yet.`)
       default:
         return assertNever(effect)
     }
@@ -208,6 +222,7 @@ export class Stack implements StackPort {
     const pageUrl = typeof page === 'object' ? hrefToUrl(page.url) : null
     const { outcome } = this.dispatch({
       type: 'responseArrived',
+      visit: visit.id as VisitId,
       origin: response.origin,
       marks,
       facts: {
@@ -218,8 +233,13 @@ export class Stack implements StackPort {
         async: visit.async,
         preserveState: typeof page === 'object' && RequestParams.resolvePreserveOption(visit.preserveState, page),
         preserveUrl: visit.preserveUrl,
+        replace: visit.replace,
+        cycles: false,
+        matchesAddressTier: false,
+        hasErrors: false,
       },
       newId: uid() as LayerId,
+      newClose: uid() as CloseId,
     })
 
     return this.land((outcome as Extract<Outcome, { kind: 'landing' }>).landing, response, page)
@@ -246,7 +266,12 @@ export class Stack implements StackPort {
       case 'refresh':
         return response.retarget(this.instance(landing.id).scope).land()
       case 'cold':
-        throw new Error('A layer that cannot compose over the page on screen lands cold, which needs the walk.')
+      case 'handback':
+      case 'close':
+      case 'return':
+      case 'walk-base':
+      case 'walk-beneath':
+        throw new Error(`The layer landing "${landing.kind}" is not wired yet.`)
       default:
         return assertNever(landing)
     }
@@ -266,7 +291,7 @@ export class Stack implements StackPort {
   }
 
   /** The base CurrentPage.write, before the history write. */
-  public baseCommitting(page: Page, replace: boolean, _visitId: string | undefined, _initial: boolean): void {
+  public baseCommitting(page: Page, replace: boolean, visitId: string | undefined, initial: boolean): void {
     if (isServer) {
       return
     }
@@ -275,7 +300,10 @@ export class Stack implements StackPort {
 
     this.dispatch({
       type: 'baseCommitting',
+      visit: (visitId ?? null) as VisitId | null,
       mode: replace ? 'replace' : 'push',
+      interstitial: false,
+      initial,
       sameAsLive: !!live && live.component === page.component && sameOriginAndPath(live.url, page.url),
     })
   }
@@ -343,6 +371,7 @@ export class Stack implements StackPort {
     return composeEntry(
       page,
       this.state.rows.filter((row) => row.phase === 'open').map((row) => this.snapshot(row)),
+      this.state.base.blank,
     )
   }
 
@@ -475,6 +504,7 @@ function marksOf(page: Page | string): Marks {
 
   return {
     layer: mark ? { key: mark.key || (page as Page).component, base: mark.base ?? null } : null,
+    close: false,
   }
 }
 
