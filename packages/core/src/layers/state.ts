@@ -225,6 +225,8 @@ export type StackEvent =
   | { type: 'layerSwapped'; id: LayerId }
   /** Every popstate after decrypt and the 3.x version check. `entry.layers` is empty for a plain entry. */
   | { type: 'popstate'; entry: EntryFacts }
+  /** A popstate with no state: the browser pushed an entry itself (an in-page anchor). */
+  | { type: 'anchored' }
   | { type: 'unwindSettled'; token: Token; how: 'answered' | 'timeout' }
   | { type: 'closeRequested'; target: LayerId | 'top'; close: CloseId; waiter: WaiterId }
   /** The shell's exit finished. */
@@ -301,6 +303,8 @@ export type Outcome =
   | { kind: 'landing'; landing: Landing }
   | { kind: 'commit'; decision: CommitDecision }
   | { kind: 'restore'; restore: RestoreOutcome }
+  /** The layer whose url takes the browser's hash, or null when it is the base's. */
+  | { kind: 'anchor'; owner: LayerId | null }
 
 export interface Step {
   readonly state: StackState

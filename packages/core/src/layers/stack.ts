@@ -536,6 +536,32 @@ export class Stack implements StackPort {
     return restore.kind === 'pass' ? data : base
   }
 
+  /**
+   * The eventHandler hook for an entry the browser wrote itself (an in-page anchor). True when a layer
+   * owns the address: the hash went onto that layer's url and the base stays as it is.
+   */
+  public anchored(hash: string): boolean {
+    if (isServer || this.state.rows.length === 0) {
+      return false
+    }
+
+    const { owner } = this.dispatch({ type: 'anchored' }).outcome as Extract<Outcome, { kind: 'anchor' }>
+
+    if (owner === null) {
+      return false
+    }
+
+    const instance = this.instance(owner)
+    const url = hrefToUrl(instance.page.get().url)
+
+    url.hash = hash
+    instance.page.merge({ url: url.href })
+    instance.historyPage = { ...instance.historyPage!, url: url.href }
+    this.run({ type: 'writeEntry', mode: 'replace' })
+
+    return true
+  }
+
   /** initialVisit's back/forward restore: an entry with layers or a blank base replaces the boot rows. */
   public restoreOnLoad(data: Page): Page {
     if (isServer) {

@@ -697,6 +697,40 @@ describe('history', () => {
   })
 })
 
+describe('an entry the browser pushed itself', () => {
+  const anchored = { type: 'anchored' } as const
+
+  it('is charged to the topmost layer that owns the address, whose url takes the hash', () => {
+    const rows = [row('a'), row('b'), row('c', { ownsAddress: false }), row('d', { type: 'local', entries: 0 })]
+
+    expect(reduce(state({ rows }), anchored)).toEqual({
+      state: state({ rows: [rows[0], row('b', { entries: 2 }), rows[2], rows[3]] }),
+      effects: [],
+      outcome: { kind: 'anchor', owner: 'b' },
+    })
+  })
+
+  it('is charged to the top layer when none owns the address, and the hash stays the base’s', () => {
+    const rows = [row('a', { ownsAddress: false }), row('b', { type: 'local', entries: 0 })]
+
+    expect(reduce(state({ rows }), anchored)).toEqual({
+      state: state({ rows: [rows[0], row('b', { type: 'local', entries: 1 })] }),
+      effects: [],
+      outcome: { kind: 'anchor', owner: null },
+    })
+  })
+
+  it('charges no layer that has not committed yet', () => {
+    const rows = [row('a', { phase: 'opening', entries: 0 })]
+
+    expect(reduce(state({ rows }), anchored)).toEqual({
+      state: state({ rows }),
+      effects: [],
+      outcome: { kind: 'anchor', owner: null },
+    })
+  })
+})
+
 describe('closing', () => {
   it('L:652 L:757 L:1572 L:1613 a close keeps its rows until every exit finished, unwinds, refreshes beneath, then settles', () => {
     const marked = reduce(state({ rows: [row('a')] }), {

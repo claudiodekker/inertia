@@ -64,6 +64,8 @@ export function reduce(s: StackState, e: StackEvent): Step {
       return run(s, (t, fx) => (row(t, e.id) || t.ghosts.includes(e.id) ? paint(t, fx) : t))
     case 'popstate':
       return popstate(s, e)
+    case 'anchored':
+      return anchored(s)
     case 'unwindSettled':
       return run(s, (t, fx) =>
         t.expect?.kind === 'unwind' && t.expect.token === e.token ? completeUnwind(t, fx, t.expect.close) : t,
@@ -624,4 +626,20 @@ function layerCommitting(s: StackState, e: E<'layerCommitting'>): Step {
     },
     { kind: 'commit', decision: { kind: 'write', mode } },
   )
+}
+
+/**
+ * The browser pushed an entry of its own, so a close has one more step to take back. It is charged to the
+ * layer that owns the address, whose url takes the hash, else to the top layer.
+ */
+function anchored(s: StackState): Step {
+  const open = s.rows.filter((r) => r.phase === 'open')
+  const owner = open.filter((r) => r.type === 'routed' && r.ownsAddress).at(-1)
+  const charged = owner ?? open.at(-1)
+
+  return {
+    state: charged ? setRow(s, { ...charged, entries: charged.entries + 1 }) : s,
+    effects: [],
+    outcome: { kind: 'anchor', owner: owner?.id ?? null },
+  }
 }

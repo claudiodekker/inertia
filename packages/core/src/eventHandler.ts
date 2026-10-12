@@ -82,6 +82,12 @@ class EventHandler {
   protected handlePopstateEvent(event: PopStateEvent): void {
     const state = event.state || null
 
+    if (state === null && stack.anchored(window.location.hash)) {
+      Scroll.reset()
+
+      return
+    }
+
     if (state === null) {
       const url = hrefToUrl(currentPage.get().url)
       url.hash = window.location.hash
