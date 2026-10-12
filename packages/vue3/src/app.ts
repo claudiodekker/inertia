@@ -3,6 +3,8 @@ import {
   HeadManager,
   HeadManagerOnUpdateCallback,
   HeadManagerTitleCallback,
+  layerSlot,
+  type LayerView,
   Page,
   PageProps,
   resolveServerHead,
@@ -37,6 +39,8 @@ import useForm from './useForm'
 export interface InertiaAppProps<SharedProps extends PageProps = PageProps> {
   initialPage: Page<SharedProps>
   initialComponent?: DefineComponent
+  /** Server only: the layers the document arrived with, rendered over the base. */
+  initialLayers?: readonly LayerView[]
   resolveComponent?: (name: string, page?: Page) => DefineComponent | Promise<DefineComponent>
   titleCallback?: HeadManagerTitleCallback
   onHeadUpdate?: HeadManagerOnUpdateCallback
@@ -65,6 +69,10 @@ const App: InertiaApp = defineComponent({
     },
     initialComponent: {
       type: Object as PropType<DefineComponent>,
+      required: false,
+    },
+    initialLayers: {
+      type: Array as PropType<readonly LayerView[]>,
       required: false,
     },
     resolveComponent: {
@@ -102,6 +110,7 @@ const App: InertiaApp = defineComponent({
   setup({
     initialPage,
     initialComponent,
+    initialLayers,
     resolveComponent,
     titleCallback,
     onHeadUpdate,
@@ -115,12 +124,14 @@ const App: InertiaApp = defineComponent({
     key.value = undefined
 
     const isServer = typeof window === 'undefined'
+    // Title and server head follow the top layer: the server's initial layers, the client's stack.
+    const topPage = (fallback: Page) => layerSlot.topPage() ?? initialLayers?.at(-1)?.page ?? fallback
 
     headManager = createHeadManager(
       isServer,
-      (title: string) => (titleCallback ? titleCallback(title, page.value!) : title),
+      (title: string) => (titleCallback ? titleCallback(title, topPage(page.value!)) : title),
       onHeadUpdate || (() => {}),
-      resolveServerHead(initialPage, serverHead),
+      resolveServerHead(topPage(initialPage), serverHead),
     )
 
     // Scoped per app instance so multiple Inertia roots on one page don't clobber each other
@@ -148,14 +159,14 @@ const App: InertiaApp = defineComponent({
       })
 
       const syncServerHead = (event: { detail: { page: Page } }) => {
-        headManager.updateServerHead(resolveServerHead(event.detail.page, serverHead))
+        headManager.updateServerHead(resolveServerHead(topPage(event.detail.page), serverHead))
       }
 
       router.on('navigate', syncServerHead)
       router.on('clientVisit', syncServerHead)
     }
 
-    const layerStack = () => h(LayerStack, { shell, defaultLayout })
+    const layerStack = () => h(LayerStack, { shell, defaultLayout, initialLayers })
 
     return () => {
       if (!component.value) {

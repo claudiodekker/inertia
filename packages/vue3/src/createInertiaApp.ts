@@ -8,6 +8,7 @@ import {
   getInitialPageFromDOM,
   http as httpModule,
   InertiaAppSSRResponse,
+  layerSlot,
   LoadingResolver,
   Page,
   PageProps,
@@ -15,7 +16,7 @@ import {
   setupProgress,
   SharedPageProps,
 } from '@inertiajs/core'
-import { Component, createApp, createSSRApp, DefineComponent, h, Plugin, App as VueApp } from 'vue'
+import { Component, createApp, createSSRApp, DefineComponent, h, markRaw, Plugin, App as VueApp } from 'vue'
 import App, { InertiaApp, InertiaAppProps, plugin } from './app'
 import { config } from './index'
 import { VueInertiaAppConfig } from './types'
@@ -40,7 +41,8 @@ type VueWithApp<SharedProps extends PageProps> = (
 type LayerOptions = {
   /** The shell each layer renders in. Defaults to the shipped <Layer>. */
   layer?: Component
-  loading?: LoadingResolver<DefineComponent>
+  /** What renders beneath a layer opened cold while its base page is fetched. Called with that base's url. */
+  loading?: LoadingResolver<Component>
 }
 
 type InertiaAppOptionsForCSR<SharedProps extends PageProps> = CreateInertiaAppOptionsForCSR<
@@ -85,6 +87,9 @@ type InertiaAppOptionsAuto<SharedProps extends PageProps> = Omit<
 
 type RenderToString = (app: VueApp) => Promise<string>
 
+/** What the blank base renders when the app has no loading component for it: nothing, in no layout. */
+const Blank = markRaw({ name: 'InertiaBlank', layout: [], render: () => null }) as unknown as DefineComponent
+
 type RenderFunction<SharedProps extends PageProps> = (
   page: Page<SharedProps>,
   renderToString: RenderToString,
@@ -115,6 +120,7 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     serverHead,
     withApp,
     layer,
+    loading,
     dev = !!import.meta.env?.DEV,
   }:
     | InertiaAppOptionsForCSR<SharedProps>
@@ -137,8 +143,25 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
 
   const isServer = typeof window === 'undefined'
 
-  const resolveComponent = (name: string, page?: Page) =>
+  const resolvePage = (name: string, page?: Page) =>
     Promise.resolve(resolve!(name, page)).then((module) => module.default || module)
+  const resolveComponent = layerSlot.wrapResolver(
+    resolvePage,
+    loading as LoadingResolver<DefineComponent> | undefined,
+    Blank,
+  )
+
+  // The base and every layer the document arrived with resolve before the first render, so the
+  // server and the hydrating client render the same tree.
+  const boot = async (response: Page) => {
+    const plan = layerSlot.planBoot(response, isServer ? '' : window.location.hash)
+    const [initialComponent, ...seedComponents] = await Promise.all([
+      resolveComponent(plan.base.component, plan.base, plan.info),
+      ...plan.seeds.map((seed) => resolvePage(seed.page.component, seed.page)),
+    ])
+
+    return { plan, initialComponent, seedComponents }
+  }
 
   // SSR render function factory - when on server without page/render, return a render function
   // This is used by the Vite plugin's SSR transform
@@ -146,11 +169,12 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     return async (page: Page<SharedProps>, renderToString: RenderToString) => {
       let head: string[] = []
 
-      const initialComponent = await resolveComponent(page.component, page)
+      const { plan, initialComponent, seedComponents } = await boot(page)
 
       const props: InertiaAppProps<SharedProps> = {
-        initialPage: page,
+        initialPage: plan.base as Page<SharedProps>,
         initialComponent,
+        initialLayers: layerSlot.ssrViews(plan, seedComponents),
         resolveComponent,
         titleCallback: title,
         onHeadUpdate: (elements: string[]) => (head = elements),
@@ -189,15 +213,18 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
 
   let head: string[] = []
 
-  const vueApp = await Promise.all([
-    resolveComponent(initialPage.component, initialPage),
-    router.decryptHistory().catch(() => {}),
-  ]).then(([initialComponent]) => {
+  const vueApp = await Promise.all([boot(initialPage), router.decryptHistory().catch(() => {})]).then(([booted]) => {
+    const { plan, initialComponent, seedComponents } = booted
     const el = isServer ? null : document.getElementById(id)!
 
+    if (!isServer) {
+      layerSlot.boot(plan, seedComponents)
+    }
+
     const props: InertiaAppProps<SharedProps> = {
-      initialPage,
+      initialPage: plan.base as Page<SharedProps>,
       initialComponent,
+      initialLayers: isServer ? layerSlot.ssrViews(plan, seedComponents) : undefined,
       resolveComponent,
       titleCallback: title,
       onHeadUpdate: isServer ? (elements: string[]) => (head = elements) : undefined,

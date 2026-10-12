@@ -78,11 +78,14 @@ export default defineComponent({
   props: {
     shell: { type: [Object, Function] as PropType<Component>, required: false },
     defaultLayout: { type: Function as PropType<DefaultLayout>, required: false },
+    /** Server only: the stack is client state, so a server render shows the boot plan's views. */
+    initialLayers: { type: Array as PropType<readonly LayerView[]>, required: false },
   },
   setup(props) {
-    const views = shallowRef(layerSlot.views())
+    const isServer = typeof window === 'undefined'
+    const views = shallowRef((isServer && props.initialLayers) || layerSlot.views())
 
-    if (typeof window !== 'undefined') {
+    if (!isServer) {
       onUnmounted(
         layerSlot.subscribe(() => {
           views.value = layerSlot.views()
