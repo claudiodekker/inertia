@@ -379,6 +379,7 @@ function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
         case 'walk-beneath': {
           const target = e.marks.layer!.base!
 
+          fx.push({ type: 'retargetBlank', url: target })
           fx.push({ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: target })
 
           return landed(

@@ -253,6 +253,8 @@ export type StackEffect =
   | { type: 'startVisit'; tag: VisitTag; via: Owner; url: string | null }
   /** currentPage.set(page from source, { replace: mode === 'replace', visitId: String(token) }). */
   | { type: 'installBase'; token: Token; source: InstallSource; mode: 'push' | 'replace' }
+  /** The blank base takes the url the walk fetches next, so the loading resolver is asked about that page. */
+  | { type: 'retargetBlank'; url: string }
   /** Keep the outgoing base page under `token`. Runs inside baseCommitting, before the write. */
   | { type: 'capturePin'; token: Token }
   | { type: 'releasePin'; token: Token }

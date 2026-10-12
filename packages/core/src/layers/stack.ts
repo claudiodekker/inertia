@@ -10,6 +10,7 @@ import { Scroll } from '../scroll'
 import type { CancelToken, Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
+import { fetchBase, retargetBlank } from './base'
 import { entryRows } from './close'
 import {
   blankPage,
@@ -42,7 +43,6 @@ import {
   type StackState,
   type Token,
   type VisitId,
-  type VisitTag,
   type WaiterId,
 } from './state'
 import type { LayerHandle, LayerScope, LayerTarget } from './types'
@@ -140,6 +140,8 @@ export class Stack implements StackPort {
         return console.warn(effect.message)
       case 'installBase':
         return this.installBase(effect)
+      case 'retargetBlank':
+        return retargetBlank(effect.url)
       case 'capturePin':
         // Inside baseCommitting, before the write: still the outgoing base.
         return void this.pinned.set(effect.token, currentPage.get())
@@ -176,7 +178,11 @@ export class Stack implements StackPort {
 
     if (tag.kind === 'walk' || tag.kind === 'recover') {
       // After the task that asked for it: a popstate's own 3.x cancelAll runs right after its dispatch.
-      return queueMicrotask(() => this.fetchBase(tag, effect.url!))
+      return queueMicrotask(() =>
+        fetchBase(this.visits, this.connected().baseScope.router, tag, effect.url!, (visit) =>
+          this.dispatch({ type: 'walkHopFailed', visit }),
+        ),
+      )
     }
 
     if (tag.kind !== 'refresh') {
@@ -196,29 +202,6 @@ export class Stack implements StackPort {
       this.dispatch({ type: 'visitDispatched', visit: refused, tag })
       this.dispatch({ type: 'visitFinished', visit: refused })
     })
-  }
-
-  /** A walk hop or a recovery: a background base visit replacing the blank. A failed hop shows no overlay. */
-  protected fetchBase(tag: Extract<VisitTag, { kind: 'walk' | 'recover' }>, url: string): void {
-    let id: VisitId | null = null
-    const failed =
-      tag.kind === 'walk'
-        ? () => {
-            this.dispatch({ type: 'walkHopFailed', visit: id! })
-
-            return false
-          }
-        : undefined
-    const options: VisitOptions = {
-      async: true,
-      replace: true,
-      preserveState: true,
-      preserveScroll: true,
-      onHttpException: failed,
-      onNetworkError: failed,
-    }
-
-    id = this.visits.follow(tag, options, (followed) => this.connected().baseScope.router.visit(url, followed))
   }
 
   /** 3.x installs the base page the reducer asked for; its commit carries the token as its visit id. */
@@ -424,7 +407,9 @@ export class Stack implements StackPort {
       mode: replace ? 'replace' : 'push',
       interstitial: isInterstitial(page),
       initial: initial || restoredLoad,
-      sameAsLive: !!live && live.component === page.component && sameOriginAndPath(live.url, page.url),
+      // A blank that moved to the next url the walk fetches is still the same placeholder.
+      sameAsLive:
+        !!live && live.component === page.component && (isBlank(page) || sameOriginAndPath(live.url, page.url)),
     })
   }
 

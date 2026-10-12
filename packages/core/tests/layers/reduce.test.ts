@@ -472,7 +472,10 @@ describe('cold boot and the walk', () => {
         walk: { target: '/deeper', visit: null, startOnSwap: false },
         ops: new Map([[visit('v1'), { kind: 'walk', inFlight: 1, landed: true }]]),
       }),
-      effects: [{ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/deeper' }],
+      effects: [
+        { type: 'retargetBlank', url: '/deeper' },
+        { type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/deeper' },
+      ],
       outcome: landing('walk-beneath', { id: 'inner' }),
     })
   })
