@@ -1,5 +1,5 @@
-import { type LayoutCallbackReturn, type Page, type SharedPageProps } from '@inertiajs/core'
-import type { Component } from 'svelte'
+import { type LayerShellProps, type LayoutCallbackReturn, type Page, type SharedPageProps } from '@inertiajs/core'
+import type { Component, Snippet } from 'svelte'
 import type { RenderFunction, RenderProps } from './components/Render.svelte'
 
 export type ComponentResolver = (
@@ -41,6 +41,9 @@ export type LayoutType =
   | LayoutObject
   | NamedLayouts
   | (Component | LayoutTuple | LayoutObject)[]
+
+/** The shell a layer renders in: receives the shell state as props and the layer's page as its children. */
+export type LayerComponent = Component<LayerShellProps & { children: Snippet }>
 
 export type ResolvedComponent = {
   default: Component

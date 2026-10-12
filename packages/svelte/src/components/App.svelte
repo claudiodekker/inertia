@@ -1,46 +1,58 @@
 <script module lang="ts">
-  import { type Page, type PageProps } from '@inertiajs/core'
-  import type { ComponentResolver, ResolvedComponent } from '../types'
+  import { type LayerView, type Page, type PageProps } from '@inertiajs/core'
+  import type { ComponentResolver, LayerComponent, ResolvedComponent } from '../types'
 
   export interface InertiaAppProps<SharedProps extends PageProps = PageProps> {
     initialComponent: ResolvedComponent
     initialPage: Page<SharedProps>
     resolveComponent: ComponentResolver
     defaultLayout?: (name: string, page: Page) => unknown
+    /** Server only: the stack is client state, so a server render shows the boot plan's layers. */
+    initialLayers?: readonly LayerView[]
+    layer?: LayerComponent
     serverRendered?: boolean
   }
 </script>
 
 <script lang="ts">
-  import { isPropsObjectOrCallback, isPropsObject, normalizeLayouts } from '@inertiajs/core'
   import { router } from '@inertiajs/core'
   import { onMount } from 'svelte'
-  import type { Component } from 'svelte'
   import { setHydrationContext } from '../hydration'
   import { resetLayoutProps, storeState } from '../layoutProps.svelte'
   import { setPage } from '../page.svelte'
-  import type { LayoutType, LayoutResolver } from '../types'
-  import LayerStack from './LayerStack.svelte'
-  import Render, { h, type RenderProps } from './Render.svelte'
-
-  type LayoutSnapshot = { shared: Record<string, any>; named: Record<string, Record<string, any>> }
+  import { useLayerViews } from '../layerViews.svelte'
+  import renderPage, { type LayoutSnapshot } from '../renderPage'
+  import Layer from './Layer.svelte'
+  import { layerStack, noLayers } from './LayerStack.svelte'
+  import Render, { type RenderProps } from './Render.svelte'
 
   interface Props {
     initialComponent: InertiaAppProps['initialComponent']
     initialPage: InertiaAppProps['initialPage']
     resolveComponent: InertiaAppProps['resolveComponent']
     defaultLayout?: InertiaAppProps['defaultLayout']
+    initialLayers?: InertiaAppProps['initialLayers']
+    layer?: LayerComponent
     serverRendered?: boolean
   }
 
-  const { initialComponent, initialPage, resolveComponent, defaultLayout, serverRendered = true }: Props = $props()
+  const {
+    initialComponent,
+    initialPage,
+    resolveComponent,
+    defaultLayout,
+    initialLayers,
+    // The shipped shell also takes the attributes of a <dialog>, which a LayerComponent need not
+    layer = Layer as unknown as LayerComponent,
+    serverRendered = true,
+  }: Props = $props()
 
   // svelte-ignore state_referenced_locally
   let component = $state(initialComponent)
   let key = $state<number | null>(null)
   // svelte-ignore state_referenced_locally
   let page = $state({ ...initialPage, flash: initialPage.flash ?? {} })
-  let renderProps = $derived.by<RenderProps>(() => resolveRenderProps(component, page, key, currentLayoutSnapshot()))
+  let renderProps = $derived.by<RenderProps>(() => renderPage(component, page, key, currentLayoutSnapshot(), defaultLayout))
 
   // Synchronous initialization so the global page store is populated during SSR
   // ($effect.pre does not run during Svelte 5 SSR)
@@ -53,6 +65,23 @@
   })
 
   const isServer = typeof window === 'undefined'
+
+  // svelte-ignore state_referenced_locally
+  const stack = useLayerViews(initialLayers)
+
+  function currentLayoutSnapshot(): LayoutSnapshot {
+    // Getters keep the reactive reads inside the layout branch, as in 3.x
+    return isServer
+      ? { shared: {}, named: {} }
+      : {
+          get shared() {
+            return storeState.shared
+          },
+          get named() {
+            return storeState.named
+          },
+        }
+  }
 
   // Scoped per app instance so multiple Inertia roots on one page don't clobber each other
   // svelte-ignore state_referenced_locally
@@ -84,136 +113,7 @@
       },
     })
   }
-
-  function isComponent(value: unknown): value is Component {
-    if (!value) {
-      return false
-    }
-
-    if (typeof value === 'function') {
-      const fn = value as Function & { name?: string }
-      return fn.name !== ''
-    }
-
-    if (typeof value === 'object' && '$$' in value) {
-      return true
-    }
-
-    return false
-  }
-
-  function isRenderFunction(value: unknown): boolean {
-    return (
-      typeof value === 'function' &&
-      (value as Function).length === 2 &&
-      typeof (value as Function).prototype === 'undefined'
-    )
-  }
-
-  function currentLayoutSnapshot(): LayoutSnapshot {
-    // Getters keep the reactive reads inside the layout branch, as in 3.x
-    return isServer
-      ? { shared: {}, named: {} }
-      : {
-          get shared() {
-            return storeState.shared
-          },
-          get named() {
-            return storeState.named
-          },
-        }
-  }
-
-  function resolveRenderProps(
-    component: ResolvedComponent,
-    page: Page,
-    key: number | null = null,
-    layoutSnapshot: LayoutSnapshot,
-  ): RenderProps {
-    const child = h(component.default, page.props, [], key)
-
-    if (component.layout && isRenderFunction(component.layout)) {
-      return (component.layout as LayoutResolver)(h, child)
-    }
-
-    let effectiveLayout: LayoutType | undefined
-    let callbackProps: Record<string, unknown> | null = null
-    const layoutValue = component.layout
-
-    if (
-      typeof layoutValue === 'function' &&
-      (layoutValue as Function).length <= 1 &&
-      typeof (layoutValue as Function).prototype === 'undefined'
-    ) {
-      const result = (layoutValue as Function)(page.props)
-
-      if (isPropsObjectOrCallback(result, isComponent)) {
-        effectiveLayout = defaultLayout?.(page.component, page) as LayoutType | undefined
-        callbackProps = result as Record<string, unknown>
-      } else {
-        effectiveLayout = result as LayoutType | undefined
-      }
-    } else if (isPropsObject(layoutValue, isComponent)) {
-      effectiveLayout = defaultLayout?.(page.component, page) as LayoutType | undefined
-      callbackProps = layoutValue as Record<string, unknown>
-    } else {
-      effectiveLayout = (layoutValue ?? defaultLayout?.(page.component, page)) as LayoutType | undefined
-    }
-
-    return effectiveLayout
-      ? resolveLayout(
-          effectiveLayout,
-          child,
-          page.props,
-          key,
-          layoutSnapshot,
-          !!component.layout && !callbackProps,
-          callbackProps,
-        )
-      : child
-  }
-
-  function resolveLayout(
-    layout: LayoutType,
-    child: RenderProps,
-    pageProps: PageProps,
-    key: number | null,
-    dynamicProps: LayoutSnapshot,
-    isFromPage: boolean = true,
-    callbackProps: Record<string, unknown> | null = null,
-  ): RenderProps {
-    if (isFromPage && isRenderFunction(layout)) {
-      return (layout as LayoutResolver)(h, child)
-    }
-
-    let layouts = normalizeLayouts(layout, isComponent, isFromPage ? isRenderFunction : undefined)
-
-    if (callbackProps) {
-      layouts = layouts.map((l) => ({ ...l, props: { ...l.props, ...callbackProps } }))
-    }
-
-    if (layouts.length > 0) {
-      return layouts.reduceRight((child, layout) => {
-        return {
-          ...h(
-            layout.component,
-            {
-              ...pageProps,
-              ...layout.props,
-              ...dynamicProps.shared,
-              ...(layout.name ? dynamicProps.named[layout.name] || {} : {}),
-            },
-            [child],
-            key,
-          ),
-          name: layout.name,
-        }
-      }, child)
-    }
-
-    return child
-  }
 </script>
 
 <Render {...renderProps} />
-<LayerStack />
+{@render (stack.list.length > 0 ? layerStack : noLayers)(stack.list, layer, defaultLayout)}
