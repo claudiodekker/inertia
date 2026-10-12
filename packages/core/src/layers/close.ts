@@ -150,14 +150,18 @@ export function completeUnwind(s: StackState, fx: Fx, closeId: CloseId): StackSt
   return startQueued(continueAfterRemoval(paint(t, fx), fx, close, covered[0], s.rows), fx)
 }
 
-/** Refresh the routed tier beneath when the closed bottom row was routed and that tier is real. */
+/**
+ * Refresh the routed tier beneath when the closed bottom row was routed and that tier is real. Over a
+ * blank base whose page has been answered and is still resolving its component, the walk is sent again.
+ */
 export function continueAfterRemoval(
-  s: StackState,
+  removed: StackState,
   fx: Fx,
   close: CloseRow,
   bottom: LayerRow | undefined,
   before: readonly LayerRow[],
 ): StackState {
+  const s = walkAgain(removed, fx)
   const via = bottom ? beneath(before, bottom.id) : 'base'
   const refreshes = bottom?.type === 'routed' && !(via === 'base' && s.base.blank)
 
@@ -168,6 +172,19 @@ export function continueAfterRemoval(
   fx.push({ type: 'startVisit', tag: { kind: 'refresh', close: close.id }, via, url: null })
 
   return setClose(s, { ...close, phase: { kind: 'refreshing', visit: null } })
+}
+
+/** A removal supersedes the walk landing in flight, as it did in the original. The first commit to arrive lands. */
+function walkAgain(s: StackState, fx: Fx): StackState {
+  const hop = s.walk?.visit ? s.ops.get(s.walk.visit) : undefined
+
+  if (!s.walk || !s.base.blank || hop?.kind !== 'walk' || !hop.landed) {
+    return s
+  }
+
+  fx.push({ type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: s.walk.target })
+
+  return { ...s, walk: { ...s.walk, visit: null } }
 }
 
 export function finishClose(s: StackState, fx: Fx, closeId: CloseId): StackState {

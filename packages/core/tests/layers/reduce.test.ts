@@ -592,16 +592,43 @@ describe('cold boot and the walk', () => {
     expect(s.base.blank).toBe(true)
   })
 
-  it('L:2165 a close during the walk landing still lets the walk commit land the base', () => {
-    const { state: s } = script(walking(), [
+  it('L:2165 a close during the walk landing sends the walk again, and the first commit to arrive lands the base', () => {
+    const closing = script(walking(), [
       arrival({ visit: 'v1' }),
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('a') },
+    ])
+
+    expect(closing.effects.filter((effect) => effect.type === 'startVisit')).toEqual([
+      { type: 'startVisit', tag: { kind: 'walk' }, via: 'base', url: '/base' },
+    ])
+    expect(closing.state.walk).toEqual({ target: '/base', visit: null, startOnSwap: false })
+
+    const { state: s, last } = script(closing.state, [
+      { type: 'visitDispatched', visit: visit('v2'), tag: { kind: 'walk' } },
       committing({ visit: visit('v1'), mode: 'replace' }),
+      arrival({ visit: 'v2' }),
     ])
 
     expect(s.base).toEqual({ blank: false, gen: 0 })
     expect(s.walk).toBeNull()
+    expect(last.outcome).toEqual(landing('drop'))
+  })
+
+  it('L:2165 the walk sent again lands the base when its answer commits first', () => {
+    const { state: s, last } = script(walking(), [
+      arrival({ visit: 'v1' }),
+      { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('a') },
+      { type: 'visitDispatched', visit: visit('v2'), tag: { kind: 'walk' } },
+      arrival({ visit: 'v2' }),
+    ])
+
+    expect(last.outcome).toEqual(landing('walk-base'))
+    expect(reduce(s, committing({ visit: visit('v2'), mode: 'replace' })).state).toMatchObject({
+      base: { blank: false, gen: 0 },
+      walk: null,
+    })
   })
 
   it('L:212 an in-session cold landing installs the blank under the layer with one push, then walks', () => {
