@@ -16,6 +16,7 @@ import type {
   PageHandler,
   PageResolver,
   PendingVisit,
+  ReloadOptions,
   RequestPayload,
   RouterInitParams,
   ScrollRegion,
@@ -106,7 +107,7 @@ export class LayerInstance {
     }
 
     this.history = new LayerHistory(this)
-    this.router = new LayerRouter(this.scope)
+    this.router = new LayerRouter(this.scope, type === 'local')
     this.page = new LayerPage(this).init({
       initialPage: {
         component: '',
@@ -335,6 +336,13 @@ export class LayerHistory implements HistoryPort {
 
 /** A 3.x Router on the layer's scope. Shares the module request streams; never init()ed. */
 export class LayerRouter extends Router {
+  constructor(
+    scope: PageScope,
+    protected local: boolean,
+  ) {
+    super(scope)
+  }
+
   public loadDeferred(deferred: Page['deferredProps']): void {
     this.loadDeferredProps(deferred)
   }
@@ -345,6 +353,13 @@ export class LayerRouter extends Router {
     options: VisitOptions<T> = {},
   ): void {
     return this.scope.disposed && options.component ? baseScope.router.visit(href, options) : super.visit(href, options)
+  }
+
+  /** A layer with no url has nothing of its own to ask the server for: its reload is the page's beneath the stack. */
+  protected doReload<T extends RequestPayload = RequestPayload>(
+    options?: ReloadOptions<T> & { deferredProps?: boolean; poll?: boolean },
+  ): void {
+    return this.local ? super.doReload.call(baseScope.router, options as never) : super.doReload(options)
   }
 }
 
