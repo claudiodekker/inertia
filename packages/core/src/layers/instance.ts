@@ -253,6 +253,13 @@ export class LayerPage extends CurrentPage {
       visitId?: string
     },
   ): void {
+    // The write that landed found the layer closed: it owes nothing, and asks for no deferred props.
+    if (this.layer.disposed) {
+      this.pendingDeferredProps = null
+
+      return
+    }
+
     if (!preserveScroll) {
       this.layer.element?.querySelectorAll('[scroll-region]').forEach((region) => region.scrollTo(0, 0))
     }
