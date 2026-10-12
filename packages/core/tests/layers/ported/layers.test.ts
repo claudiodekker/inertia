@@ -525,6 +525,7 @@ describe('resolveInitialPage', () => {
     )
 
     expect(app.layers()[0].url).toBe('/users/5/edit#profile')
+    expect((await app.basePage()).url).toBe('/users')
   })
 
   it('does not append the hash to a url that already carries it', async () => {

@@ -1062,6 +1062,17 @@ describe("the walk a cold layer sends for the base beneath it", () => {
       expect((await w.base()).url).toBe("/users#profile");
     });
 
+    it("keeps the hash the browser is on with the layer that owns the address", async () => {
+      const w = await world({
+        href: `${document}#profile`,
+        routes: { "/users": "hold" },
+      });
+      await w.boot(layerAt("/users/5/edit", "Users/Edit", "/users"), "#profile");
+
+      expect(w.urls()).toEqual(["/users/5/edit#profile"]);
+      expect((await w.base()).url).toBe("/users");
+    });
+
     it("renders a layer that declares no base as an ordinary page", async () => {
       const w = await world({ href: document });
       await w.boot(layerAt("/users/5/edit", "Users/Edit"));

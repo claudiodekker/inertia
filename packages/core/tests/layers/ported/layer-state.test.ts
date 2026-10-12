@@ -637,10 +637,14 @@ describe("remembered state per layer", () => {
     await closing;
     await settled();
 
-    const writes = log.filter((entry) => entry.state !== undefined);
+    const afterStepBack = log.slice(
+      log.findIndex((entry) => entry.kind === "go"),
+    );
 
     expect(log.filter((entry) => entry.kind === "answered")).toHaveLength(1);
-    expect(writes.at(-1)!.state!.page.layers).toBeUndefined();
+    expect(
+      afterStepBack.flatMap((entry) => entry.state?.page.layers ?? []),
+    ).toEqual([]);
     expect(app.router.restore("note")).toBe("during");
     expect(app.layers()).toEqual([]);
     expect(app.entry()).not.toHaveProperty("layers");
