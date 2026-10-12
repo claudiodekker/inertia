@@ -17,6 +17,22 @@ import renderPage from './renderPage'
 
 type DefaultLayout = (name: string, page: Page) => unknown
 
+// A restore can reopen a layer under the id of one still playing its exit. The frame provides its
+// scope once, at setup, so each instance gets a frame of its own.
+const frames = new WeakMap<object, string>()
+let frameCount = 0
+
+const frameKey = (view: LayerView): string => {
+  let key = frames.get(view.scope)
+
+  if (!key) {
+    key = `${view.id}:${++frameCount}`
+    frames.set(view.scope, key)
+  }
+
+  return key
+}
+
 const LayerFrame = defineComponent({
   name: 'InertiaLayerFrame',
   props: {
@@ -79,7 +95,12 @@ export default defineComponent({
     return () =>
       views.value.length > 0
         ? views.value.map((view) =>
-            h(LayerFrame, { key: view.id, view, shell: props.shell ?? Layer, defaultLayout: props.defaultLayout }),
+            h(LayerFrame, {
+              key: frameKey(view),
+              view,
+              shell: props.shell ?? Layer,
+              defaultLayout: props.defaultLayout,
+            }),
           )
         : null
   },
