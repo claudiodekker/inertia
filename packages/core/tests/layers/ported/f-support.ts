@@ -150,6 +150,7 @@ export async function start(
   return {
     ...modules,
     router: core.router,
+    interceptors: core.interceptors,
     Router: (await import("../../../src/router")).Router,
     layers: () => core.layerSlot.info(),
     views: () => core.layerSlot.views(),

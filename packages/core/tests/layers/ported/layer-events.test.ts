@@ -22,39 +22,41 @@ afterEach(() => {
 });
 
 describe("layer events for development tooling", () => {
+  type Heard = Parameters<Parameters<App["interceptors"]["onLayerEvent"]>[0]>[0];
+
+  const kinds = (events: Heard[]) =>
+    events.map((event) =>
+      event.type === "event" ? event.name : `${event.type}:${event.layer.id}`,
+    );
+
   const watched = (app: App, heard: string[]) => {
-    let known: string[] = app.layers().map((layer) => layer.id);
+    const events: Heard[] = [];
 
-    return app.subscribe(() => {
-      const now = app.layers().map((layer) => layer.id);
-
-      heard.push(
-        ...now.filter((id) => !known.includes(id)).map((id) => `opened:${id}`),
-      );
-      heard.push(
-        ...known.filter((id) => !now.includes(id)).map((id) => `closed:${id}`),
-      );
-      known = now;
+    return app.interceptors.onLayerEvent((event) => {
+      events.push(event);
+      heard.splice(0, heard.length, ...kinds(events));
     });
   };
 
   it("announces a layer landing on the stack", async () => {
     const app = await start(users, routes);
-    const heard: string[] = [];
+    const events: Heard[] = [];
 
-    watched(app, heard);
+    app.interceptors.onLayerEvent((event) => events.push(event));
 
     const handle = app.router.layer("/users/5/edit");
     await settled();
 
-    expect(heard).toEqual([`opened:${handle.id}`]);
-    expect(app.layers()).toEqual([
+    expect(events).toEqual([
       {
-        id: handle.id,
-        key: "Users/Edit",
-        component: "Users/Edit",
-        url: "/users/5/edit",
-        type: "routed",
+        type: "opened",
+        layer: {
+          id: handle.id,
+          key: "Users/Edit",
+          component: "Users/Edit",
+          url: "/users/5/edit",
+          type: "routed",
+        },
       },
     ]);
   });
@@ -140,36 +142,28 @@ describe("layer events for development tooling", () => {
   });
 
   it("announces the whole stack of a document that opens on one", async () => {
-    const heard: string[] = [];
-    const known: string[] = [];
+    const events: Heard[] = [];
     const app = await start(
       edit,
       { "/users": users },
       {
         boot: true,
-        onCore: ({ layerSlot }) => {
-          layerSlot.subscribe(() => {
-            const now = layerSlot.info().map((layer) => layer.id);
-
-            heard.push(
-              ...now
-                .filter((id) => !known.includes(id))
-                .map((id) => `opened:${id}`),
-            );
-            known.splice(0, known.length, ...now);
-          });
+        onCore: ({ interceptors }) => {
+          interceptors.onLayerEvent((event) => events.push(event));
         },
       },
     );
 
-    expect(heard).toEqual([`opened:${app.layers()[0].id}`]);
-    expect(app.layers()).toEqual([
+    expect(events).toEqual([
       {
-        id: app.layers()[0].id,
-        key: "Users/Edit",
-        component: "Users/Edit",
-        url: "/users/5/edit",
-        type: "routed",
+        type: "opened",
+        layer: {
+          id: app.layers()[0].id,
+          key: "Users/Edit",
+          component: "Users/Edit",
+          url: "/users/5/edit",
+          type: "routed",
+        },
       },
     ]);
   });
@@ -180,13 +174,24 @@ describe("layer events for development tooling", () => {
     await settled();
     const second = app.router.layerHandle(first.id)!.router.layer("/teams/9");
     await settled();
+    const events: Heard[] = [];
     const heard: unknown[] = [];
 
+    app.interceptors.onLayerEvent((event) => events.push(event));
     first.on("saved", (payload, from) =>
       heard.push({ from: from.id, name: "saved", payload }),
     );
     app.router.layerHandle(second.id)!.emit("saved", { id: 5 });
 
+    expect(events).toEqual([
+      {
+        type: "event",
+        from: second.id,
+        to: first.id,
+        name: "saved",
+        payload: { id: 5 },
+      },
+    ]);
     expect(heard).toEqual([
       { from: second.id, name: "saved", payload: { id: 5 } },
     ]);
@@ -196,17 +201,49 @@ describe("layer events for development tooling", () => {
     const app = await start(users, routes);
     const handle = app.router.layer("/users/5/edit");
     await settled();
+    const events: Heard[] = [];
     const heard: unknown[] = [];
 
+    app.interceptors.onLayerEvent((event) => events.push(event));
     handle.on("saved", (payload) => heard.push(payload));
     app.router
       .layerHandle(handle.id)!
       .on("saved", (payload) => heard.push(payload));
+    app.router.layerHandle(handle.id)!.emit("saved");
 
-    expect(() =>
-      app.router.layerHandle(handle.id)!.emit("saved"),
-    ).not.toThrow();
+    expect(events).toEqual([
+      {
+        type: "event",
+        from: handle.id,
+        to: null,
+        name: "saved",
+        payload: undefined,
+      },
+    ]);
     expect(heard).toEqual([]);
+  });
+
+  it("keeps a handler that throws from breaking the write that announced", async () => {
+    const app = await start(users, routes);
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const bug = new Error("tooling bug");
+    const outcome: string[] = [];
+
+    app.interceptors.onLayerEvent(() => {
+      throw bug;
+    });
+    app.router.visit("/users/5/edit", {
+      onSuccess: () => outcome.push("success"),
+      onFinish: () => outcome.push("finish"),
+    });
+    await settled();
+    app.router.layerHandle()!.emit("saved");
+
+    expect(app.layers().map((layer) => layer.component)).toEqual([
+      "Users/Edit",
+    ]);
+    expect(outcome).toEqual(["success", "finish"]);
+    expect(error.mock.calls).toEqual([[bug], [bug]]);
   });
 
   it("stops announcing to a handler once it is unsubscribed", async () => {
