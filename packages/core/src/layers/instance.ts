@@ -3,6 +3,7 @@
 // of this instance's CurrentPage. LayerPage overrides only the hooks whose 3.x body touches the
 // browser, the global page or the global history.
 
+import { get } from 'es-toolkit/compat'
 import { fireNavigateEvent } from '../events'
 import { createLayoutPropsStore } from '../layout'
 import { CurrentPage } from '../page'
@@ -156,6 +157,31 @@ export class LayerInstance {
     this.view = { component, page, renderKey: 0 }
 
     return this
+  }
+
+  /** A history entry's snapshot of this layer, set with no request: the layer as it is first restored. */
+  restore(page: Page): void {
+    this.historyPage = page
+    this.lastWrite = 'replace'
+    this.page.setQuietly(page).then(() => this.loadMissingDeferred())
+  }
+
+  /** The same layer, as another entry stored it. */
+  rewind(page: Page): void {
+    this.historyPage = page
+    this.page.setQuietly(page, { preserveState: false })
+  }
+
+  /** Deferred props a page restored or seeded without a request still lacks load through its router. */
+  loadMissingDeferred(): void {
+    const page = this.page.get()
+    const missing = Object.entries(page.initialDeferredProps ?? page.deferredProps ?? {})
+      .map(([group, names]) => [group, names.filter((name) => get(page.props, name) === undefined)] as const)
+      .filter(([, names]) => names.length > 0)
+
+    if (missing.length > 0 && !this.disposed) {
+      this.router.loadDeferred(Object.fromEntries(missing))
+    }
   }
 
   /**

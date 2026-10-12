@@ -2,7 +2,6 @@
 // decides: each hook reads its inputs, dispatches one event, and runs the returned effects in order.
 // Client only: on the server every hook returns the 3.x value.
 
-import { get } from 'es-toolkit/compat'
 import { history } from '../history'
 import { interceptors } from '../interceptors'
 import { page as currentPage, type CurrentPage } from '../page'
@@ -238,40 +237,17 @@ export class Stack implements StackPort {
   protected reopen(id: LayerId): void {
     const entry = this.restoring.find((layer) => layer.id === id)
 
-    if (!entry) {
-      return
-    }
-
-    const instance = this.create(id, entry.type)
-    const page = layerPage(entry)
-
-    instance.historyPage = page
-    instance.lastWrite = 'replace'
-    instance.page.setQuietly(page).then(() => this.loadMissingDeferred(instance))
-  }
-
-  /** Deferred props a page restored or seeded without a request still lacks load through its router. */
-  protected loadMissingDeferred(instance: LayerInstance): void {
-    const page = instance.page.get()
-    const missing = Object.entries(page.initialDeferredProps ?? page.deferredProps ?? {})
-      .map(([group, names]) => [group, names.filter((name) => get(page.props, name) === undefined)] as const)
-      .filter(([, names]) => names.length > 0)
-
-    if (missing.length > 0 && !instance.disposed) {
-      instance.router.loadDeferred(Object.fromEntries(missing))
+    if (entry) {
+      this.create(id, entry.type).restore(layerPage(entry))
     }
   }
 
   /** Same layer, another snapshot of it: set the entry's page quietly. */
   protected rewind(id: LayerId): void {
     const entry = this.restoring.find((layer) => layer.id === id)
-    const instance = this.instances.get(id)
 
-    if (entry && instance) {
-      const page = layerPage(entry)
-
-      instance.historyPage = page
-      instance.page.setQuietly(page, { preserveState: false })
+    if (entry) {
+      this.instances.get(id)?.rewind(layerPage(entry))
     }
   }
 
@@ -654,7 +630,7 @@ export class Stack implements StackPort {
       walkTo: plan.walkTo,
     })
     void this.paint()
-    queueMicrotask(() => this.instances.forEach((instance) => this.loadMissingDeferred(instance)))
+    queueMicrotask(() => this.instances.forEach((instance) => instance.loadMissingDeferred()))
     announceFlash(plan, this.connected().baseScope.router)
   }
 

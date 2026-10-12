@@ -64,7 +64,13 @@ export class Painter {
     let address = baseUrl
     const views = [
       ...rendered.map((row, index) => {
-        const view = this.view(instances.get(row.id)!, index, index === rendered.length - 1, row.close === null, address)
+        const view = this.view(
+          instances.get(row.id)!,
+          index,
+          index === rendered.length - 1,
+          row.close === null,
+          address,
+        )
 
         address = row.type === 'routed' && row.ownsAddress ? view.page.url : address
 
