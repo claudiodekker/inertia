@@ -5,13 +5,21 @@
 import { get } from 'es-toolkit/compat'
 import { history } from '../history'
 import { page as currentPage } from '../page'
-import { RequestParams } from '../requestParams'
 import { Scroll } from '../scroll'
 import type { Response } from '../response'
-import type { Page, PageResolver, PendingVisit, VisitOptions } from '../types'
+import type { Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
-import { compose as composeEntry, decompose, isBlank, layerPage, type CompositeEntry, type LayerEntry } from './entry'
+import {
+  blankPage,
+  compose as composeEntry,
+  decompose,
+  isBlank,
+  layerPage,
+  type BootPlan,
+  type CompositeEntry,
+  type LayerEntry,
+} from './entry'
 import type { LayerInstance, StackPort } from './instance'
 import { reduce } from './reduce'
 import type { PageScope } from './scope'
@@ -23,10 +31,8 @@ import {
   type Landing,
   type LayerId,
   type LayerRow,
-  type Marks,
   type Origin,
   type Outcome,
-  type Owner,
   type StackEffect,
   type StackEvent,
   type StackState,
@@ -35,19 +41,10 @@ import {
   type WaiterId,
 } from './state'
 import type { LayerHandle, LayerInfo, LayerScope, LayerShellProps, LayerTarget } from './types'
+import { entryFacts, marksOf, routeFacts, sameOriginAndPath, snapshot, stripMark } from './facts'
+import { viewOf, type LayerView } from './views'
 
-export interface LayerView {
-  readonly id: string
-  readonly scope: LayerScope
-  readonly component: unknown
-  /** What usePage() returns inside the layer. */
-  readonly page: Page
-  readonly renderKey: number
-  readonly layout: LayerInstance['layout']
-  readonly shell: LayerShellProps
-  /** On the wrapper inside the shell. */
-  readonly attributes: { 'data-layer-id': string; style: { viewTransitionName: string } }
-}
+export type { LayerView }
 
 interface Connection {
   baseScope: PageScope
@@ -79,6 +76,8 @@ export class Stack implements StackPort {
   protected tags = new Map<string, VisitTag>()
   /** The layers of the entry a popstate is applying, for its reopen and rewind effects. */
   protected restoring: readonly LayerEntry[] = []
+  /** The next base commit is the document load's restore of a history entry, so it keeps the stack. */
+  protected restoredLoad = false
 
   public connect(connection: Connection): void {
     this.connection = connection
@@ -133,6 +132,7 @@ export class Stack implements StackPort {
       case 'warn':
         return console.warn(effect.message)
       case 'installBase':
+        return this.installBase(effect)
       case 'capturePin':
       case 'releasePin':
       case 'refuse':
@@ -146,8 +146,10 @@ export class Stack implements StackPort {
     const rendered = this.state.rows.filter((row) => this.instances.get(row.id)?.view)
     const ghosts = this.state.ghosts.filter((id) => this.instances.get(id)?.view)
     const views = [
-      ...rendered.map((row, index) => this.viewOf(row.id, index, index === rendered.length - 1, row.close === null)),
-      ...ghosts.map((id, index) => this.viewOf(id, rendered.length + index, false, false)),
+      ...rendered.map((row, index) =>
+        this.cachedView(row.id, index, index === rendered.length - 1, row.close === null),
+      ),
+      ...ghosts.map((id, index) => this.cachedView(id, rendered.length + index, false, false)),
     ]
     const leaving = this.leaving
 
@@ -190,6 +192,11 @@ export class Stack implements StackPort {
   protected startVisit(effect: Extract<StackEffect, { type: 'startVisit' }>): void {
     const { tag } = effect
 
+    if (tag.kind === 'walk' || tag.kind === 'recover') {
+      // After the task that asked for it: a popstate's own 3.x cancelAll runs right after its dispatch.
+      return queueMicrotask(() => this.fetchBase(tag, effect.url!))
+    }
+
     if (tag.kind !== 'refresh') {
       throw new Error(`The layer visit "${tag.kind}" is not wired yet.`)
     }
@@ -220,6 +227,56 @@ export class Stack implements StackPort {
     })
   }
 
+  /** A walk hop or a recovery: a background base visit replacing the blank. A failed hop shows no overlay. */
+  protected fetchBase(tag: Extract<VisitTag, { kind: 'walk' | 'recover' }>, url: string): void {
+    let id: VisitId | null = null
+    const failed =
+      tag.kind === 'walk'
+        ? () => {
+            this.dispatch({ type: 'walkHopFailed', visit: id! })
+
+            return false
+          }
+        : undefined
+
+    this.connected().baseScope.router.visit(url, {
+      async: true,
+      replace: true,
+      preserveState: true,
+      preserveScroll: true,
+      onBefore: (visit) => {
+        id = visit.id as VisitId
+        this.tags.set(visit.id, tag)
+      },
+      onFinish: (visit) => {
+        this.dispatch({ type: 'visitFinished', visit: visit.id as VisitId })
+      },
+      onHttpException: failed,
+      onNetworkError: failed,
+    })
+  }
+
+  /** 3.x installs the base page the reducer asked for; its commit carries the token as its visit id. */
+  protected installBase({ token, source, mode }: Extract<StackEffect, { type: 'installBase' }>): void {
+    if (source.kind === 'pinned') {
+      throw new Error('The layer install from a pinned page is not wired yet.')
+    }
+
+    // A blank carries the version its layer arrived on: the walk's first hop sends it (L:1136).
+    const waiting = this.state.expect?.kind === 'base' ? this.instance(this.state.expect.layer) : null
+    const page =
+      source.kind === 'blank'
+        ? blankPage(source.url, waiting!.historyPage!)
+        : stripMark(this.instance(source.layer).page.get())
+
+    void currentPage.set(page, {
+      replace: mode === 'replace',
+      preserveScroll: true,
+      preserveState: false,
+      visitId: String(token),
+    })
+  }
+
   /** A scope captured a visit at dispatch: one the stack started reports its tag. */
   public captured(visit: PendingVisit): void {
     const tag = this.tags.get(visit.id)
@@ -243,16 +300,19 @@ export class Stack implements StackPort {
 
     instance.historyPage = page
     instance.lastWrite = 'replace'
-    instance.page.setQuietly(page).then(() => {
-      const props = instance.page.get().props
-      const missing = Object.entries(page.initialDeferredProps ?? page.deferredProps ?? {})
-        .map(([group, names]) => [group, names.filter((name) => get(props, name) === undefined)] as const)
-        .filter(([, names]) => names.length > 0)
+    instance.page.setQuietly(page).then(() => this.loadMissingDeferred(instance))
+  }
 
-      if (missing.length > 0 && !instance.disposed) {
-        instance.router.loadDeferred(Object.fromEntries(missing))
-      }
-    })
+  /** Deferred props a page restored or seeded without a request still lacks load through its router. */
+  protected loadMissingDeferred(instance: LayerInstance): void {
+    const page = instance.page.get()
+    const missing = Object.entries(page.initialDeferredProps ?? page.deferredProps ?? {})
+      .map(([group, names]) => [group, names.filter((name) => get(page.props, name) === undefined)] as const)
+      .filter(([, names]) => names.length > 0)
+
+    if (missing.length > 0 && !instance.disposed) {
+      instance.router.loadDeferred(Object.fromEntries(missing))
+    }
   }
 
   /** Same layer, another snapshot of it: set the entry's page quietly. */
@@ -268,7 +328,7 @@ export class Stack implements StackPort {
     }
   }
 
-  protected viewOf(id: LayerId, index: number, isTop: boolean, open: boolean): LayerView {
+  protected cachedView(id: LayerId, index: number, isTop: boolean, open: boolean): LayerView {
     const instance = this.instances.get(id)!
     const { component, page, renderKey } = instance.view!
     const cached = this.cache.get(id)
@@ -289,16 +349,7 @@ export class Stack implements StackPort {
 
     this.shells.set(id, shell)
 
-    const view: LayerView = {
-      id,
-      scope: instance.public,
-      component,
-      page,
-      renderKey,
-      layout: instance.layout,
-      shell: { open, index, isTop, type: instance.type, ...shell },
-      attributes: { 'data-layer-id': id, style: { viewTransitionName: `inertia-layer-${id}` } },
-    }
+    const view = viewOf(instance, { open, index, isTop, type: instance.type, ...shell })
 
     this.cache.set(id, view)
 
@@ -312,14 +363,14 @@ export class Stack implements StackPort {
       this.captured(visit)
     }
 
+    if (previous?.kind === 'base') {
+      // After the visit's own placeholder swap: the dispatch-time facts stand, the swap's gen is recorded.
+      return { ...previous, instantGen: this.state.base.gen }
+    }
+
     const top = this.state.rows.filter((row) => row.phase === 'open').at(-1)?.id ?? null
 
-    return {
-      kind: 'base',
-      top,
-      gen: this.state.base.gen,
-      instantGen: previous ? this.state.base.gen : null,
-    }
+    return { kind: 'base', top, gen: this.state.base.gen, instantGen: null }
   }
 
   /** The decision and its state change happen in one reduce call. */
@@ -337,25 +388,18 @@ export class Stack implements StackPort {
     }
 
     const visit = response.getVisit()
-    const pageUrl = typeof page === 'object' ? hrefToUrl(page.url) : null
     const { outcome } = this.dispatch({
       type: 'responseArrived',
       visit: visit.id as VisitId,
       origin: response.origin,
       marks,
-      facts: {
-        aimed: pageUrl !== null && isSameUrlWithoutHash(visit.url, pageUrl),
-        baseMatches:
-          !!marks.layer?.base && isSameUrlWithoutHash(hrefToUrl(marks.layer.base), hrefToUrl(currentPage.get().url)),
-        partial: visit.only.length > 0 || visit.except.length > 0 || visit.reset.length > 0,
-        async: visit.async,
-        preserveState: typeof page === 'object' && RequestParams.resolvePreserveOption(visit.preserveState, page),
-        preserveUrl: visit.preserveUrl,
-        replace: visit.replace,
-        cycles: false,
-        matchesAddressTier: false,
-        hasErrors: false,
-      },
+      facts: routeFacts(
+        visit,
+        page,
+        marks,
+        currentPage.get(),
+        this.state.rows.flatMap((row) => this.instances.get(row.id)?.page.get() ?? []),
+      ),
       newId: uid() as LayerId,
       newClose: uid() as CloseId,
     })
@@ -373,12 +417,12 @@ export class Stack implements StackPort {
         return Promise.resolve()
       case 'base':
         return response.retarget(baseScope).land()
-      case 'promote': {
-        const { layer: _mark, ...plain } = page as Page & { layer?: unknown }
-
-        return response.retarget(baseScope, plain).land()
-      }
+      case 'promote':
+      case 'walk-base':
+        return response.retarget(baseScope, stripMark(page)).land()
       case 'open':
+      case 'cold':
+      case 'walk-beneath':
         return response.retarget(this.create(landing.id).scope).land()
       case 'rewrite':
       case 'refresh':
@@ -387,23 +431,24 @@ export class Stack implements StackPort {
         return response.succeed(
           landing.beneath === 'base' ? currentPage.get() : this.instance(landing.beneath).page.get(),
         )
-      case 'cold':
       case 'handback':
       case 'return':
-      case 'walk-base':
-      case 'walk-beneath':
         throw new Error(`The layer landing "${landing.kind}" is not wired yet.`)
       default:
         return assertNever(landing)
     }
   }
 
-  protected create(id: LayerId, type: 'routed' | 'local' = 'routed'): LayerInstance {
+  protected create(
+    id: LayerId,
+    type: 'routed' | 'local' = 'routed',
+    version: string | null = currentPage.get().version,
+  ): LayerInstance {
     history.composer = this
 
     const instance = this.connected().createInstance(id, type, this, {
       resolveComponent: (name, page) => currentPage.resolve(name, page),
-      version: currentPage.get().version,
+      version,
     })
 
     this.instances.set(id, instance)
@@ -418,13 +463,15 @@ export class Stack implements StackPort {
     }
 
     const live = currentPage.get()
+    const restoredLoad = this.restoredLoad
 
+    this.restoredLoad = false
     this.dispatch({
       type: 'baseCommitting',
       visit: (visitId ?? null) as VisitId | null,
       mode: replace ? 'replace' : 'push',
       interstitial: false,
-      initial,
+      initial: initial || restoredLoad,
       sameAsLive: !!live && live.component === page.component && sameOriginAndPath(live.url, page.url),
     })
   }
@@ -483,9 +530,12 @@ export class Stack implements StackPort {
     return this.ownsAddress() ? hrefToUrl(currentPage.get().url) : null
   }
 
-  /** The url a bare base reload() hits while a layer owns the address, else null (window.location.href). */
+  /**
+   * The url a bare base reload() hits while the stack holds anything, else null (window.location.href):
+   * the address may be a layer's, or a history write the stack queued may not have landed yet.
+   */
   public baseReloadUrl(): string | null {
-    return this.ownsAddress() ? currentPage.get().url : null
+    return idle(this.state) ? null : currentPage.get().url
   }
 
   protected ownsAddress(): boolean {
@@ -496,24 +546,11 @@ export class Stack implements StackPort {
   public compose(page: Page): { data: CompositeEntry; url: string } {
     return composeEntry(
       page,
-      this.state.rows.filter((row) => row.phase === 'open').map((row) => this.snapshot(row)),
+      this.state.rows
+        .filter((row) => row.phase === 'open')
+        .map((row) => snapshot(row, this.instance(row.id).historyPage!)),
       this.state.base.blank,
     )
-  }
-
-  protected snapshot(row: LayerRow): LayerEntry {
-    const { flash: _flash, ...page } = this.instance(row.id).historyPage!
-
-    return {
-      ...page,
-      id: row.id,
-      key: row.key,
-      type: row.type,
-      owner: row.owner === 'base' ? null : row.owner,
-      entries: row.entries,
-      ...(!row.ownsAddress && { preservesUrl: true as const }),
-      ...(row.standalone && { standalone: true as const }),
-    }
   }
 
   /** The eventHandler popstate hook. Returns what 3.x restores, or null when the stack handled the entry. */
@@ -524,7 +561,7 @@ export class Stack implements StackPort {
 
     const { base, layers } = decompose(data)
 
-    if (idle(this.state) && layers.length === 0) {
+    if (idle(this.state) && layers.length === 0 && !isBlank(base)) {
       return data
     }
 
@@ -552,36 +589,46 @@ export class Stack implements StackPort {
     return restore.kind === 'pass' ? data : base
   }
 
-  protected entryFacts(base: Page, layers: readonly LayerEntry[]): EntryFacts {
-    const live = currentPage.get()
-
-    return {
-      layers: layers.map((layer) => ({
-        id: layer.id as LayerId,
-        key: layer.key,
-        type: layer.type,
-        owner: (layer.owner ?? 'base') as Owner,
-        standalone: !!layer.standalone,
-        ownsAddress: !layer.preservesUrl,
-        entries: layer.entries,
-      })),
-      url: base.url,
-      baseSame: base.component === live.component && base.url === live.url,
-      blank: isBlank(base),
-      sameSnapshot: new Set(
-        layers
-          .filter((layer) => {
-            const page = this.instances.get(layer.id as LayerId)?.page.get()
-
-            return page?.component === layer.component && page.url === layer.url
-          })
-          .map((layer) => layer.id as LayerId),
-      ),
+  /** initialVisit's back/forward restore: an entry with layers or a blank base replaces the boot rows. */
+  public restoreOnLoad(data: Page): Page {
+    if (isServer) {
+      return data
     }
+
+    const { base, layers } = decompose(data)
+
+    if (layers.length === 0 && !isBlank(base) && idle(this.state)) {
+      return data
+    }
+
+    history.composer = this
+    this.restoring = layers
+    this.dispatch({ type: 'restoredOnLoad', entry: this.entryFacts(base, layers) })
+    this.restoring = []
+    this.restoredLoad = true
+
+    return base
   }
 
-  public restoreOnLoad(data: Page): Page {
-    return data
+  /** The document load: seed instances from the plan, so the first render shows them. Before mount. */
+  public boot(plan: BootPlan, components: readonly unknown[]): void {
+    if (isServer || plan.seeds.length === 0) {
+      return
+    }
+
+    history.composer = this
+
+    plan.seeds.forEach(({ row, page }, index) => {
+      this.create(row.id, row.type, page.version).seed(page, components[index] as Component)
+    })
+    this.dispatch({
+      type: 'booted',
+      seeds: plan.seeds.map((seed) => seed.row),
+      blank: isBlank(plan.base),
+      walkTo: plan.walkTo,
+    })
+    void this.paint()
+    queueMicrotask(() => this.instances.forEach((instance) => this.loadMissingDeferred(instance)))
   }
 
   /** Walks up to a bound wrapper element. Never an attribute read. */
@@ -692,6 +739,10 @@ export class Stack implements StackPort {
     return instance
   }
 
+  protected entryFacts(base: Page, layers: readonly LayerEntry[]): EntryFacts {
+    return entryFacts(base, layers, currentPage.get(), (id) => this.instances.get(id)?.page.get())
+  }
+
   protected connected(): Connection {
     if (!this.connection) {
       throw new Error('The layer data plane is not loaded; import @inertiajs/core through its index.')
@@ -699,22 +750,6 @@ export class Stack implements StackPort {
 
     return this.connection
   }
-}
-
-function marksOf(page: Page | string): Marks {
-  const mark = typeof page === 'object' ? (page as Page & { layer?: { key?: string; base?: string } }).layer : undefined
-
-  return {
-    layer: mark ? { key: mark.key || (page as Page).component, base: mark.base ?? null } : null,
-    close: typeof page === 'object' && (page as Page & { close?: unknown }).close === true,
-  }
-}
-
-function sameOriginAndPath(a: string, b: string): boolean {
-  const left = hrefToUrl(a)
-  const right = hrefToUrl(b)
-
-  return left.origin === right.origin && left.pathname === right.pathname
 }
 
 function assertNever(x: never): never {

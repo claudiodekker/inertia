@@ -28,7 +28,7 @@ export {
 } from './layout'
 export { layerDialogAttributes, mountLayerDialog } from './layers/dialog'
 /** @internal Not part of the public API. May change or be removed without notice. */
-export { layerSlot, type LayerView } from './layers/slot'
+export { layerSlot, type BootPlan, type LayerView } from './layers/slot'
 export type {
   LayerHandle,
   LayerInfo,

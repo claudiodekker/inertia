@@ -139,6 +139,16 @@ export class LayerInstance {
     this.public = new PublicScope(this)
   }
 
+  /** Boot: the page and component the document arrived with, set at once with no request and no swap. */
+  seed(page: Page, component: Component): this {
+    this.page.seed(page)
+    this.historyPage = page
+    this.lastWrite = 'replace'
+    this.view = { component, page, renderKey: 0 }
+
+    return this
+  }
+
   /** Idempotent. The scope reads disposed at once; close listeners fire after the next paint. */
   dispose(): void {
     this.disposed = true
@@ -182,6 +192,10 @@ export class LayerPage extends CurrentPage {
     this.onFlashCallback = onFlash
 
     return this
+  }
+
+  public seed(page: Page): void {
+    this.page = page
   }
 
   /** Clearing history is global by decision: the stack runs it, never this page. */
