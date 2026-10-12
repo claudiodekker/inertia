@@ -8,13 +8,14 @@ import {
   getInitialPageFromDOM,
   http as httpModule,
   InertiaAppSSRResponse,
+  LoadingResolver,
   Page,
   PageProps,
   router,
   setupProgress,
   SharedPageProps,
 } from '@inertiajs/core'
-import { createApp, createSSRApp, DefineComponent, h, Plugin, App as VueApp } from 'vue'
+import { Component, createApp, createSSRApp, DefineComponent, h, Plugin, App as VueApp } from 'vue'
 import App, { InertiaApp, InertiaAppProps, plugin } from './app'
 import { config } from './index'
 import { VueInertiaAppConfig } from './types'
@@ -36,15 +37,22 @@ type VueWithApp<SharedProps extends PageProps> = (
   options: { ssr: boolean; page: Page<SharedProps> },
 ) => void
 
+type LayerOptions = {
+  /** The shell each layer renders in. Defaults to the shipped <Layer>. */
+  layer?: Component
+  loading?: LoadingResolver<DefineComponent>
+}
+
 type InertiaAppOptionsForCSR<SharedProps extends PageProps> = CreateInertiaAppOptionsForCSR<
   SharedProps,
   ComponentResolver,
   SetupOptions<HTMLElement, SharedProps>,
   void,
   VueInertiaAppConfig
-> & {
-  withApp?: never
-}
+> &
+  LayerOptions & {
+    withApp?: never
+  }
 
 type InertiaAppOptionsForSSR<SharedProps extends PageProps> = CreateInertiaAppOptionsForSSR<
   SharedProps,
@@ -52,10 +60,11 @@ type InertiaAppOptionsForSSR<SharedProps extends PageProps> = CreateInertiaAppOp
   SetupOptions<null, SharedProps>,
   VueApp,
   VueInertiaAppConfig
-> & {
-  render: (app: VueApp) => Promise<string>
-  withApp?: never
-}
+> &
+  LayerOptions & {
+    render: (app: VueApp) => Promise<string>
+    withApp?: never
+  }
 
 type InertiaAppOptionsAuto<SharedProps extends PageProps> = Omit<
   CreateInertiaAppOptions<
@@ -65,7 +74,8 @@ type InertiaAppOptionsAuto<SharedProps extends PageProps> = Omit<
     VueInertiaAppConfig
   >,
   'setup'
-> & {
+> &
+  LayerOptions & {
   page?: Page<SharedProps>
   render?: undefined
 } & (
@@ -104,6 +114,7 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     layout,
     serverHead,
     withApp,
+    layer,
     dev = !!import.meta.env?.DEV,
   }:
     | InertiaAppOptionsForCSR<SharedProps>
@@ -146,6 +157,7 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
         defaultLayout: layout,
         serverHead,
         serverRendered: true,
+        layer,
       }
 
       let vueApp: VueApp
@@ -192,6 +204,7 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
       defaultLayout: layout,
       serverHead,
       serverRendered: isServer || el!.hasAttribute('data-server-rendered'),
+      layer,
     }
 
     if (isServer) {

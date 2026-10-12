@@ -9,7 +9,6 @@ import {
   OptimisticCallback,
   Progress,
   RequestPayload,
-  router,
   UrlMethodPair,
   UseFormArguments,
   UseFormSubmitArguments,
@@ -21,6 +20,7 @@ import {
 } from '@inertiajs/core'
 import { cloneDeep } from 'es-toolkit'
 import { NamedInputEvent, PrecognitionPath, ValidationConfig, Validator } from 'laravel-precognition'
+import { useRouter } from './layerContext'
 import useFormState from './useFormState'
 
 // Reserved keys validation - logs console.error at runtime when form data keys conflict with form properties
@@ -137,6 +137,7 @@ export default function useForm<TForm extends FormDataType<TForm>>(): InertiaFor
 export default function useForm<TForm extends FormDataType<TForm>>(
   ...args: UseFormArguments<TForm>
 ): InertiaForm<TForm> | InertiaPrecognitiveForm<TForm> {
+  const router = useRouter()
   const { rememberKey, data, precognitionEndpoint } = UseFormUtils.parseUseFormArguments<TForm>(...args)
 
   const initialDefaults = typeof data === 'function' ? cloneDeep(data()) : cloneDeep(data)

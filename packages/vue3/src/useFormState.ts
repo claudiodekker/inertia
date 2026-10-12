@@ -5,7 +5,6 @@ import {
   FormDataKeys,
   FormDataValues,
   Progress,
-  router,
   UrlMethodPair,
   UseFormTransformCallback,
   UseFormUtils,
@@ -23,6 +22,7 @@ import {
 } from 'laravel-precognition'
 import { reactive, watch } from 'vue'
 import { config } from '.'
+import { useRouter } from './layerContext'
 
 type PrecognitionValidationConfig<TKeys> = ValidationConfig & {
   only?: TKeys[] | Iterable<TKeys> | ArrayLike<TKeys>
@@ -107,6 +107,7 @@ export interface UseFormStateReturn<TForm extends object> {
 export default function useFormState<TForm extends object>(
   options: UseFormStateOptions<TForm>,
 ): UseFormStateReturn<TForm> {
+  const router = useRouter()
   const { data: dataOption, rememberKey } = options
   let { precognitionEndpoint } = options
 

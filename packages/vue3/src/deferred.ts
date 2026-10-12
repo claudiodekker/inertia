@@ -1,7 +1,8 @@
-import { isSameUrlWithoutQueryOrHash, partialReloadRequestsSomeProps, router } from '@inertiajs/core'
+import { hrefToUrl, isSameUrlWithoutQueryOrHash, partialReloadRequestsSomeProps, router } from '@inertiajs/core'
 import { get } from 'es-toolkit/compat'
 import { computed, defineComponent, Fragment, h, onMounted, onUnmounted, ref, type SlotsType } from 'vue'
 import { usePage } from './app'
+import { useLayer } from './layerContext'
 
 export default defineComponent({
   name: 'Deferred',
@@ -20,6 +21,7 @@ export default defineComponent({
     const reloading = ref(false)
     const activeReloads = new Set<object>()
     const page = usePage()
+    const layer = useLayer()
     const keys = computed(() => (Array.isArray(props.data) ? props.data : [props.data]) as string[])
     const rescuedKeys = computed(() => new Set(page.rescuedProps))
 
@@ -32,7 +34,7 @@ export default defineComponent({
 
         if (
           visit.preserveState === true &&
-          isSameUrlWithoutQueryOrHash(visit.url, window.location) &&
+          isSameUrlWithoutQueryOrHash(visit.url, layer ? hrefToUrl(page.url) : window.location) &&
           partialReloadRequestsSomeProps(visit, keys.value)
         ) {
           activeReloads.add(visit)

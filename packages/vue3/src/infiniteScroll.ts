@@ -9,6 +9,7 @@ import {
 } from '@inertiajs/core'
 import { computed, defineComponent, Fragment, h, onMounted, onUnmounted, PropType, ref, SlotsType, watch } from 'vue'
 import { usePage } from './app'
+import { useLayerContext } from './layerContext'
 
 // Vue-specific element resolver
 const resolveHTMLElement = (
@@ -100,6 +101,7 @@ const InfiniteScroll = defineComponent({
   },
   inheritAttrs: false,
   setup(props, { slots, attrs, expose }) {
+    const layer = useLayerContext()
     const itemsElementRef = ref<HTMLElement | null>(null)
     const startElementRef = ref<HTMLElement | null>(null)
     const endElementRef = ref<HTMLElement | null>(null)
@@ -130,6 +132,7 @@ const InfiniteScroll = defineComponent({
       elementManager,
       flush: flushInfiniteScroll,
     } = useInfiniteScroll({
+      ...(layer && { scope: { router: layer.scope.router, page: { get: () => layer.page.value } } }),
       // Data
       getPropName: () => props.data,
       inReverseMode: () => props.reverse,

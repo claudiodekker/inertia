@@ -11,6 +11,7 @@ import {
   type ServerHeadOption,
 } from '@inertiajs/core'
 import {
+  Component,
   computed,
   DefineComponent,
   defineComponent,
@@ -20,10 +21,12 @@ import {
   Plugin,
   PropType,
   reactive,
+  Ref,
   ref,
   shallowRef,
 } from 'vue'
 import { provideHydrationContext } from './hydration'
+import { useLayerContext } from './layerContext'
 import LayerStack from './LayerStack'
 import { state as layoutPropsState, resetLayoutProps } from './layoutProps'
 import remember from './remember'
@@ -40,6 +43,8 @@ export interface InertiaAppProps<SharedProps extends PageProps = PageProps> {
   defaultLayout?: (name: string, page: Page) => unknown
   serverHead?: ServerHeadOption
   serverRendered?: boolean
+  /** The shell each layer renders in. Defaults to the shipped <Layer>. */
+  layer?: Component
 }
 
 export type InertiaApp = DefineComponent<InertiaAppProps>
@@ -89,6 +94,10 @@ const App: InertiaApp = defineComponent({
       required: false,
       default: true,
     },
+    layer: {
+      type: [Object, Function] as PropType<Component>,
+      required: false,
+    },
   },
   setup({
     initialPage,
@@ -99,6 +108,7 @@ const App: InertiaApp = defineComponent({
     defaultLayout,
     serverHead,
     serverRendered,
+    layer: shell,
   }: InertiaAppProps) {
     component.value = initialComponent ? markRaw(initialComponent) : undefined
     page.value = { ...initialPage, flash: initialPage.flash ?? {} }
@@ -145,9 +155,11 @@ const App: InertiaApp = defineComponent({
       router.on('clientVisit', syncServerHead)
     }
 
+    const layerStack = () => h(LayerStack, { shell, defaultLayout })
+
     return () => {
       if (!component.value) {
-        return [undefined, h(LayerStack)]
+        return [undefined, layerStack()]
       }
 
       if (layout.value) {
@@ -172,7 +184,7 @@ const App: InertiaApp = defineComponent({
               },
           defaultLayout,
         ),
-        h(LayerStack),
+        layerStack(),
       ]
     }
   },
@@ -191,25 +203,44 @@ export const plugin: Plugin = {
   },
 }
 
+const layerPageAccessors = new WeakMap<object, Page>()
+
+function createPageAccessor(page: Readonly<Ref<Page | undefined>>): Page {
+  return reactive({
+    props: computed(() => page.value?.props),
+    url: computed(() => page.value?.url),
+    component: computed(() => page.value?.component),
+    version: computed(() => page.value?.version),
+    clearHistory: computed(() => page.value?.clearHistory),
+    deferredProps: computed(() => page.value?.deferredProps),
+    rescuedProps: computed(() => page.value?.rescuedProps),
+    mergeProps: computed(() => page.value?.mergeProps),
+    prependProps: computed(() => page.value?.prependProps),
+    deepMergeProps: computed(() => page.value?.deepMergeProps),
+    matchPropsOn: computed(() => page.value?.matchPropsOn),
+    rememberedState: computed(() => page.value?.rememberedState),
+    encryptHistory: computed(() => page.value?.encryptHistory),
+    scrollProps: computed(() => page.value?.scrollProps),
+    flash: computed(() => page.value?.flash),
+  }) as Page
+}
+
 export function usePage<TPageProps extends PageProps = PageProps>(): Page<TPageProps & SharedPageProps> {
+  const layer = useLayerContext()
+
+  if (layer) {
+    let accessor = layerPageAccessors.get(layer)
+
+    if (!accessor) {
+      accessor = createPageAccessor(layer.page)
+      layerPageAccessors.set(layer, accessor)
+    }
+
+    return accessor as Page<TPageProps>
+  }
+
   if (!pageAccessor) {
-    pageAccessor = reactive({
-      props: computed(() => page.value?.props),
-      url: computed(() => page.value?.url),
-      component: computed(() => page.value?.component),
-      version: computed(() => page.value?.version),
-      clearHistory: computed(() => page.value?.clearHistory),
-      deferredProps: computed(() => page.value?.deferredProps),
-      rescuedProps: computed(() => page.value?.rescuedProps),
-      mergeProps: computed(() => page.value?.mergeProps),
-      prependProps: computed(() => page.value?.prependProps),
-      deepMergeProps: computed(() => page.value?.deepMergeProps),
-      matchPropsOn: computed(() => page.value?.matchPropsOn),
-      rememberedState: computed(() => page.value?.rememberedState),
-      encryptHistory: computed(() => page.value?.encryptHistory),
-      scrollProps: computed(() => page.value?.scrollProps),
-      flash: computed(() => page.value?.flash),
-    }) as Page
+    pageAccessor = createPageAccessor(page)
   }
 
   return pageAccessor as Page<TPageProps>

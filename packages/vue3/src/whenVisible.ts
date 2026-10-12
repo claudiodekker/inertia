@@ -1,7 +1,8 @@
-import { ReloadOptions, router } from '@inertiajs/core'
+import { ReloadOptions } from '@inertiajs/core'
 import { get } from 'es-toolkit/compat'
 import { computed, defineComponent, h, nextTick, onUnmounted, PropType, ref, SlotsType, watch } from 'vue'
 import { usePage } from './app'
+import { useRouter } from './layerContext'
 
 export default defineComponent({
   name: 'WhenVisible',
@@ -30,6 +31,7 @@ export default defineComponent({
     },
   },
   setup(props, { slots }) {
+    const router = useRouter()
     const loaded = ref(false)
     const fetching = ref(false)
     const observer = ref<IntersectionObserver | null>(null)

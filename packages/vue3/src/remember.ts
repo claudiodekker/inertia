@@ -1,6 +1,6 @@
-import { router } from '@inertiajs/core'
 import { cloneDeep } from 'es-toolkit'
 import { ComponentOptions } from 'vue'
+import { useRouter } from './layerContext'
 
 const remember: ComponentOptions = {
   created() {
@@ -25,6 +25,7 @@ const remember: ComponentOptions = {
         ? this.$options.remember.key.call(this)
         : this.$options.remember.key
 
+    const router = useRouter()
     const restored = router.restore(rememberKey) as Record<string, unknown> | undefined
 
     const rememberable = this.$options.remember.data.filter((key: string) => {

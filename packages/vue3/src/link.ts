@@ -7,12 +7,12 @@ import {
   Method,
   PendingVisit,
   resolveUrlMethodPairComponent,
-  router,
   shouldIntercept,
   shouldNavigate,
 } from '@inertiajs/core'
 import { Component, computed, defineComponent, DefineComponent, h, onMounted, onUnmounted, PropType, ref } from 'vue'
 import { config } from '.'
+import { useRouter } from './layerContext'
 
 const noop = () => {}
 
@@ -160,6 +160,7 @@ const Link: InertiaLink = defineComponent({
     },
   },
   setup(props, { slots, attrs }) {
+    const router = useRouter()
     const inFlightCount = ref(0)
     const hoverTimeout = ref<ReturnType<typeof setTimeout>>()
 

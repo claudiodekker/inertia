@@ -1,6 +1,6 @@
-import { router } from '@inertiajs/core'
 import { cloneDeep } from 'es-toolkit'
 import { isReactive, reactive, ref, Ref, watch } from 'vue'
+import { useRouter } from './layerContext'
 
 export default function useRemember<T extends object>(
   data: T & { __rememberable?: boolean; __remember?: Function; __restore?: Function },
@@ -10,6 +10,7 @@ export default function useRemember<T extends object>(
     return data
   }
 
+  const router = useRouter()
   const restored = router.restore(key)
   const type = isReactive(data) ? reactive : ref
   const hasCallbacks = typeof data.__remember === 'function' && typeof data.__restore === 'function'

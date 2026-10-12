@@ -5,7 +5,8 @@ import { onUnmounted, ref } from 'vue'
 const props = defineProps<{ name: string; count?: number; errors?: { note?: string } }>()
 
 const page = usePage()
-const layer = useLayer()!
+// Null when the panel is pushed as a page (L:146, L:184).
+const layer = useLayer()
 const form = useForm('note', { note: '' })
 
 const save = () => {
@@ -31,7 +32,7 @@ const openNext = () => {
 }
 
 const openNextInstantly = () => {
-  layer.router.visit('/layers/panel/second?delay=500', { component: 'Layers/Panel' })
+  layer!.router.visit('/layers/panel/second?delay=500', { component: 'Layers/Panel' })
 }
 
 const openNextWithoutMovingTheAddress = () => {
@@ -39,11 +40,11 @@ const openNextWithoutMovingTheAddress = () => {
 }
 
 const partialReload = () => {
-  layer.router.reload({ only: ['count'] })
+  layer!.router.reload({ only: ['count'] })
 }
 
 const partialThroughTheLayerRouter = () => {
-  layer.router.get(`/layers/panel/${props.name}`, {}, { only: ['count'] })
+  layer!.router.get(`/layers/panel/${props.name}`, {}, { only: ['count'] })
 }
 
 const reloadBase = () => {
@@ -51,15 +52,15 @@ const reloadBase = () => {
 }
 
 const bumpCount = () => {
-  layer.router.replaceProp('count', (old: unknown) => Number(old ?? 0) + 1)
+  layer!.router.replaceProp('count', (old: unknown) => Number(old ?? 0) + 1)
 }
 
 const childEvents = ref('')
-const stopListening = layer.on('saved', (payload) => {
+const stopListening = layer?.on('saved', (payload) => {
   childEvents.value = `saved ${(payload as { id: number }).id}`
 })
 
-onUnmounted(stopListening)
+onUnmounted(() => stopListening?.())
 
 const openChild = () => {
   const handle = router.layer('/layers/child')
@@ -68,16 +69,16 @@ const openChild = () => {
 
 const likeAndClose = () => {
   router.post('/layers/like')
-  layer.close()
+  layer!.close()
 }
 
 const likeInBackgroundAndClose = () => {
   router.post('/layers/like', {}, { async: true })
-  layer.close()
+  layer!.close()
 }
 
 const openChildThroughTheLayer = () => {
-  const handle = layer.router.layer('/layers/child')
+  const handle = layer!.router.layer('/layers/child')
   window.testing.layerChildHandle = handle
 }
 </script>
