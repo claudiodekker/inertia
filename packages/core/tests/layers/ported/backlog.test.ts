@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { page, scenario, settled } from './a-support'
+import { describe, expect, it, vi } from 'vitest'
+import { exitShells, page, scenario, settled } from './a-support'
 import { bench, byPath, gate } from './e-support'
 
 const users = (url = '/users') => page('Users/Index', url, { props: { errors: {}, users: [] } })
@@ -69,6 +69,33 @@ describe('the entry a page commit writes while a stack is open', () => {
     expect(app.written().at(-1)).toEqual(['push', '/users?page=2'])
     expect(app.entry().layers!.map((layer) => layer.entries)).toEqual([2])
   })
+
+  it('gives the entry back when the browser refuses the push a refresh makes beneath a stack', async () => {
+    const app = await scenario(users(), { '/users?page=2': users('/users?page=2') })
+    const pushState = window.history.pushState
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    app.router.layer({ component: 'Prompt' })
+    await settled()
+    window.history.pushState = () => {
+      throw Object.assign(new Error('Too many calls to history.pushState'), { name: 'SecurityError' })
+    }
+
+    app.router.visit('/users?page=2', { only: ['users'], preserveState: true, preserveScroll: true })
+    await settled()
+    window.history.pushState = pushState
+    logged.mockRestore()
+
+    const deltas: number[] = []
+
+    window.history.go = (delta: number) => void deltas.push(delta)
+    void app.router.close()
+    await settled()
+    exitShells(app)
+    await settled()
+
+    expect(deltas).toEqual([-1])
+  })
 })
 
 describe('a partial reload answered while nothing is open', () => {
@@ -92,5 +119,37 @@ describe('a partial reload answered while nothing is open', () => {
 
     expect((await app.basePage()).url).toBe('/users?page=2')
     expect(app.layers().map((layer) => layer.type)).toEqual(['local'])
+  })
+})
+
+describe('a placeholder whose component cannot be resolved', () => {
+  it('opens no layer and closes the handle, and rejects as a page placeholder does', async () => {
+    const app = await bench(users(), byPath({ '/users/5/edit': edit('/users') }), {
+      resolve: (name) => (name === 'Missing' ? Promise.reject(new Error('Missing')) : { name }),
+    })
+    const listeners = process.listeners('unhandledRejection')
+    const rejections: unknown[] = []
+    let closed = false
+
+    process.removeAllListeners('unhandledRejection')
+    process.on('unhandledRejection', (reason) => void rejections.push(reason))
+
+    const handle = app.router.layer('/users/5/edit', { component: 'Missing' })
+
+    handle.onClose(() => (closed = true))
+    await settled()
+    process.removeAllListeners('unhandledRejection')
+    listeners.forEach((listener) => process.on('unhandledRejection', listener))
+
+    expect(rejections).toEqual([new Error('Missing')])
+    expect(closed).toBe(true)
+    expect(handle.state).toBe('closed')
+    expect(app.layers()).toEqual([])
+    expect(app.requests).toEqual([])
+
+    app.router.layer('/users/5/edit')
+    await settled()
+
+    expect(app.layers().map((layer) => layer.component)).toEqual(['Users/Edit'])
   })
 })
