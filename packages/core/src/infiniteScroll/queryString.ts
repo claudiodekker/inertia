@@ -8,9 +8,8 @@ import { getPageFromElement } from './elements'
 // Shared queue among all instances to ensure URL updates are processed sequentially
 const queue = new Queue<Promise<void>>()
 
-let initialUrl: URL | null
-let payloadUrl: URL | null
-let initialUrlWasAbsolute: boolean | null = null
+// One url in the making per router: the page's, and one for each layer paginating beside it
+const syncing = new Map<InfiniteScrollScope['router'], { initial: URL; payload: URL; absolute: boolean }>()
 
 /**
  * As users scroll through infinite content, this system updates the URL to reflect
@@ -30,19 +29,24 @@ export const useInfiniteScrollQueryString = (options: {
       .add(() => {
         return new Promise((resolve) => {
           if (!enabled) {
-            initialUrl = payloadUrl = null
+            syncing.delete(options.scope.router)
             return resolve()
           }
 
-          if (!initialUrl || !payloadUrl) {
+          let sync = syncing.get(options.scope.router)
+
+          if (!sync) {
             const currentPageUrl = options.scope.page.get().url
-            initialUrl = hrefToUrl(currentPageUrl)
-            payloadUrl = hrefToUrl(currentPageUrl)
-            initialUrlWasAbsolute = urlHasProtocol(currentPageUrl)
+            sync = {
+              initial: hrefToUrl(currentPageUrl),
+              payload: hrefToUrl(currentPageUrl),
+              absolute: urlHasProtocol(currentPageUrl),
+            }
+            syncing.set(options.scope.router, sync)
           }
 
           const pageName = options.getPageName()
-          const searchParams = payloadUrl.searchParams
+          const searchParams = sync.payload.searchParams
 
           // Clean URLs: don't show ?page=1 in the URL, just remove the parameter entirely
           if (page === '1') {
@@ -55,22 +59,18 @@ export const useInfiniteScrollQueryString = (options: {
         })
       })
       .finally(() => {
-        if (
-          enabled &&
-          initialUrl &&
-          payloadUrl &&
-          initialUrl.href !== payloadUrl.href &&
-          initialUrlWasAbsolute !== null
-        ) {
+        const sync = syncing.get(options.scope.router)
+
+        if (enabled && sync && sync.initial.href !== sync.payload.href) {
           // Update URL without triggering a page reload or affecting scroll position
           options.scope.router.replace({
-            url: urlToString(payloadUrl, initialUrlWasAbsolute),
+            url: urlToString(sync.payload, sync.absolute),
             preserveScroll: true,
             preserveState: true,
           })
         }
 
-        initialUrl = payloadUrl = initialUrlWasAbsolute = null
+        syncing.delete(options.scope.router)
       })
   }
 
