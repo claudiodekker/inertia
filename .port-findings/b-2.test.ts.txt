@@ -1,0 +1,23 @@
+// PR: resolveInitialPage "renders a layer whose base is its own url as an ordinary page":
+//   page.component === 'Users/Edit', page.layers === undefined, no `layer` key.
+// Rebuilt: planBoot only treats a missing base as "ordinary"; a base equal to the layer's own url boots a blank base,
+//   walks to the layer's own url (one extra request, 'get /users/5/edit'), and ends with a one-layer stack drawn
+//   over an identical base page: base Users/Edit AND layers() = [{ key: 'Users/Edit', url: '/users/5/edit' }].
+import { describe, expect, it } from 'vitest'
+import { page, ported, settled } from '../packages/core/tests/layers/ported/support'
+
+describe('resolveInitialPage', () => {
+  it('renders a layer whose base is its own url as an ordinary page', async () => {
+    const own = page('Users/Edit', '/users/5/edit', {
+      props: { errors: {} },
+      layer: { key: 'Users/Edit', base: '/users/5/edit' },
+    })
+    const app = await ported(own, { '/users/5/edit': own }, { boot: true })
+
+    await settled()
+
+    expect((await app.basePage()).component).toBe('Users/Edit')
+    expect(await app.basePage()).not.toHaveProperty('layer')
+    expect(app.layers()).toEqual([])
+  })
+})

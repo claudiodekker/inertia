@@ -1,0 +1,25 @@
+// PR: withAddressHash "writes it onto the topmost layer that has a url": an in-page anchor (popstate with a null state)
+//   with layers [A '/a', B '/b'] stores the layer urls ['/a', 'http://localhost/b#comments'].
+// Rebuilt: eventHandler's 3.x null-state branch replaces the entry with the BASE page's url hashed; the layer urls stay
+//   ['/a', '/b'], the base entry url becomes 'http://localhost/users#comments', and the entry is written at address '/b'
+//   (the hash leaves the address bar).
+import { describe, expect, it } from 'vitest'
+import { page, ported, settled } from '../packages/core/tests/layers/ported/support'
+
+describe('withAddressHash', () => {
+  it('writes it onto the topmost layer that has a url', async () => {
+    const app = await ported(page('Users/Index', '/users', { props: { errors: {}, users: [] } }), {
+      '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }),
+      '/b': page('B', '/b', { layer: { key: 'B', base: '/users' } }),
+    })
+
+    app.router.visit('/a')
+    await settled()
+    app.router.visit('/b')
+    await settled()
+    await app.anchor('/b#comments')
+
+    expect(app.entry().layers!.map((layer) => layer.url)).toEqual(['/a', 'http://localhost/b#comments'])
+    expect(window.location.href).toBe('http://localhost/b#comments')
+  })
+})

@@ -1,0 +1,23 @@
+// PR: composeLayer "strips the layer mark from the layer it composes": expect(layer).not.toHaveProperty('layer')
+// Rebuilt: the layer's page, its view page and its stored history entry all keep the response's `layer` mark.
+//   app.entry().layers[0].layer === { key: 'Users/Edit', base: '/users' }
+//   app.views()[0].page.layer   === { key: 'Users/Edit', base: '/users' }
+import { describe, expect, it } from 'vitest'
+import { page, ported, settled } from '../packages/core/tests/layers/ported/support'
+
+describe('composeLayer', () => {
+  it('strips the layer mark from the layer it composes', async () => {
+    const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
+    const edit = page('Users/Edit', '/users/5/edit', {
+      props: { errors: {}, user: { id: 5 } },
+      layer: { key: 'Users/Edit', base: '/users' },
+    })
+    const app = await ported(users, { '/users/5/edit': edit })
+
+    app.router.visit('/users/5/edit')
+    await settled()
+
+    expect(app.entry().layers![0]).not.toHaveProperty('layer')
+    expect(app.views()[0].page).not.toHaveProperty('layer')
+  })
+})

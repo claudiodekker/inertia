@@ -1,0 +1,22 @@
+// PR: resolveInitialPage "puts the browser's hash on the layer that owns the address":
+//   layers[0].url === '/users/5/edit#profile' AND page.url === '/users' (the base the layer waits on stays hash-free).
+// Rebuilt: layers()[0].url is '/users/5/edit#profile', but 3.x InitialVisit.setUrlHash also appends the browser hash to the
+//   blank base page: (await basePage()).url === '/users#profile'.
+import { describe, expect, it } from 'vitest'
+import { page, ported } from '../packages/core/tests/layers/ported/support'
+
+describe('resolveInitialPage', () => {
+  it("puts the browser's hash on the layer that owns the address", async () => {
+    const layer = page('Users/Edit', '/users/5/edit', {
+      props: { errors: {} },
+      layer: { key: 'Users/Edit', base: '/users' },
+    })
+    const app = await ported(layer, { '/users': () => new Promise(() => {}) }, {
+      boot: true,
+      href: 'http://localhost/users/5/edit#profile',
+    })
+
+    expect(app.layers()[0].url).toBe('/users/5/edit#profile')
+    expect((await app.basePage()).url).toBe('/users')
+  })
+})
