@@ -133,6 +133,18 @@ const cases: [string, StackState, Arrival, Landing][] = [
     { kind: 'rewrite', id: id('b'), dismissed: [], remount: true },
   ],
   [
+    "the answer to a layer's own placeholder lands on that layer under any key",
+    state({ rows: [row('a', { key: 'k' }), row('p', { key: 'p' })] }),
+    { origin: layerOrigin('p', true), layer: layer('other') },
+    { kind: 'refresh', id: id('p'), remount: false },
+  ],
+  [
+    "the answer to a layer's own placeholder rewrites the layer that already holds its key",
+    state({ rows: [row('a', { key: 'k' }), row('p', { key: 'p' })] }),
+    { origin: layerOrigin('p', true), layer: layer('k') },
+    { kind: 'rewrite', id: id('a'), dismissed: [id('p')], remount: true },
+  ],
+  [
     'a local row never matches a key',
     state({ rows: [row('l', { type: 'local', key: 'k' })] }),
     { layer: layer('k'), facts: { aimed: true } },

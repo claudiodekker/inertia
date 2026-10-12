@@ -111,6 +111,23 @@ export function snapshot(row: LayerRow, historyPage: Page): LayerEntry {
   }
 }
 
+/**
+ * A partial or a reload reads a page again in place, where any other visit navigates. A reload is a
+ * background visit that keeps state and asks for the path its own page is at.
+ */
+export function rereads(visit: PendingVisit, own: Page): boolean {
+  const partial = visit.only.length > 0 || visit.except.length > 0 || visit.reset.length > 0
+  const from = hrefToUrl(own.url)
+
+  return (
+    partial ||
+    (visit.async &&
+      visit.preserveState === true &&
+      from.origin === visit.url.origin &&
+      from.pathname === visit.url.pathname)
+  )
+}
+
 export function against(live: Page | undefined, page: Page): Against {
   if (!live || live.component !== page.component) {
     return 'other'

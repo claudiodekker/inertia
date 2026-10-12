@@ -4,7 +4,6 @@ import {
   type LayerId,
   type LayerRow,
   type Owner,
-  type RouteFacts,
   type StackEvent,
   type StackState,
 } from './state'
@@ -15,7 +14,7 @@ type ResponseArrived = Extract<StackEvent, { type: 'responseArrived' }>
 export function classify(s: StackState, e: ResponseArrived): Landing {
   const { origin, marks, facts } = e
   const op = s.ops.get(e.visit)
-  const isRefresh = refreshes(facts)
+  const isRefresh = facts.partial || (facts.async && facts.preserveState)
   const row = (id: LayerId) => s.rows.find((candidate) => candidate.id === id)
 
   if (op?.kind === 'walk') {
@@ -53,12 +52,13 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
       return { kind: 'handback', id: from.id }
     }
 
-    if (origin.kind === 'layer' && origin.instant) {
-      return { kind: 'refresh', id: origin.id, remount: false }
-    }
-
     const ticket = op?.kind === 'open' ? s.tickets.get(op.ticket) : undefined
     const same = sameKey(s.rows, marks.layer.key, origin.kind === 'layer' ? origin.id : null)
+
+    // The answer to a layer's own placeholder lands on it, unless another layer already holds its key.
+    if (origin.kind === 'layer' && origin.instant && (!same || same.id === origin.id)) {
+      return { kind: 'refresh', id: origin.id, remount: false }
+    }
 
     if (same && isRefresh) {
       return { kind: 'refresh', id: same.id, remount: !facts.preserveState }
@@ -110,11 +110,6 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
   }
 
   return { kind: 'pass' }
-}
-
-/** A partial or a reload: it reads a page again in place, where any other visit navigates. */
-export function refreshes(facts: RouteFacts): boolean {
-  return facts.partial || (facts.async && facts.preserveState)
 }
 
 /** The routed row with this key: the preferred row first, else the lowest. */

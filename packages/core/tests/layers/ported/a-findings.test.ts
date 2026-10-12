@@ -107,6 +107,18 @@ describe('a refresh of the page beneath an open stack', () => {
     expect(app.entry()).toMatchObject({ url: '/users?search=x', layers: [{ id: layer.id }] })
   })
 
+  it('leaves the stack behind when a background visit that keeps state goes to another path of the component', async () => {
+    const { app, routes } = await warm()
+
+    routes['/teams'] = users({ url: '/teams' })
+    await visited(app, '/teams', { async: true, preserveState: true })
+    await settled()
+
+    expect(await app.basePage()).toMatchObject({ component: 'Users/Index', url: '/teams' })
+    expect(app.layers()).toEqual([])
+    expect(window.location.pathname).toBe('/teams')
+  })
+
   it('replaces the blank with the real base when a partial is answered by the base, keeping the layer', async () => {
     const { app, routes, layer } = await cold()
 

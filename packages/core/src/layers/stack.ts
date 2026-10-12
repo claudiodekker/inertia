@@ -22,11 +22,10 @@ import {
   type CompositeEntry,
   type LayerEntry,
 } from './entry'
-import { against, entryFacts, isInterstitial, marksOf, routeFacts, snapshot, stripMark } from './facts'
+import { against, entryFacts, isInterstitial, marksOf, rereads, routeFacts, snapshot, stripMark } from './facts'
 import { openLocal, TicketHandle } from './handles'
 import type { LayerInstance, StackPort } from './instance'
 import { reduce } from './reduce'
-import { refreshes } from './route'
 import type { PageScope } from './scope'
 import {
   idle,
@@ -321,7 +320,7 @@ export class Stack implements StackPort {
     })
     const { landing } = outcome as Extract<Outcome, { kind: 'landing' }>
 
-    this.answers.set(visit.id, refreshes(facts) ? 'refresh' : 'navigation')
+    this.answers.set(visit.id, rereads(visit, response.scope.page.get()) ? 'refresh' : 'navigation')
 
     const landed = (this.land(landing, response, page) ?? response.land()).finally(() => this.answers.delete(visit.id))
 
