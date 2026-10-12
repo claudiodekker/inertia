@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Page } from '../../src/types'
 import { openAppSentCall, type Route } from './support/app'
 import { page, settled, type Answer } from './support/browser'
 
@@ -115,5 +116,46 @@ describe('an ordinary response', () => {
       component: 'Users/Show',
       url: '/users/5',
     })
+  })
+})
+
+describe('Back on a page whose component fails to resolve', () => {
+  it('surfaces a component that fails to resolve on Back instead of treating the entry as missing', async () => {
+    const app = await openAppSentCall(
+      users,
+      { '/users': users },
+      {
+        resolveComponent: (name) =>
+          name === 'Users/Missing' ? Promise.reject(new Error('Page not found: Users/Missing')) : { name },
+      },
+    )
+    const { eventHandler } = await app.modules()
+    const seen: unknown[] = []
+    const others = process.listeners('unhandledRejection')
+    const listener = (reason: unknown) => seen.push(reason)
+
+    process.removeAllListeners('unhandledRejection')
+    process.on('unhandledRejection', listener)
+
+    let missing = 0
+    eventHandler.on('missingHistoryItem', () => missing++)
+
+    const here = window.history.state as { page: Page }
+
+    window.history.pushState(
+      { ...here, page: { ...here.page, component: 'Users/Missing', url: '/users/missing' } },
+      '',
+      '/users/missing',
+    )
+    window.history.pushState(here, '', '/users')
+    window.history.go(-1)
+    await settled()
+    process.off('unhandledRejection', listener)
+    others.forEach((other) => process.on('unhandledRejection', other))
+
+    expect(window.location.pathname).toBe('/users/missing')
+    expect(missing).toBe(0)
+    expect(seen.map((reason) => (reason as Error).message)).toEqual(['Page not found: Users/Missing'])
+    expect(app.sent()).toEqual([])
   })
 })

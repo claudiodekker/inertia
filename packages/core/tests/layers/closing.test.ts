@@ -758,3 +758,150 @@ describe('a close: true response runs the close flow instead of installing', () 
     expect(app.layers()).toEqual([])
   })
 })
+
+describe('overlapping closes', () => {
+  const twoLayers = async (extra: Record<string, Route> = {}) => {
+    const app = await openApp(base(), {
+      '/a': layerAt('A', '/a'),
+      '/b': layerAt('B', '/b'),
+      '/users': base(),
+      ...extra,
+    })
+    const a = app.router.layer('/a')
+
+    await settled()
+
+    const b = app.router.layer('/b')
+
+    await settled()
+    expect(app.layers().map((layer) => layer.id)).toEqual([a.id, b.id])
+
+    return { app, a, b }
+  }
+
+  it('leaves the base mounted when a refresh is cancelled while the next close steps back', async () => {
+    const baseSwapsAfterSecondClose = async (
+      firstRefresh: 'answered before' | 'answered during' | 'cancelled during',
+    ) => {
+      const refresh = held()
+      let opened = false
+      const { app, a, b } = await twoLayers({
+        '/a': () => (opened ? refresh.answer() : Promise.resolve(layerAt('A', '/a'))),
+      })
+
+      opened = true
+
+      const go = app.go()
+
+      app.router.close(b.id)
+      await settled()
+      app.exitShells()
+      await settled()
+
+      expect(app.layers().map((layer) => layer.id)).toEqual([a.id])
+      expect(app.sent).toEqual(['get /a', 'get /b', 'get /a'])
+
+      if (firstRefresh === 'answered before') {
+        refresh.release(layerAt('A', '/a'))
+        await settled()
+      }
+
+      app.swaps.length = 0
+      app.router.close(a.id)
+      await settled()
+      app.exitShells()
+
+      // The step back is out and the browser has not answered it yet.
+      expect(go).toEqual([-1, -1])
+      expect(app.layers().map((layer) => layer.id)).toEqual([a.id])
+
+      if (firstRefresh === 'answered during') {
+        refresh.release(layerAt('A', '/a'))
+      }
+
+      if (firstRefresh === 'cancelled during') {
+        app.router.cancelAll()
+      }
+
+      await settled()
+
+      expect(app.layers()).toEqual([])
+
+      return app.swaps.map((swap) => swap.preserveState)
+    }
+
+    expect(await baseSwapsAfterSecondClose('answered before')).toEqual([true])
+    expect(await baseSwapsAfterSecondClose('answered during')).toEqual([true])
+    expect(await baseSwapsAfterSecondClose('cancelled during')).toEqual([true])
+  })
+
+  it('steps back over the one entry still beneath when a close arrives during a Back dismissal', async () => {
+    const { app, a } = await twoLayers()
+    const browserBack = window.history.go.bind(window.history)
+    const go = app.go()
+
+    browserBack(-1)
+    await settled()
+
+    expect(window.location.pathname).toBe('/a')
+    expect(app.views().map((view) => view.shell.open)).toEqual([true, false])
+
+    app.router.close(a.id)
+    await settled()
+    app.exitShells()
+    await settled()
+
+    expect(go).toEqual([-1])
+    expect(app.layers()).toEqual([])
+    expect(window.location.pathname).toBe('/users')
+  })
+
+  it('drops a pending close when a layer beneath it navigates, so no step back is made', async () => {
+    const pendingCloseOfTopLayer = async (navigatesBottomLayer: boolean) => {
+      const app = await openApp(base(), {
+        '/a': layerAt('A', '/a'),
+        '/a?page=2': layerAt('A', '/a?page=2'),
+        '/b': layerAt('B', '/b'),
+        '/c': layerAt('C', '/c'),
+      })
+      const go = app.go()
+      const a = app.router.layer('/a')
+
+      await settled()
+      app.router.layer('/b')
+      await settled()
+
+      const c = app.router.layer('/c')
+
+      await settled()
+
+      app.router.close(c.id)
+      await settled()
+
+      if (navigatesBottomLayer) {
+        app.router.layerHandle(a.id)!.router.visit('/a?page=2')
+        await settled()
+      }
+
+      app.exitShells()
+      await settled()
+
+      return {
+        went: go,
+        sent: app.sent.slice(3),
+        layers: app.layers().map((info) => info.url),
+      }
+    }
+
+    expect(await pendingCloseOfTopLayer(false)).toEqual({
+      went: [-1],
+      sent: ['get /b'],
+      layers: ['/a', '/b'],
+    })
+    expect(await pendingCloseOfTopLayer(true)).toEqual({
+      went: [],
+      sent: ['get /a?page=2'],
+      layers: ['/a?page=2'],
+    })
+  })
+})

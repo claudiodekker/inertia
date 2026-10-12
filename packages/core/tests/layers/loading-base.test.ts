@@ -359,3 +359,40 @@ describe('resolving a blank base through the page', () => {
     expect(named).toEqual([])
   })
 })
+
+describe('the loading option', () => {
+  const Blank = { name: 'Blank' }
+  const blankBase = asPage(page('', '/users'))
+
+  it('calls loading only as a resolver for the blank base', async () => {
+    const app = await openApp(users, {})
+    const received: unknown[][] = []
+    const Spinner = { name: 'Spinner' }
+    const resolve = app.layerSlot.wrapResolver<unknown>(
+      (name) => ({ name }),
+      (...args) => {
+        received.push(args)
+
+        return Spinner
+      },
+      Blank,
+    )
+
+    expect(await resolve('', blankBase)).toBe(Spinner)
+    expect(received).toEqual([['/users', { layers: [] }]])
+    expect(await resolve('Users/Index', asPage(users))).toEqual({ name: 'Users/Index' })
+    expect(received).toHaveLength(1)
+  })
+
+  it('renders what a component passed as loading returns, and the blank when it returns null', async () => {
+    const app = await openApp(users, {})
+    const element = { rendered: 'spinner' }
+    const Spinner = () => element
+    const Nothing = () => null
+
+    expect(await app.layerSlot.wrapResolver<unknown>((name) => ({ name }), Spinner, Blank)('', blankBase)).toBe(element)
+    expect(
+      await app.layerSlot.wrapResolver<unknown>((name) => ({ name }), Nothing as never, Blank)('', blankBase),
+    ).toBe(Blank)
+  })
+})

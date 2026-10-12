@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { openAppSentCall, type SentCallApp, exitShells, held, type Route } from './support/app'
 import { settled, type Answer, page } from './support/browser'
+import { base, edit } from './support/pages'
 
 const pw = (overrides: Answer = {}): Answer => ({
   component: 'Users/Index',
@@ -372,5 +373,53 @@ describe('requests aimed at a layer and the page', () => {
     await settled()
 
     expect((await app.basePage()).component).toBe('Dashboard')
+  })
+})
+
+describe('an answer for a layer that closed mid-request', () => {
+  it('fires no success, error or flash for an answer whose layer has closed', async () => {
+    const post = held()
+    const app = await openAppSentCall(base(), {
+      '/users/5/edit': edit(),
+      'post /users/5': () => post.answer(),
+      '/users': base({ flash: { notice: 'Refreshed' } }),
+    })
+
+    const handle = app.router.layer('/users/5/edit')
+
+    await settled()
+    expect(app.layers().map((layer) => layer.id)).toEqual([handle.id])
+
+    const calls: unknown[] = []
+
+    app.router.layerHandle(handle.id)!.router.post(
+      '/users/5',
+      { name: '' },
+      {
+        onSuccess: (landed) => calls.push(['success', landed.component, landed.url]),
+        onError: (errors) => calls.push(['error', errors]),
+        onFlash: (flash) => calls.push(['flash', flash]),
+        onCancel: () => calls.push(['cancel']),
+        onFinish: () => calls.push(['finish']),
+      },
+    )
+    await settled()
+
+    handle.close()
+    await settled()
+    exitShells(app)
+    await settled()
+
+    expect(app.layers()).toEqual([])
+    expect(app.sent()).toEqual(['get /users/5/edit', 'post /users/5', 'get /users'])
+    expect(calls).toEqual([])
+
+    app.fired.length = 0
+    post.release(edit({ props: { errors: { name: 'The name field is required.' } } }))
+    await settled()
+
+    expect(app.layers()).toEqual([])
+    expect(calls).toEqual([['finish']])
+    expect(app.fired.map((event) => event.type)).toEqual(['inertia:finish'])
   })
 })

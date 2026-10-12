@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { openApp } from './support/app'
 import { settled, page } from './support/browser'
 import { counted, holdBack, veto } from './support/handles'
-import { base, edit, notes } from './support/pages'
+import { base, edit, layerAt, notes } from './support/pages'
 
 describe('a partial a layer made', () => {
   it("keeps a layer's handle when a partial it made is answered by a page that keeps the stack", async () => {
@@ -474,5 +474,43 @@ describe('local layers: router.layer({ component, props })', () => {
     expect(app.views()[0].page).toEqual(before)
     expect(open.state).toBe('open')
     expect(routed.state).toBe('open')
+  })
+})
+
+describe('listeners on a layer handle', () => {
+  it('calls every close listener when one unsubscribes itself', async () => {
+    const app = await openApp(base(), { '/a': layerAt('A', '/a'), '/users': base() })
+    const handle = app.router.layer('/a')
+
+    await settled()
+
+    const called: string[] = []
+    const stop = handle.onClose(() => {
+      called.push('first')
+      stop()
+    })
+
+    handle.onClose(() => called.push('second'))
+    handle.onClose(() => called.push('third'))
+
+    await app.closing(handle)
+
+    expect(app.layers()).toEqual([])
+    expect(called).toEqual(['first', 'second', 'third'])
+  })
+
+  it("registers a success listener through a layer's router", async () => {
+    const app = await openApp(base(), { '/a': layerAt('A', '/a'), '/users': base() })
+    const handle = app.router.layer('/a')
+
+    await settled()
+
+    const registered = vi.spyOn(document, 'addEventListener')
+    const scoped = app.router.layerHandle(handle.id)!.router
+
+    scoped.on('success', () => {})
+
+    expect(scoped.on === app.Router.prototype.on).toBe(true)
+    expect(registered.mock.calls.map(([type]) => type)).toEqual(['inertia:success'])
   })
 })

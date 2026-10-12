@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { exitShells, openAppSentCall, type Route } from './support/app'
 import { page, settled, type Answer } from './support/browser'
 
@@ -349,5 +349,53 @@ describe('an open stack across a client visit', () => {
 
     expect((await app.basePage()).props).toEqual({ users: [{ id: 1 }] })
     expect(app.layers().map((layer) => layer.key)).toEqual(['Users/Edit'])
+  })
+})
+
+describe('the base page and router outside any layer', () => {
+  it('submits a base form through the router itself', async () => {
+    const app = await openAppSentCall(users, { 'post /users': users })
+    const visit = vi.spyOn(app.router, 'visit')
+    const { baseScope } = await import('../../src/layers/scope')
+
+    // What the adapters rely on: the router they submit a base form through is the router.
+    // The adapter's own identity is exercised by the end-to-end suite.
+    expect(baseScope.router === app.router).toBe(true)
+
+    baseScope.router.post('/users', { name: 'Ada' })
+    await settled()
+
+    expect(app.sent()).toEqual(['post /users'])
+    expect(visit.mock.calls.map(([url, options]) => [url, options?.method, options?.data])).toEqual([
+      ['/users', 'post', { name: 'Ada' }],
+    ])
+  })
+
+  it('keeps clearHistory on the stored page', async () => {
+    const app = await openAppSentCall(users, {
+      '/dashboard': page('Dashboard', '/dashboard', { clearHistory: true }),
+    })
+
+    app.router.visit('/dashboard')
+    await settled()
+
+    expect(app.current.get().component).toBe('Dashboard')
+    expect(app.current.get().clearHistory).toBe(true)
+  })
+
+  it('runs a replaceProp updater during the call', async () => {
+    const app = await openAppSentCall(users, {})
+    const ran: string[] = []
+
+    app.router.replaceProp('users', () => {
+      ran.push('updater')
+
+      return [{ id: 1 }]
+    })
+    ran.push('returned')
+    await settled()
+
+    expect(ran).toEqual(['updater', 'returned'])
+    expect(app.current.get().props.users).toEqual([{ id: 1 }])
   })
 })
