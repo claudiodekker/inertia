@@ -1,0 +1,20 @@
+// FINDING d-1: PR layer-walk.test.ts:256 "does not interrupt a visit the user made while the walk is running"
+// PR outcome: the user's /dashboard visit is not cancelled AND the walk goes on: after '/users/5' is answered the next hop '/users' is requested.
+// Rebuilt outcome: onCancel of the user's visit is not called, but 3.x's router.visit cancels in-flight async requests aimed at the page being navigated away from
+// (blank base url '/users/5' === the hop's url), so the walk hop for '/users/5' is aborted: after answering '/users/5' nothing more is requested
+// (requested = ['/login', '/users/5', '/dashboard']), the walk fails, the cold layer is promoted: base = Users/Edit at /users/5/edit, layers = [].
+// Drives: packages/core/tests/layers/ported/walk-support.ts (worktree inertia-port-d)
+it('does not interrupt a visit the user made while the walk is running', async () => {
+  const w = await world({ ...from(), routes: { '/users/5': 'hold', '/dashboard': 'hold', '/users': 'hold' } })
+  await w.begin(login)
+  await w.open(layerAt('/users/5/edit', 'Users/Edit', '/users/5'))
+
+  const onCancel = vi.fn()
+  w.router.visit('/dashboard', { onCancel })
+  await vi.waitFor(() => expect(w.held.has('/dashboard')).toBe(true))
+
+  await w.answer('/users/5', layerAt('/users/5', 'Users/Show', '/users'))
+  await vi.waitFor(() => expect(w.held.has('/users')).toBe(true)) // FAILS: never requested
+
+  expect(onCancel).not.toHaveBeenCalled()
+})
