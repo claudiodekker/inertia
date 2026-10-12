@@ -1,9 +1,8 @@
 // Closing: a close's exit, its history unwind, the removal queue and the refresh beneath. Pure, like
 // reduce.ts, which routes the close events here.
 
-import { beneath } from './route'
 import type { CloseId, CloseRow, LayerId, LayerRow, StackState, Step, WaiterId } from './state'
-import { mint, paint, put, row, run, setClose, without, withoutRows, type E, type Fx } from './update'
+import { beneath, mint, paint, put, row, run, setClose, without, withoutRows, type E, type Fx } from './update'
 
 export function closeRequested(s: StackState, e: E<'closeRequested'>): Step {
   return run(s, (t, fx) => {

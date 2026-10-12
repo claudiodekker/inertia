@@ -93,6 +93,35 @@ export function withoutRows(rows: readonly LayerRow[], ids: readonly LayerId[]):
     .map((r) => (ids.includes(r.owner as LayerId) ? { ...r, owner: resolve(r.owner) } : r))
 }
 
+/** A routed row whose first commit is pending. */
+export function openingRow(id: LayerId, key: string, owner: Owner, overrides: Partial<LayerRow> = {}): LayerRow {
+  return {
+    id,
+    type: 'routed',
+    key,
+    owner,
+    phase: 'opening',
+    standalone: false,
+    ownsAddress: true,
+    entries: 0,
+    renderKey: 0,
+    close: null,
+    ...overrides,
+  }
+}
+
+/** The nearest routed tier below `id`, else the base. */
+export function beneath(rows: readonly LayerRow[], id: LayerId): Owner {
+  const index = rows.findIndex((row) => row.id === id)
+
+  return (
+    rows
+      .slice(0, index)
+      .filter((row) => row.type === 'routed')
+      .at(-1)?.id ?? 'base'
+  )
+}
+
 export function paint(s: StackState, fx: Fx): StackState {
   if (s.paint.gated) {
     return { ...s, paint: { ...s.paint, owed: true } }

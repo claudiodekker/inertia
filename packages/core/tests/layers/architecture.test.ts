@@ -41,10 +41,11 @@ const pure = [
   'layers/restore.ts',
   'layers/reduce.ts',
   'layers/close.ts',
+  'layers/commit.ts',
   'layers/update.ts',
   'layers/entry.ts',
 ]
-const pureSiblings = ['./state', './route', './restore', './reduce', './close', './update', './entry']
+const pureSiblings = ['./state', './route', './restore', './reduce', './close', './commit', './update', './entry']
 
 const code = (file: string) =>
   readFileSync(join(src, file), 'utf8')
@@ -66,7 +67,7 @@ describe('the pure control plane', () => {
 
     expect(
       offending,
-      `${file} imports runtime code. The reducer, classify, planRestore and entry are pure: they may import values only from ${pureSiblings.join(', ')}, and anything else as \`import type\`. Move the effect into stack.ts.`,
+      `${file} imports runtime code. The reducer and its handlers are pure: they may import values only from ${pureSiblings.join(', ')}, and anything else as \`import type\`. Move the effect into stack.ts.`,
     ).toEqual([])
   })
 
