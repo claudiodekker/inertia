@@ -42,10 +42,7 @@ describe("the walk a cold layer sends for the base beneath it", () => {
         type: "routed",
       },
     ]);
-    expect(w.core.layerSlot.views()[0].page.layer).toEqual({
-      key: "Users/Edit",
-      base: "/users",
-    });
+    expect(w.core.layerSlot.views()[0].page).not.toHaveProperty("layer");
 
     await w.answer("/users", pageWith());
 

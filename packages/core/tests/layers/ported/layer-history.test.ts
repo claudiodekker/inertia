@@ -84,7 +84,6 @@ describe("the history entry a layer open leaves behind", () => {
       "entries",
       "id",
       "key",
-      "layer",
       "onceProps",
       "owner",
       "props",

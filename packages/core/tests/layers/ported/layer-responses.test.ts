@@ -82,7 +82,6 @@ describe("resolving a page with layers", () => {
         component: "Users/Edit",
         url: "/users/5/edit",
         props: { user: { id: 5 }, errors: {} },
-        layer: { key: "Users/Edit", base: "/users" },
       },
       attributes: {
         "data-layer-id": id,

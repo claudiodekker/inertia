@@ -25,6 +25,7 @@ import type {
 } from '../types'
 import { hrefToUrl } from '../url'
 import { madeInLayer } from './deferred'
+import { stripMark } from './facts'
 import { Inbox } from './handles'
 import { baseScope, type HistoryPort, type PageScope } from './scope'
 import { stack } from './stack'
@@ -216,9 +217,12 @@ export class LayerPage extends CurrentPage {
     this.page = withRecords(page)
   }
 
-  /** A layer's page always carries its deferred, once and scroll records, empty when the answer names none. */
+  /**
+   * A layer's page always carries its deferred, once and scroll records, empty when the answer names none,
+   * and never the wire mark that made it a layer: the row holds what the mark said.
+   */
   public set(page: Page, options?: Parameters<CurrentPage['set']>[1]): Promise<void> {
-    return super.set(withRecords(page), options)
+    return super.set(withRecords(stripMark(page)), options)
   }
 
   /** Clearing history is global by decision: the stack runs it, never this page. */

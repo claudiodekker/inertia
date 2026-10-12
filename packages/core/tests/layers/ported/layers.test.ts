@@ -158,7 +158,8 @@ describe('composeLayer', () => {
     await settled()
 
     expect(app.sent).toEqual(['get /users/5/edit'])
-    expect(app.entry().layers![0].layer).toEqual({ key: 'Users/Edit' })
+    expect(app.entry().layers![0]).not.toHaveProperty('layer')
+    expect(app.entry().layers![0]).not.toHaveProperty('base')
     expect(app.layers().map((layer) => layer.key)).toEqual(['Users/Edit'])
   })
 
