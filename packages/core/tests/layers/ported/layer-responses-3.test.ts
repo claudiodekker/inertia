@@ -960,6 +960,23 @@ describe("a submit answered by the tier the layer stands on", () => {
     expect((await app.basePage()).component).toBe("Users/Create");
   });
 
+  it("keeps a local layer up when the address it was submitted from belongs to the layer beneath it", async () => {
+    const { app, handle, editId } = await openLocalOverALayer({
+      "post /users": edit({
+        props: { user: { id: 5 }, errors: { name: "The name is required." } },
+      }),
+    });
+
+    const announced = await submit(app, handle.id);
+
+    expect(announced).toEqual({ name: "The name is required." });
+    expect(app.layers().map((layer) => layer.id)).toEqual([editId, handle.id]);
+    expect(app.views()[1].page.props.errors).toEqual({
+      name: "The name is required.",
+    });
+    expect(app.views()[0].page.props.errors).toEqual({});
+  });
+
   it("closes the local layer when the errors come back from another url of that layer", async () => {
     const { app, handle, editId } = await openLocalOverALayer({
       "post /users": edit({

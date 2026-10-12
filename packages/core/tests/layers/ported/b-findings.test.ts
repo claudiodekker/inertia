@@ -132,3 +132,27 @@ describe('loadingBase', () => {
     expect(seen).toEqual([])
   })
 })
+
+describe('openLayerFor', () => {
+  it("finds the layer open under the response's key", async () => {
+    const dashboard = page('Dashboard', '/dashboard', { props: { errors: {}, stats: 3 } })
+    const panel = (url: string, base?: string) =>
+      page('Panel', url, { props: { errors: {}, at: url }, layer: { key: 'Panel', base } })
+    const app = await ported(dashboard, {
+      '/go': panel('/panels/2', '/p1'),
+      '/p1': panel('/panels/1', '/dashboard'),
+      '/dashboard': dashboard,
+      '/panels/3': panel('/panels/3', '/dashboard'),
+    })
+
+    app.router.visit('/go')
+    await settled()
+
+    const [lower] = app.layers().map((open) => open.id)
+
+    app.router.visit('/panels/3')
+    await settled()
+
+    expect(app.layers()[0]).toMatchObject({ id: lower, url: '/panels/3' })
+  })
+})
