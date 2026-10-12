@@ -1,0 +1,13 @@
+// FINDING: router.layer(url,{component}) hands component to the visit: base becomes Users/Edit placeholder at /users/5/edit, no layer up (PR: base Users/Index /users with one Users/Edit layer owned by the base)
+// uses helpers from layer-responses-3.test.ts (index, edit, open, scopeOf, inertia, held, scenario)
+  it('puts the placeholder up as a layer, leaving the page it opens on where it is', async () => {
+    const next = held()
+    const app = await scenario(index(), { '/users/5/edit': () => next.answer() })
+
+    app.router.layer('/users/5/edit', { component: 'Users/Edit' })
+    await settled()
+
+    expect(await app.basePage()).toMatchObject({ component: 'Users/Index', url: '/users' })
+    expect(app.layers().map((layer) => [layer.component, layer.url])).toEqual([['Users/Edit', '/users/5/edit']])
+    expect(app.entry().layers!.map((layer) => layer.owner)).toEqual([null])
+  })

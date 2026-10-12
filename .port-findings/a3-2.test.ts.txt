@@ -1,0 +1,14 @@
+// FINDING: X-Inertia-Partial-Component is 'Users/Edit'/'Users/Preview' (the local layer's component) on the reload sent to /users; PR sent 'Users/Index'
+// imports as in layer-responses-3.test.ts
+  it('drops the target for a url-less layer reloading through its own router', async () => {
+    const app = await scenario(index(), { '/users': index({ props: { users: [{ id: 9 }], errors: {} } }) })
+    const handle = app.router.layer({ component: 'Users/Preview' })
+
+    await settled()
+    app.router.layerHandle(handle.id)!.router.reload({ only: ['users'] })
+    await settled()
+
+    expect(app.sent()).toEqual(['get /users'])
+    expect(app.requests[0].headers['X-Inertia-Partial-Component']).toBe('Users/Index')
+    expect(app.layers().map((layer) => [layer.id, layer.type])).toEqual([[handle.id, 'local']])
+  })
