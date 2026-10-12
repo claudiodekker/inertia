@@ -879,12 +879,14 @@ export type FormComponentSlotProps<TForm extends object = Record<string, any>> =
 
 export type FormComponentRef<TForm extends object = Record<string, any>> = FormComponentSlotProps<TForm>
 
+/** @internal Not part of the public API. May change or be removed without notice. */
 export interface InfiniteScrollScope {
   router: Router
   page: { get(): Page }
 }
 
 export interface UseInfiniteScrollOptions {
+  /** @internal */
   scope?: InfiniteScrollScope
   // Core data
   getPropName: () => string

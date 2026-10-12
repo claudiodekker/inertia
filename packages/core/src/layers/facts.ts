@@ -30,7 +30,7 @@ export function isInterstitial(page: Page): boolean {
 }
 
 /** What is on screen: the base page, the live rows' pages bottom first, and the page owning the address. */
-export interface Screen {
+interface Screen {
   readonly base: Page
   readonly live: readonly Page[]
   readonly addressTier: Page

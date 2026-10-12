@@ -33,7 +33,7 @@ export interface StackPort {
   emit(id: LayerId, name: string, payload: unknown): void
 }
 
-export interface LayerPageView {
+interface LayerPageView {
   readonly component: Component
   readonly page: Page
   /** Bumped by every swap that does not preserve state, like the 3.x base key. */

@@ -24,9 +24,12 @@ export {
   type LayoutDefinition,
   type LayoutPropsStore,
 } from './layout'
+/** @internal Not part of the public API. May change or be removed without notice. */
 export { layerDialogAttributes, mountLayerDialog } from './layers/dialog'
 /** @internal Not part of the public API. May change or be removed without notice. */
 export { layerSlot, type BootPlan, type LayerView } from './layers/slot'
+/** @internal Not part of the public API. May change or be removed without notice. */
+export type { MountedLayerDialog } from './layers/types'
 export type {
   LayerHandle,
   LayerInfo,
@@ -35,7 +38,6 @@ export type {
   LayerShellProps,
   LayerTarget,
   LoadingResolver,
-  MountedLayerDialog,
 } from './layers/types'
 export { shouldIntercept, shouldNavigate } from './navigationEvents'
 export { isPathOrSubPath, partialReloadRequestsProp, partialReloadRequestsSomeProps } from './partialReload'

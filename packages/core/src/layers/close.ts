@@ -104,7 +104,7 @@ export function progress(s: StackState, fx: Fx, closeId: CloseId): StackState {
   return s.expect === null ? removeOrUnwind(s, fx, close) : setClose(s, { ...close, phase: { kind: 'queued' } })
 }
 
-export function removeOrUnwind(s: StackState, fx: Fx, close: CloseRow): StackState {
+function removeOrUnwind(s: StackState, fx: Fx, close: CloseRow): StackState {
   const covered = s.rows.filter((r) => close.layers.includes(r.id))
   const entries = covered.reduce((sum, r) => sum + r.entries, 0)
 
@@ -153,7 +153,7 @@ export function completeUnwind(s: StackState, fx: Fx, closeId: CloseId): StackSt
  * Refresh the routed tier beneath when the closed bottom row was routed and that tier is real. Over a
  * blank base whose page has been answered and is still resolving its component, the walk is sent again.
  */
-export function continueAfterRemoval(
+function continueAfterRemoval(
   removed: StackState,
   fx: Fx,
   close: CloseRow,

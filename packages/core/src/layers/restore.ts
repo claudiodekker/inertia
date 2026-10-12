@@ -2,7 +2,7 @@ import { completeUnwind, finishRefreshingOver, forgetInCloses } from './close'
 import type { EntryFacts, EntryLayerFacts, LayerId, LayerRow, StackState, Step } from './state'
 import { clearPin, clearStack, paint, run, withoutRows, type E, type Fx } from './update'
 
-export type RestorePlan =
+type RestorePlan =
   | { kind: 'pass' }
   /** A stored blank placeholder with nothing on it: request the base again. */
   | { kind: 'recover'; url: string }
@@ -180,7 +180,7 @@ export function popstate(s: StackState, e: E<'popstate'>): Step {
   return { state: paint(t, fx), effects: fx, outcome: { kind: 'restore', restore: { kind: 'handled' } } }
 }
 
-export function fromEntry(below: readonly LayerRow[], layers: readonly EntryLayerFacts[]): LayerRow[] {
+function fromEntry(below: readonly LayerRow[], layers: readonly EntryLayerFacts[]): LayerRow[] {
   const rows: LayerRow[] = []
 
   for (const layer of layers) {
