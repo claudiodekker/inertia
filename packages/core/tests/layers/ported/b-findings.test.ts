@@ -156,3 +156,77 @@ describe('openLayerFor', () => {
     expect(app.layers()[0]).toMatchObject({ id: lower, url: '/panels/3' })
   })
 })
+
+describe('composeLayer', () => {
+  it('strips the layer mark from the layer it composes', async () => {
+    const edit = page('Users/Edit', '/users/5/edit', {
+      props: { errors: {}, user: { id: 5 } },
+      layer: { key: 'Users/Edit', base: '/users' },
+    })
+    const app = await ported(users(), { '/users/5/edit': edit })
+
+    app.router.visit('/users/5/edit')
+    await settled()
+
+    expect(app.layers().map((open) => open.key)).toEqual(['Users/Edit'])
+    expect(app.entry().layers![0]).not.toHaveProperty('layer')
+    expect(app.views()[0].page).not.toHaveProperty('layer')
+  })
+})
+
+describe('layerPageOf', () => {
+  it('falls back to the address for a layer with no url of its own', async () => {
+    const app = await ported(users(), {})
+
+    app.router.layer({ component: 'Prompt' })
+    await settled()
+
+    expect(app.views()[0].page.url).toBe('/users')
+  })
+
+  it('falls back to the address beneath it, never the address of a layer above it', async () => {
+    const notes = page('Users/Notes', '/users/9/notes', { layer: { key: 'notes', base: '/users' } })
+    const app = await ported(users(), { '/users/9/notes': notes, '/a': layer('A', '/a') })
+
+    app.router.layer({ component: 'Prompt' })
+    await settled()
+    app.router.visit('/users/9/notes')
+    await settled()
+
+    expect(app.views().map((view) => view.page.url)).toEqual(['/users', '/users/9/notes'])
+
+    app.router.layer({ component: 'Confirm' })
+    await settled()
+
+    expect(app.views().map((view) => view.page.url)).toEqual(['/users', '/users/9/notes', '/users/9/notes'])
+  })
+
+  it('follows the page beneath it to the url a partial reload moves it to', async () => {
+    const app = await ported(users(), { '/users?page=2': { ...users(), url: '/users?page=2' } })
+
+    app.router.layer({ component: 'Prompt' })
+    await settled()
+    app.router.visit('/users?page=2', { only: ['users'], preserveState: true, preserveScroll: true })
+    await settled()
+
+    expect(app.layers().map((open) => open.type)).toEqual(['local'])
+    expect(app.views()[0].page.url).toBe('/users?page=2')
+  })
+})
+
+describe('resolveLayers, the layout page', () => {
+  it('leaves the url empty for a layer with no url of its own, so it never reaches the address', async () => {
+    const app = await ported(users(), {})
+
+    app.router.layer({ component: 'Users/Edit', props: { user: { id: 5 }, errors: { name: 'required' } } })
+    await settled()
+
+    const [view] = app.views()
+
+    expect(view.layoutPage.component).toBe('Users/Edit')
+    expect(view.layoutPage.props).toEqual({ user: { id: 5 }, errors: { name: 'required' } })
+    expect(view.layoutPage.url).toBe('')
+    expect(view.page.url).toBe('/users')
+    expect(app.entry().layers![0].url).toBe('')
+  })
+})
