@@ -9,7 +9,6 @@ import {
   OptimisticCallback,
   Progress,
   RequestPayload,
-  router,
   UrlMethodPair,
   UseFormArguments,
   UseFormSubmitArguments,
@@ -22,6 +21,7 @@ import {
 import { cloneDeep } from 'es-toolkit'
 import type { NamedInputEvent, PrecognitionPath, ValidationConfig, Validator } from 'laravel-precognition'
 import { useCallback, useMemo, useRef } from 'react'
+import { useRouter } from './layerContext'
 import useFormState, { SetDataAction, SetDataByKeyValuePair, SetDataByMethod, SetDataByObject } from './useFormState'
 import useRemember from './useRemember'
 
@@ -112,6 +112,7 @@ export default function useForm<TForm extends FormDataType<TForm>>(): InertiaFor
 export default function useForm<TForm extends FormDataType<TForm>>(
   ...args: UseFormArguments<TForm>
 ): InertiaFormProps<TForm> | InertiaPrecognitiveFormProps<TForm> {
+  const router = useRouter()
   const { rememberKey, data, precognitionEndpoint } = UseFormUtils.parseUseFormArguments<TForm>(...args)
 
   // Resolve initial data for remember functionality hooks

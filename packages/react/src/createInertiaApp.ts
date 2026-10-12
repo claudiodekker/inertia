@@ -8,6 +8,8 @@ import {
   getInitialPageFromDOM,
   http as httpModule,
   InertiaAppSSRResponse,
+  layerSlot,
+  LoadingResolver,
   Page,
   PageProps,
   router,
@@ -19,7 +21,7 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import { renderToString } from 'react-dom/server'
 import App, { InertiaAppProps, type InertiaApp } from './App'
 import { config } from './index'
-import { ReactComponent, ReactInertiaAppConfig } from './types'
+import { LayerComponent, ReactComponent, ReactInertiaAppConfig } from './types'
 
 export type SetupOptions<ElementType, SharedProps extends PageProps> = {
   el: ElementType
@@ -37,16 +39,24 @@ type ReactWithApp<SharedProps extends PageProps> = (
   options: { ssr: boolean; page: Page<SharedProps> },
 ) => ReactElement
 
+type LayerOptions = {
+  /** The shell each layer renders in. Defaults to the shipped <Layer>. */
+  layer?: LayerComponent
+  /** What renders beneath a layer opened cold while its base page is fetched. Called with that base's url. */
+  loading?: LoadingResolver<ReactComponent>
+}
+
 type InertiaAppOptionsForCSR<SharedProps extends PageProps> = CreateInertiaAppOptionsForCSR<
   SharedProps,
   ComponentResolver,
   SetupOptions<HTMLElement, SharedProps>,
   void,
   ReactInertiaAppConfig
-> & {
-  strictMode?: undefined
-  withApp?: never
-}
+> &
+  LayerOptions & {
+    strictMode?: undefined
+    withApp?: never
+  }
 
 type InertiaAppOptionsForSSR<SharedProps extends PageProps> = CreateInertiaAppOptionsForSSR<
   SharedProps,
@@ -54,11 +64,12 @@ type InertiaAppOptionsForSSR<SharedProps extends PageProps> = CreateInertiaAppOp
   SetupOptions<null, SharedProps>,
   ReactElement,
   ReactInertiaAppConfig
-> & {
-  render: typeof renderToString
-  strictMode?: undefined
-  withApp?: never
-}
+> &
+  LayerOptions & {
+    render: typeof renderToString
+    strictMode?: undefined
+    withApp?: never
+  }
 
 type InertiaAppOptionsAuto<SharedProps extends PageProps> = Omit<
   CreateInertiaAppOptions<
@@ -68,14 +79,18 @@ type InertiaAppOptionsAuto<SharedProps extends PageProps> = Omit<
     ReactInertiaAppConfig
   >,
   'setup'
-> & {
-  page?: Page<SharedProps>
-  render?: undefined
-  strictMode?: boolean
-} & (
+> &
+  LayerOptions & {
+    page?: Page<SharedProps>
+    render?: undefined
+    strictMode?: boolean
+  } & (
     | { setup?: undefined; withApp?: ReactWithApp<SharedProps> }
     | { setup: (options: SetupOptions<HTMLElement | null, SharedProps>) => ReactElement | void; withApp?: never }
   )
+
+/** What the blank base renders when the app has no loading component for it: nothing, in no layout. */
+const Blank = Object.assign(() => null, { layout: [] }) as unknown as ReactComponent
 
 type RenderToString = (element: ReactElement) => string
 
@@ -109,6 +124,8 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     serverHead,
     strictMode = false,
     withApp,
+    layer,
+    loading,
     dev = !!import.meta.env?.DEV,
   }:
     | InertiaAppOptionsForCSR<SharedProps>
@@ -135,10 +152,23 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     return strictMode ? createElement(StrictMode, null, element) : element
   }
 
-  const resolveComponent = (name: string, page?: Page) =>
+  const resolvePage = (name: string, page?: Page) =>
     Promise.resolve(resolve!(name, page)).then((module) => {
       return ((module as { default?: ReactComponent }).default || module) as ReactComponent
     })
+  const resolveComponent = layerSlot.wrapResolver(resolvePage, loading, Blank)
+
+  // The base and every layer the document arrived with resolve before the first render, so the
+  // server and the hydrating client render the same tree.
+  const boot = async (response: Page) => {
+    const plan = layerSlot.planBoot(response, isServer ? '' : window.location.hash)
+    const [initialComponent, ...seedComponents] = await Promise.all([
+      resolveComponent(plan.base.component, plan.base, plan.info),
+      ...plan.seeds.map((seed) => resolvePage(seed.page.component, seed.page)),
+    ])
+
+    return { plan, initialComponent, seedComponents }
+  }
 
   // SSR render function factory - when on server without page/render, return a render function
   // This is used by the Vite plugin's SSR transform
@@ -146,16 +176,18 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
     return async (page: Page<SharedProps>, renderToString: RenderToString) => {
       let head: string[] = []
 
-      const initialComponent = await resolveComponent(page.component, page)
+      const { plan, initialComponent, seedComponents } = await boot(page)
 
       const props: InertiaAppProps<SharedProps> = {
-        initialPage: page,
+        initialPage: plan.base as Page<SharedProps>,
         initialComponent,
+        initialLayers: layerSlot.ssrViews(plan, seedComponents),
         resolveComponent,
         titleCallback: title,
         onHeadUpdate: (elements: string[]) => (head = elements),
         defaultLayout: layout,
         serverHead,
+        layer,
       }
 
       let reactApp: ReactElement
@@ -185,18 +217,23 @@ export default async function createInertiaApp<SharedProps extends PageProps = P
 
   let head: string[] = []
 
-  const reactApp = await Promise.all([
-    resolveComponent(initialPage.component, initialPage),
-    router.decryptHistory().catch(() => {}),
-  ]).then(([initialComponent]) => {
+  const reactApp = await Promise.all([boot(initialPage), router.decryptHistory().catch(() => {})]).then(([booted]) => {
+    const { plan, initialComponent, seedComponents } = booted
+
+    if (!isServer) {
+      layerSlot.boot(plan, seedComponents)
+    }
+
     const props: InertiaAppProps<SharedProps> = {
-      initialPage,
+      initialPage: plan.base as Page<SharedProps>,
       initialComponent,
+      initialLayers: isServer ? layerSlot.ssrViews(plan, seedComponents) : undefined,
       resolveComponent,
       titleCallback: title,
       onHeadUpdate: isServer ? (elements: string[]) => (head = elements) : undefined,
       defaultLayout: layout,
       serverHead,
+      layer,
     }
 
     if (isServer) {

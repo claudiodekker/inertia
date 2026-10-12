@@ -1,5 +1,7 @@
 import {
   createHeadManager,
+  layerSlot,
+  type LayerView,
   HeadManagerOnUpdateCallback,
   HeadManagerTitleCallback,
   Page,
@@ -25,7 +27,7 @@ import LayerStack from './LayerStack'
 import { resetLayoutProps, store } from './layoutProps'
 import PageContext from './PageContext'
 import renderPage from './renderPage'
-import { ReactComponent, ReactPageHandlerArgs } from './types'
+import { LayerComponent, ReactComponent, ReactPageHandlerArgs } from './types'
 
 let pendingInitialSwap: ReactPageHandlerArgs | null = null
 let routerIsInitialized = false
@@ -49,11 +51,15 @@ export interface InertiaAppProps<SharedProps extends PageProps = PageProps> {
   children?: (options: { Component: ReactComponent; props: PageProps; key: number | null }) => ReactNode
   initialPage: Page<SharedProps>
   initialComponent?: ReactComponent
+  /** Server only: the layers the document arrived with, rendered over the base. */
+  initialLayers?: readonly LayerView[]
   resolveComponent?: (name: string, page?: Page) => ReactComponent | Promise<ReactComponent>
   titleCallback?: HeadManagerTitleCallback
   onHeadUpdate?: HeadManagerOnUpdateCallback
   defaultLayout?: (name: string, page: Page) => unknown
   serverHead?: ServerHeadOption
+  /** The shell each layer renders in. Defaults to the shipped <Layer>. */
+  layer?: LayerComponent
 }
 
 export type InertiaApp = FunctionComponent<InertiaAppProps>
@@ -67,11 +73,13 @@ export default function App<SharedProps extends PageProps = PageProps>({
   children,
   initialPage,
   initialComponent,
+  initialLayers,
   resolveComponent,
   titleCallback,
   onHeadUpdate,
   defaultLayout,
   serverHead,
+  layer,
 }: InertiaAppProps<SharedProps>) {
   const [current, setCurrent] = useState<CurrentPage>({
     component: initialComponent || null,
@@ -82,12 +90,15 @@ export default function App<SharedProps extends PageProps = PageProps>({
   const pageRef = useRef(current.page)
   pageRef.current = current.page
 
+  // Title and server head follow the top layer: the server's initial layers, the client's stack.
+  const topPage = (fallback: Page) => layerSlot.topPage() ?? initialLayers?.at(-1)?.page ?? fallback
+
   const headManager = useMemo(() => {
     return createHeadManager(
       typeof window === 'undefined',
-      (title: string) => (titleCallback ? titleCallback(title, pageRef.current) : title),
+      (title: string) => (titleCallback ? titleCallback(title, topPage(pageRef.current)) : title),
       onHeadUpdate || (() => {}),
-      resolveServerHead(initialPage, serverHead),
+      resolveServerHead(topPage(initialPage), serverHead),
     )
   }, [])
 
@@ -138,7 +149,7 @@ export default function App<SharedProps extends PageProps = PageProps>({
     }
 
     const syncServerHead = (event: { detail: { page: Page } }) => {
-      headManager.updateServerHead(resolveServerHead(event.detail.page, serverHead))
+      headManager.updateServerHead(resolveServerHead(topPage(event.detail.page), serverHead))
     }
 
     const removeNavigateListener = router.on('navigate', syncServerHead)
@@ -173,7 +184,7 @@ export default function App<SharedProps extends PageProps = PageProps>({
         props: current.page.props,
       }),
     ),
-    createElement(LayerStack),
+    createElement(LayerStack, { shell: layer, defaultLayout, initialLayers }),
   )
 }
 

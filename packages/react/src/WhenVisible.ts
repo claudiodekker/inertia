@@ -1,6 +1,7 @@
-import { ReloadOptions, router } from '@inertiajs/core'
+import { ReloadOptions } from '@inertiajs/core'
 import { get } from 'es-toolkit/compat'
 import { createElement, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useRouter } from './layerContext'
 import usePage from './usePage'
 
 interface WhenVisibleSlotProps {
@@ -18,6 +19,7 @@ interface WhenVisibleProps {
 }
 
 const WhenVisible = ({ children, data, params, buffer, as, always, fallback }: WhenVisibleProps) => {
+  const router = useRouter()
   always = always ?? false
   as = as ?? 'div'
   fallback = fallback ?? null
