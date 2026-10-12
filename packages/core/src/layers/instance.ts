@@ -1,35 +1,18 @@
-// The data plane of one layer: the 3.x CurrentPage, Router and layout store, bound to the layer by a
+// The data plane of one layer: a 3.x CurrentPage, Router and layout store, bound to the layer by a
 // PageScope. Props, errors, flash, once, deferred, optimistic and remembered state are the 3.x fields
-// of this instance's CurrentPage. LayerPage overrides only the hooks whose 3.x body touches the
-// browser, the global page or the global history.
+// of this instance's CurrentPage.
 
 import { get } from 'es-toolkit/compat'
-import { fireNavigateEvent } from '../events'
 import { createLayoutPropsStore } from '../layout'
-import { CurrentPage } from '../page'
 import type { Response } from '../response'
-import { Router } from '../router'
-import type {
-  Component,
-  LayoutProps,
-  NamedLayoutProps,
-  Page,
-  PageHandler,
-  PageResolver,
-  PendingVisit,
-  ReloadOptions,
-  RequestPayload,
-  RouterInitParams,
-  ScrollRegion,
-  UrlMethodPair,
-  VisitOptions,
-} from '../types'
-import { hrefToUrl } from '../url'
+import type { Router } from '../router'
+import type { Component, LayoutProps, NamedLayoutProps, Page, PageResolver, PendingVisit } from '../types'
 import { madeInLayer } from './deferred'
-import { stripMark } from './facts'
 import { Inbox } from './handles'
-import { baseScope, type HistoryPort, type PageScope } from './scope'
-import { stack } from './stack'
+import { LayerHistory } from './layerHistory'
+import { createLayerPage, type LayerPage } from './layerPage'
+import { createLayerRouter, type LayerRouter } from './layerRouter'
+import type { PageScope } from './scope'
 import type { LayerId } from './state'
 import type { LayerInfo, LayerMessageListener, LayerScope } from './types'
 
@@ -56,8 +39,6 @@ export interface LayerPageView {
   /** Bumped by every swap that does not preserve state, like the 3.x base key. */
   readonly renderKey: number
 }
-
-const unopenedUrl = new URL('about:blank')
 
 export class LayerInstance {
   readonly page: LayerPage
@@ -112,8 +93,9 @@ export class LayerInstance {
     }
 
     this.history = new LayerHistory(this)
-    this.router = new LayerRouter(this.scope, type === 'local')
-    this.page = new LayerPage(this).init({
+    this.router = createLayerRouter(this.scope, type === 'local')
+    this.page = createLayerPage(this)
+    this.page.init({
       initialPage: {
         component: '',
         props: { errors: {} },
@@ -219,190 +201,6 @@ export class LayerInstance {
   }
 }
 
-export class LayerPage extends CurrentPage {
-  constructor(protected layer: LayerInstance) {
-    super()
-  }
-
-  /** The 3.x field setup without the global historyQuotaExceeded listener. */
-  public init<ComponentType = Component>({
-    initialPage,
-    swapComponent,
-    resolveComponent,
-    onFlash,
-  }: RouterInitParams<ComponentType>) {
-    this.page = { ...initialPage, flash: initialPage.flash ?? {}, rescuedProps: initialPage.rescuedProps ?? [] }
-    this.swapComponent = swapComponent as PageHandler<any>
-    this.resolveComponent = resolveComponent
-    this.onFlashCallback = onFlash
-
-    return this
-  }
-
-  public seed(page: Page): void {
-    this.page = withRecords(page)
-  }
-
-  /**
-   * A layer's page always carries its deferred, once and scroll records, empty when the answer names none,
-   * and never the wire mark that made it a layer: the row holds what the mark said.
-   */
-  public set(page: Page, options?: Parameters<CurrentPage['set']>[1]): Promise<void> {
-    return super.set(withRecords(stripMark(page)), options)
-  }
-
-  /** Clearing history is global by decision: the stack runs it, never this page. */
-  protected clearHistoryFor(page: Page): void {
-    if (page.clearHistory) {
-      this.layer.port.clearHistory()
-    }
-  }
-
-  /** Until the first commit, a url nothing matches, so 3.x's same-url replace reduces to visit.replace. */
-  protected location(_page: Page): URL {
-    return this.layer.lastWrite === null ? unopenedUrl : hrefToUrl(this.page.url)
-  }
-
-  protected write(pageForHistory: Page, replace: boolean): Promise<void> {
-    return this.layer.port.layerCommitting(this.layer, pageForHistory, replace)
-  }
-
-  protected onceChanged(): void {}
-
-  protected swapped(): void {}
-
-  /** The layer's own regions only, never the window; deferred props through the layer's router. */
-  protected settle(
-    page: Page,
-    {
-      preserveScroll,
-      cached,
-      visitId,
-    }: {
-      preserveScroll: boolean
-      scrollRegions: ScrollRegion[]
-      replace: boolean
-      cached: boolean
-      visitId?: string
-    },
-  ): void {
-    // The write that landed found the layer closed: it owes nothing, and asks for no deferred props.
-    if (this.layer.disposed) {
-      this.pendingDeferredProps = null
-
-      return
-    }
-
-    if (!preserveScroll) {
-      this.layer.element?.querySelectorAll('[scroll-region]').forEach((region) => region.scrollTo(0, 0))
-    }
-
-    if (
-      this.pendingDeferredProps &&
-      this.pendingDeferredProps.component === page.component &&
-      this.pendingDeferredProps.url === page.url
-    ) {
-      this.layer.router.loadDeferred(this.pendingDeferredProps.deferredProps)
-    }
-
-    this.pendingDeferredProps = null
-
-    if (this.layer.lastWrite === 'push') {
-      fireNavigateEvent(page, { type: 'visit', cached, visitId })
-    }
-  }
-
-  /** The 3.x restore without history.setCurrent, which belongs to the base. */
-  public setQuietly(page: Page, { preserveState = false }: { preserveState?: boolean } = {}) {
-    this.componentId = {}
-
-    return this.resolve(page.component, page).then((component) => {
-      this.page = withRecords(page)
-      this.cleared = false
-
-      return this.swap({ component, page: this.page, preserveState, viewTransition: false })
-    })
-  }
-}
-
-function withRecords(page: Page): Page {
-  page.deferredProps ??= {}
-  page.onceProps ??= {}
-  page.scrollProps ??= {}
-
-  return page
-}
-
-/** A layer's HistoryPort. Remembered state lives in the layer page and reaches history through the composite. */
-export class LayerHistory implements HistoryPort {
-  protected requested = false
-
-  constructor(protected layer: LayerInstance) {}
-
-  /**
-   * Before the first commit this reads false, so an opening response keeps its own url (the row records
-   * that it owns no address instead). After that it is the 3.x flag, scoped to this layer.
-   */
-  get preserveUrl(): boolean {
-    return this.requested && this.layer.lastWrite !== null
-  }
-
-  set preserveUrl(value: boolean) {
-    this.requested = value
-  }
-
-  remember(data: unknown, key: string): void {
-    const rememberedState = { ...(this.layer.page.get().rememberedState ?? {}), [key]: data }
-
-    this.layer.page.remember(rememberedState)
-
-    if (this.layer.historyPage) {
-      this.layer.historyPage = { ...this.layer.historyPage, rememberedState }
-    }
-
-    this.layer.port.rewriteEntry(this.layer)
-  }
-
-  restore(key: string): unknown {
-    if (typeof window !== 'undefined') {
-      return this.layer.page.get().rememberedState?.[key]
-    }
-  }
-
-  getState<T>(key: keyof Page, defaultValue?: T): any {
-    return this.layer.page.get()[key] ?? defaultValue
-  }
-}
-
-/** A 3.x Router on the layer's scope. Shares the module request streams; never init()ed. */
-export class LayerRouter extends Router {
-  constructor(
-    scope: PageScope,
-    protected local: boolean,
-  ) {
-    super(scope)
-  }
-
-  public loadDeferred(deferred: Page['deferredProps']): void {
-    this.loadDeferredProps(deferred)
-  }
-
-  /** A closed layer has no page to put a placeholder on, so an instant visit made from it is the page's own. */
-  public visit<T extends RequestPayload = RequestPayload>(
-    href: string | URL | UrlMethodPair,
-    options: VisitOptions<T> = {},
-  ): void {
-    return this.scope.disposed && options.component ? baseScope.router.visit(href, options) : super.visit(href, options)
-  }
-
-  /** A layer with no url has nothing of its own to ask the server for: its reload is the page's beneath the stack. */
-  protected doReload<T extends RequestPayload = RequestPayload>(
-    options?: ReloadOptions<T> & { deferredProps?: boolean; poll?: boolean },
-  ): void {
-    return this.local ? super.doReload.call(baseScope.router, options as never) : super.doReload(options)
-  }
-}
-
 /** The public LayerScope: forwards to the instance and the stack, with no state of its own. */
 class PublicScope implements LayerScope {
   constructor(protected layer: LayerInstance) {}
@@ -480,11 +278,3 @@ class PublicScope implements LayerScope {
     this.layer.layout.reset()
   }
 }
-
-// stack.ts cannot import this module: LayerPage and LayerRouter extend 3.x classes, and page.ts imports
-// stack.ts, so the classes would be defined before CurrentPage exists. index.ts imports this module
-// after ./router, and it hands the stack what it needs to build instances.
-stack.connect({
-  baseScope,
-  createInstance: (id, type, port, options) => new LayerInstance(id, type, port, options),
-})

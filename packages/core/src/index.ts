@@ -1,7 +1,5 @@
 import { Config } from './config'
 import { Router } from './router'
-// Hands the stack its instance factory. After ./router: LayerPage and LayerRouter extend 3.x classes.
-import './layers/instance'
 
 export { UseFormUtils } from './useFormUtils'
 

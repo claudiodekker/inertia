@@ -72,11 +72,18 @@ export function fakeBrowser(href: string): void {
 
 /**
  * A fresh core over `initial`, with the real router, page store and stack, and a server that answers
- * each url from `routes`. A route that is a function may hold its answer.
+ * each url from `routes`. A route that is a function may hold its answer. `loadFirst` imports the module
+ * the graph is entered through.
  */
-export async function runtime(initial: Answer, routes: Record<string, Answer | (() => Promise<Answer>)>) {
+export async function runtime(
+  initial: Answer,
+  routes: Record<string, Answer | (() => Promise<Answer>)>,
+  loadFirst: () => Promise<unknown> = () => import('../../src'),
+) {
   vi.resetModules()
   fakeBrowser(`http://localhost${initial.url}`)
+
+  await loadFirst()
 
   const core = await import('../../src')
   const { HttpCancelledError } = await import('../../src/httpErrors')

@@ -8,7 +8,7 @@ import { page as currentPage, type CurrentPage } from '../page'
 import type { Response } from '../response'
 import type { Router } from '../router'
 import { Scroll } from '../scroll'
-import type { CancelToken, Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
+import type { CancelToken, Component, Page, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
 import { announceFlash, fetchBase, retargetBlank } from './base'
@@ -25,10 +25,10 @@ import {
 } from './entry'
 import { against, entryFacts, isInterstitial, marksOf, rereads, routeFacts, snapshot } from './facts'
 import { openLocal, TicketHandle } from './handles'
-import type { LayerInstance, StackPort } from './instance'
+import { LayerInstance, type StackPort } from './instance'
 import { land } from './land'
 import { reduce } from './reduce'
-import type { PageScope } from './scope'
+import { baseScope, type PageScope } from './scope'
 import {
   idle,
   initialState,
@@ -52,22 +52,11 @@ import { Visits } from './visits'
 
 export type { LayerView }
 
-interface Connection {
-  baseScope: PageScope
-  createInstance(
-    id: LayerId,
-    type: 'routed' | 'local',
-    port: StackPort,
-    options: { resolveComponent: PageResolver; version: string | null },
-  ): LayerInstance
-}
-
 const isServer = typeof window === 'undefined'
 
 export class Stack implements StackPort {
   protected state: StackState = initialState
   protected instances = new Map<LayerId, LayerInstance>()
-  protected connection: Connection | null = null
   /** What the adapters render: the views last painted. */
   public readonly painter = new Painter((id) => ({ close: () => void this.close(id), done: () => this.exited(id) }))
   protected elements = new WeakMap<Element, LayerId>()
@@ -85,10 +74,6 @@ export class Stack implements StackPort {
   protected answers = new Map<string, 'refresh' | 'navigation'>()
   /** The last refresh that arrived with nothing open, which 3.x lands on its own. Responses land one at a time. */
   protected passedRefresh: string | null = null
-
-  public connect(connection: Connection): void {
-    this.connection = connection
-  }
 
   protected dispatch(event: StackEvent): { outcome: Outcome; waits: Promise<unknown>[] } {
     const step = reduce(this.state, event)
@@ -140,7 +125,7 @@ export class Stack implements StackPort {
           this.waiters.delete(waiter)
         })
       case 'cancelAll':
-        return this.connected().baseScope.router.cancelAll({ prefetch: false })
+        return baseScope.router.cancelAll({ prefetch: false })
       case 'warn':
         return console.warn(effect.message)
       case 'installBase':
@@ -187,7 +172,7 @@ export class Stack implements StackPort {
     if (tag.kind === 'walk' || tag.kind === 'recover') {
       // After the task that asked for it: a popstate's own 3.x cancelAll runs right after its dispatch.
       return queueMicrotask(() =>
-        fetchBase(this.visits, this.connected().baseScope.router, tag, effect.url!, (visit) =>
+        fetchBase(this.visits, baseScope.router, tag, effect.url!, (visit) =>
           this.dispatch({ type: 'walkHopFailed', visit }),
         ),
       )
@@ -197,7 +182,7 @@ export class Stack implements StackPort {
       throw new Error(`The stack starts no "${tag.kind}" visit: an open is sent by its caller.`)
     }
 
-    const router = effect.via === 'base' ? this.connected().baseScope.router : this.instance(effect.via).router
+    const router = effect.via === 'base' ? baseScope.router : this.instance(effect.via).router
 
     if (this.visits.follow(tag, {}, (options) => router.reload(options))) {
       return
@@ -276,7 +261,6 @@ export class Stack implements StackPort {
       return undefined
     }
 
-    const { baseScope } = this.connected()
     const page = response.getPageResponse()
     const marks = marksOf(page)
 
@@ -342,7 +326,7 @@ export class Stack implements StackPort {
   ): LayerInstance {
     history.composer = this
 
-    const instance = this.connected().createInstance(id, type, this, {
+    const instance = new LayerInstance(id, type, this, {
       resolveComponent: (name, page) => currentPage.resolve(name, page),
       version,
     })
@@ -448,7 +432,7 @@ export class Stack implements StackPort {
   }
 
   public clearHistory(): void {
-    this.connected().baseScope.router.clearHistory()
+    baseScope.router.clearHistory()
   }
 
   /**
@@ -620,7 +604,7 @@ export class Stack implements StackPort {
     })
     void this.paint()
     queueMicrotask(() => this.instances.forEach((instance) => instance.loadMissingDeferred()))
-    announceFlash(plan, this.connected().baseScope.router)
+    announceFlash(plan, baseScope.router)
   }
 
   /** Walks up to a bound wrapper element. Never an attribute read. */
@@ -760,14 +744,6 @@ export class Stack implements StackPort {
 
   protected entryFacts(base: Page, layers: readonly LayerEntry[]): EntryFacts {
     return entryFacts(base, layers, currentPage.get(), (id) => this.instances.get(id)?.page.get())
-  }
-
-  protected connected(): Connection {
-    if (!this.connection) {
-      throw new Error('The layer data plane is not loaded; import @inertiajs/core through its index.')
-    }
-
-    return this.connection
   }
 }
 
