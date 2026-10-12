@@ -225,6 +225,37 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 })
 
+describe('history traversal while a close refreshes the page beneath', () => {
+  it('reopens the closed layer when its entry is restored before the refresh answers', async () => {
+    let answerRefresh = () => {}
+    const refresh = new Promise<void>((resolve) => (answerRefresh = resolve))
+    const app = await runtime(users, { '/users/pick': picker, '/users': () => refresh.then(() => users) })
+    const handle = app.router.layer('/users/pick')
+    const calls = counted(handle)
+
+    await settled()
+
+    const id = handle.id
+
+    void handle.close()
+    exitShells(app)
+    await settled()
+
+    expect(app.sent).toEqual(['get /users/pick', 'get /users'])
+    expect(app.layers()).toEqual([])
+
+    window.history.go(1)
+    await settled()
+    answerRefresh()
+    await settled()
+
+    expect(window.location.pathname).toBe('/users/pick')
+    expect(app.layers()).toEqual([{ id, key: 'picker', component: 'Users/Pick', url: '/users/pick', type: 'routed' }])
+    expect(app.views().map((view) => view.shell.open)).toEqual([true])
+    expect(calls.closed).toBe(1)
+  })
+})
+
 describe('messages', () => {
   it('reach the handle and the scope of the layer that opened the sender, and no layer further down', async () => {
     const app = await runtime(users, { '/users/pick': picker, '/users/invite': invite, '/roles/pick': roles })
