@@ -10,6 +10,7 @@ import { Scroll } from '../scroll'
 import type { CancelToken, Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
+import { entryRows } from './close'
 import {
   blankPage,
   compose as composeEntry,
@@ -494,15 +495,17 @@ export class Stack implements StackPort {
     return this.state.rows.some((row) => row.phase === 'open' && row.type === 'routed' && row.ownsAddress)
   }
 
-  /** The history composer: the base page with every committed layer. Pure read. */
+  /** The history composer: the base page with every committed layer that is not being closed. Pure read. */
   public compose(page: Page): { data: CompositeEntry; url: string } {
-    return composeEntry(
-      page,
-      this.state.rows
-        .filter((row) => row.phase === 'open')
-        .map((row) => snapshot(row, this.instance(row.id).historyPage!)),
-      this.state.base.blank,
-    )
+    const { stored, addressed } = entryRows(this.state)
+    const composed = (rows: readonly LayerRow[]) =>
+      composeEntry(
+        page,
+        rows.map((row) => snapshot(row, this.instance(row.id).historyPage!)),
+        this.state.base.blank,
+      )
+
+    return { data: composed(stored).data, url: composed(addressed).url }
   }
 
   /** The eventHandler popstate hook. Returns what 3.x restores, or null when the stack handled the entry. */

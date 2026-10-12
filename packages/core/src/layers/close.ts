@@ -193,6 +193,20 @@ export function startQueued(s: StackState, fx: Fx): StackState {
   return t
 }
 
+/**
+ * What a history write made now holds. A row being closed is never stored, so no entry left behind
+ * reopens it. Its url stays the address until its close steps back, because the write lands on the
+ * entry that row is on; a write queued behind the step back lands on the entry beneath.
+ */
+export function entryRows(s: StackState): { stored: LayerRow[]; addressed: LayerRow[] } {
+  const open = s.rows.filter((r) => r.phase === 'open')
+
+  return {
+    stored: open.filter((r) => r.close === null),
+    addressed: open.filter((r) => r.close === null || s.closes.get(r.close)?.phase.kind !== 'unwinding'),
+  }
+}
+
 /** A remounting landing on a row whose close is still exiting puts the covered rows back. */
 export function abandonIfExiting(s: StackState, fx: Fx, closeId: CloseId | null): StackState {
   const close = closeId ? s.closes.get(closeId) : undefined

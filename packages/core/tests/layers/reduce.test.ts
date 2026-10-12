@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { entryRows } from '../../src/layers/close'
 import { reduce } from '../../src/layers/reduce'
 import { MAX_WALK, type StackState } from '../../src/layers/state'
 import {
@@ -706,6 +707,23 @@ describe('the entries a restored row has pushed', () => {
 
     expect(step.state.rows).toEqual([row('a', { entries: 2 }), row('b')])
     expect(step.state.ghosts).toEqual(['c'])
+  })
+})
+
+describe('the rows a history write holds', () => {
+  const ids = (rows: { id: string }[]) => rows.map((r) => r.id)
+
+  it('stores no row being closed, and keeps its address until its close steps back', () => {
+    const rows = [row('a'), row('b', { close: cid('c1') }), row('c', { phase: 'opening' })]
+    const exiting = entryRows(state({ rows, closes: closes(close('c1', ['b'])) }))
+
+    expect([ids(exiting.stored), ids(exiting.addressed)]).toEqual([['a'], ['a', 'b']])
+
+    const unwinding = entryRows(
+      state({ rows, closes: closes(close('c1', ['b'], { phase: { kind: 'unwinding', token: tok(1) } })) }),
+    )
+
+    expect([ids(unwinding.stored), ids(unwinding.addressed)]).toEqual([['a'], ['a']])
   })
 })
 
