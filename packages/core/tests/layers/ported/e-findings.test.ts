@@ -114,4 +114,34 @@ describe("an infinite scroll's url sync", () => {
       'page:/users?page=2',
     ])
   })
+
+  it('writes no page number for a layer with no url of its own', async () => {
+    const app = await bench(users, byPath({}))
+    const handle = app.router.layer({ component: 'Users/Pick' })
+
+    await settled()
+
+    const layer = app.router.layerHandle(handle.id)!
+    const { page: base } = await app.modules()
+    const { useInfiniteScrollQueryString } = await import('../../../src/infiniteScroll/queryString')
+    const replaced: string[] = []
+
+    vi.spyOn(app.router, 'replace').mockImplementation((params) => void replaced.push(`page:${params.url}`))
+    vi.spyOn(layer.router, 'replace').mockImplementation((params) => void replaced.push(`layer:${params.url}`))
+
+    const items = [item('2'), item('2')]
+    const scrollIn = (scope: { router: typeof app.router; page: { get: () => { url: string } } }) =>
+      useInfiniteScrollQueryString({
+        scope: scope as never,
+        getPageName: () => 'page',
+        getItemsElement: () => ({ children: items }) as unknown as HTMLElement,
+        shouldPreserveUrl: () => false,
+      })
+
+    scrollIn({ router: layer.router, page: { get: () => app.views()[0].page } }).onItemIntersected(items[1])
+    scrollIn({ router: app.router, page: { get: () => base.get() } }).onItemIntersected(items[1])
+    await vi.waitFor(() => expect(replaced).toContain('page:/users?page=2'))
+
+    expect(replaced).toEqual(['page:/users?page=2'])
+  })
 })
