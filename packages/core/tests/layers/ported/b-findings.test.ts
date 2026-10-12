@@ -6,7 +6,10 @@ const layer = (name: string, url: string) => page(name, url, { layer: { key: nam
 
 describe('withAddressHash', () => {
   it('writes it onto the topmost layer that has a url', async () => {
-    const app = await ported(users(), { '/a': layer('A', '/a'), '/b': layer('B', '/b') })
+    const app = await ported(users(), {
+      '/a': layer('A', '/a'),
+      '/b': layer('B', '/b'),
+    })
 
     app.router.visit('/a')
     await settled()
@@ -56,7 +59,10 @@ describe('history entry counting', () => {
   })
 
   it('gives the entry back when the browser refused to write it', async () => {
-    const app = await ported(users(), { '/a': layer('A', '/a') })
+    const app = await ported(users(), {
+      '/a': layer('A', '/a'),
+      '/users': users(),
+    })
     const reloads: string[] = []
     const pushState = window.history.pushState
 
@@ -85,5 +91,44 @@ describe('history entry counting', () => {
     await settled()
 
     expect(deltas).toEqual([])
+  })
+})
+
+describe('resolveInitialPage', () => {
+  it('renders a layer whose base is its own url as an ordinary page', async () => {
+    const own = page('Users/Edit', '/users/5/edit', {
+      props: { errors: {} },
+      layer: { key: 'Users/Edit', base: '/users/5/edit' },
+    })
+    const app = await ported(own, { '/users/5/edit': own }, { boot: true })
+
+    await settled()
+
+    expect((await app.basePage()).component).toBe('Users/Edit')
+    expect(await app.basePage()).not.toHaveProperty('layer')
+    expect(app.layers()).toEqual([])
+    expect(app.sent).toEqual([])
+  })
+})
+
+describe('loadingBase', () => {
+  it('is undefined for a blank with no url at all', async () => {
+    const seen: unknown[] = []
+    const app = await ported(
+      users(),
+      {},
+      {
+        loading: (url) => {
+          seen.push(url)
+
+          return { name: 'Loading' }
+        },
+      },
+    )
+
+    expect(await app.resolve('', { ...page('', ''), url: '' })).toEqual({
+      name: 'Blank',
+    })
+    expect(seen).toEqual([])
   })
 })

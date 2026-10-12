@@ -472,7 +472,8 @@ describe("a walk hop landing", () => {
     await settled();
 
     expect(components(app)).toEqual(["Users/Index", "Users/Edit"]);
-    expect(await app.basePage()).toMatchObject({ component: "" });
+    expect(await app.basePage()).toMatchObject({ component: "", url: "/" });
+    expect(app.loadingFor).toEqual(["/users", "/"]);
     expect(app.requests.map((request) => request.path)).toEqual([
       "/login",
       "/users",

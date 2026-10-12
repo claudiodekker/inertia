@@ -48,6 +48,8 @@ export async function bench(
   const core = await import("../../../src");
   const { HttpCancelledError } = await import("../../../src/httpErrors");
   const requests: Req[] = [];
+  /** Every url the loading resolver was asked about, in order. */
+  const loadingFor: string[] = [];
 
   core.http.setClient({
     request: (config: HttpRequestConfig): Promise<HttpResponse> => {
@@ -84,8 +86,11 @@ export async function bench(
       rememberedState: {},
       ...initial,
     } as Page,
-    resolveComponent: (name: string) =>
-      options.resolve ? options.resolve(name) : { name },
+    resolveComponent: core.layerSlot.wrapResolver(
+      (name: string) => (options.resolve ? options.resolve(name) : { name }),
+      (url: string) => void loadingFor.push(url),
+      { name: "" },
+    ),
     swapComponent: async () => {},
     ...(options.onFlash && { onFlash: options.onFlash }),
   } as never);
@@ -98,6 +103,7 @@ export async function bench(
     core,
     router: core.router,
     requests,
+    loadingFor,
     layers: () => core.layerSlot.info(),
     views: () => core.layerSlot.views(),
     basePage,
