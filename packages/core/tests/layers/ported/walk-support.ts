@@ -119,6 +119,15 @@ export async function world(options: {
   ) => {
     listeners.set(type, [...(listeners.get(type) ?? []), listener]);
   }) as never;
+  document.removeEventListener = ((
+    type: string,
+    listener: (event: Event) => void,
+  ) => {
+    listeners.set(
+      type,
+      (listeners.get(type) ?? []).filter((known) => known !== listener),
+    );
+  }) as never;
   document.dispatchEvent = ((event: Event) => {
     events.push(event.type);
     listeners.get(event.type)?.forEach((listener) => listener(event));

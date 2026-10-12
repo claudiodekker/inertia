@@ -10,7 +10,7 @@ import { Scroll } from '../scroll'
 import type { CancelToken, Component, Page, PageResolver, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
-import { fetchBase, retargetBlank } from './base'
+import { announceFlash, fetchBase, retargetBlank } from './base'
 import { entryRows } from './close'
 import {
   blankPage,
@@ -603,6 +603,7 @@ export class Stack implements StackPort {
     })
     void this.paint()
     queueMicrotask(() => this.instances.forEach((instance) => this.loadMissingDeferred(instance)))
+    announceFlash(plan, this.connected().baseScope.router)
   }
 
   /** Walks up to a bound wrapper element. Never an attribute read. */

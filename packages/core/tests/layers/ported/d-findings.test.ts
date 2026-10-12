@@ -148,6 +148,7 @@ describe('the walk a cold layer sends for the base beneath it', () => {
       })
 
       expect(w.events.filter((type) => type === 'inertia:flash')).toHaveLength(1)
+      expect(w.events.indexOf('inertia:flash')).toBeGreaterThan(w.events.indexOf('inertia:navigate'))
     })
   })
 })

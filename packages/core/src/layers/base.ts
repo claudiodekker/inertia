@@ -1,9 +1,11 @@
-// What the stack asks 3.x to do for the base page beneath a cold layer: the visits that fetch it and
-// the url its placeholder carries.
+// What the stack asks 3.x to do for the base page beneath a cold layer: the visits that fetch it, the
+// url its placeholder carries, and the flash a layer arrived with on the document.
 
+import { fireFlashEvent } from '../events'
 import { page as currentPage } from '../page'
 import type { Router } from '../router'
 import type { VisitOptions } from '../types'
+import type { BootPlan } from './entry'
 import type { VisitId, VisitTag } from './state'
 import type { Visits } from './visits'
 
@@ -39,4 +41,20 @@ export function fetchBase(
 /** The blank takes the url the walk fetches next, and 3.x resolves it again: the loading resolver sees that url. */
 export function retargetBlank(url: string): void {
   void currentPage.set({ ...currentPage.get(), url }, { replace: true, preserveScroll: true, preserveState: true })
+}
+
+/**
+ * The flash a layer arrived with on the document is announced as 3.x announces the document's own:
+ * after the initial navigate event. A load that restores a history entry announces none.
+ */
+export function announceFlash(plan: BootPlan, router: Router): void {
+  const flashes = plan.seeds.map((seed) => seed.page.flash).filter((flash) => Object.keys(flash).length > 0)
+
+  if (flashes.length > 0) {
+    router.once('navigate', (event) => {
+      if (event.detail.type === 'initial') {
+        queueMicrotask(() => flashes.forEach((flash) => fireFlashEvent(flash)))
+      }
+    })
+  }
 }
