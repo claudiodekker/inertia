@@ -18,9 +18,9 @@
   import { router } from '@inertiajs/core'
   import { onMount } from 'svelte'
   import { setHydrationContext } from '../hydration'
+  import { useLayerViews } from '../layerViews.svelte'
   import { resetLayoutProps, storeState } from '../layoutProps.svelte'
   import { setPage } from '../page.svelte'
-  import { useLayerViews } from '../layerViews.svelte'
   import renderPage, { type LayoutSnapshot } from '../renderPage'
   import Layer from './Layer.svelte'
   import { layerStack, noLayers } from './LayerStack.svelte'
@@ -52,7 +52,9 @@
   let key = $state<number | null>(null)
   // svelte-ignore state_referenced_locally
   let page = $state({ ...initialPage, flash: initialPage.flash ?? {} })
-  let renderProps = $derived.by<RenderProps>(() => renderPage(component, page, key, currentLayoutSnapshot(), defaultLayout))
+  let renderProps = $derived.by<RenderProps>(() =>
+    renderPage(component, page, key, currentLayoutSnapshot(), defaultLayout),
+  )
 
   // Synchronous initialization so the global page store is populated during SSR
   // ($effect.pre does not run during Svelte 5 SSR)

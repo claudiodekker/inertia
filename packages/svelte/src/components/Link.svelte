@@ -1,8 +1,8 @@
 <script lang="ts">
   import { isUrlMethodPair, resolveUrlMethodPairComponent } from '@inertiajs/core'
   import type { LinkComponentBaseProps } from '@inertiajs/core'
-  import { createInertiaAction } from '../link'
   import { useRouter } from '../layerContext.svelte'
+  import { createInertiaAction } from '../link'
 
   interface Props {
     href?: LinkComponentBaseProps['href']
