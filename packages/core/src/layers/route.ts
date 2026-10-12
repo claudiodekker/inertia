@@ -38,11 +38,19 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
     return target ? { kind: 'close', id: target, beneath: beneath(s.rows, target) } : { kind: 'pass' }
   }
 
+  const from = origin.kind === 'layer' ? row(origin.id)! : null
+  // A layer that owns no address was submitted from the tier beneath it, so that tier's page comes back.
+  const handsBack = from !== null && !from.ownsAddress && facts.matchesAddressTier && facts.hasErrors
+
   if (marks.layer) {
     if (s.pin && s.pin.gen === s.base.gen) {
       const pinned = s.pin.ticket ? s.tickets.get(s.pin.ticket) : undefined
 
       return { kind: 'return', id: pinned ? pinned.id : e.newId }
+    }
+
+    if (handsBack) {
+      return { kind: 'handback', id: from.id }
     }
 
     if (origin.kind === 'layer' && origin.instant) {
@@ -97,12 +105,8 @@ export function classify(s: StackState, e: ResponseArrived): Landing {
     return marks.layer.base ? { kind: 'cold', id: ticket ? ticket.id : e.newId } : { kind: 'promote' }
   }
 
-  if (origin.kind === 'layer') {
-    const from = row(origin.id)!
-
-    return !from.ownsAddress && facts.matchesAddressTier && facts.hasErrors
-      ? { kind: 'handback', id: origin.id }
-      : { kind: 'base' }
+  if (from) {
+    return handsBack ? { kind: 'handback', id: from.id } : { kind: 'base' }
   }
 
   return { kind: 'pass' }
@@ -113,11 +117,11 @@ export function refreshes(facts: RouteFacts): boolean {
   return facts.partial || (facts.async && facts.preserveState)
 }
 
-/** The routed row with this key: the preferred row first, else the topmost. */
+/** The routed row with this key: the preferred row first, else the lowest. */
 function sameKey(rows: readonly LayerRow[], key: string, prefer: LayerId | null): LayerRow | undefined {
   const matches = rows.filter((row) => row.type === 'routed' && row.key === key)
 
-  return matches.find((row) => row.id === prefer) ?? matches.at(-1)
+  return matches.find((row) => row.id === prefer) ?? matches[0]
 }
 
 /** The nearest routed tier below `id`, else the base. */

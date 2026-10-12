@@ -121,9 +121,15 @@ const cases: [string, StackState, Arrival, Landing][] = [
     { kind: 'rewrite', id: id('a'), dismissed: [id('b')], remount: false },
   ],
   [
-    'a same-key answer from the base rewrites the topmost match',
+    'a same-key answer from the base rewrites the lowest match and dismisses what stands on it',
     state({ rows: [row('a', { key: 'k' }), row('b', { key: 'k' })] }),
     { layer: layer('k') },
+    { kind: 'rewrite', id: id('a'), dismissed: [id('b')], remount: true },
+  ],
+  [
+    'a same-key answer prefers the layer the visit was made from',
+    state({ rows: [row('a', { key: 'k' }), row('b', { key: 'k' })] }),
+    { origin: layerOrigin('b'), layer: layer('k') },
     { kind: 'rewrite', id: id('b'), dismissed: [], remount: true },
   ],
   [
@@ -221,6 +227,12 @@ const cases: [string, StackState, Arrival, Landing][] = [
     state({ rows: [row('a', { ownsAddress: false })] }),
     { origin: layerOrigin('a'), facts: { matchesAddressTier: true, hasErrors: true } },
     { kind: 'handback', id: id('a') },
+  ],
+  [
+    "the layer beneath's own page answering a local layer with errors hands back, rewriting nothing",
+    state({ rows: [row('a', { key: 'k' }), row('l', { type: 'local', ownsAddress: false })] }),
+    { origin: layerOrigin('l'), layer: layer('k'), facts: { matchesAddressTier: true, hasErrors: true } },
+    { kind: 'handback', id: id('l') },
   ],
   [
     'a plain answer from a layer lands on the base',
