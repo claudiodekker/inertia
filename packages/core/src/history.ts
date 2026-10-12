@@ -52,19 +52,21 @@ class History {
 
     const { data: entry, url } = this.composer?.compose(page) ?? { data: page, url: page.url }
 
-    queue.add(() => {
-      return this.getPageData(entry).then((data) => {
-        // Defer history.pushState to the next event loop tick to prevent timing conflicts.
-        // Ensure any previous history.replaceState completes before pushState is executed.
-        const doPush = () => this.doPushState({ page: data }, url).then(() => cb?.())
+    this.queueWrite(entry, (data) => this.doPushState({ page: data }, url).then(() => cb?.()))
+  }
 
+  protected queueWrite(entry: Page, write: (data: Page | ArrayBuffer) => Promise<void>): Promise<void> {
+    return queue.add(() => {
+      return this.getPageData(entry).then((data) => {
+        // Defer the history write to the next event loop tick to prevent timing conflicts.
+        // Ensure any previous history write completes before this one is executed.
         if (isChromeIOS) {
-          return new Promise((resolve) => {
-            setTimeout(() => doPush().then(resolve))
+          return new Promise<void>((resolve) => {
+            setTimeout(() => write(data).then(resolve))
           })
         }
 
-        return doPush()
+        return write(data)
       })
     })
   }
@@ -193,21 +195,7 @@ class History {
 
     const { data: entry, url } = this.composer?.compose(page) ?? { data: page, url: page.url }
 
-    queue.add(() => {
-      return this.getPageData(entry).then((data) => {
-        // Defer history.replaceState to the next event loop tick to prevent timing conflicts.
-        // Ensure any previous history.pushState completes before replaceState is executed.
-        const doReplace = () => this.doReplaceState({ page: data }, url).then(() => cb?.())
-
-        if (isChromeIOS) {
-          return new Promise((resolve) => {
-            setTimeout(() => doReplace().then(resolve))
-          })
-        }
-
-        return doReplace()
-      })
-    })
+    this.queueWrite(entry, (data) => this.doReplaceState({ page: data }, url).then(() => cb?.()))
   }
 
   /** Resolves false when the browser refused a push (throttled or over quota), so no entry was added. */
@@ -216,34 +204,20 @@ class History {
       return Promise.resolve(true)
     }
 
+    if (mode === 'replace') {
+      return this.queueWrite(entry, (data) => this.doReplaceState({ page: data }, url)).then(() => true)
+    }
+
     let written = true
 
-    return queue
-      .add(() => {
-        return this.getPageData(entry).then((data) => {
-          const doWrite = () => {
-            if (mode === 'replace') {
-              return this.doReplaceState({ page: data }, url)
-            }
+    return this.queueWrite(entry, (data) => {
+      // A push the browser accepted leaves a new state object behind.
+      const before = window.history.state
 
-            // A push the browser accepted leaves a new state object behind.
-            const before = window.history.state
-
-            return this.doPushState({ page: data }, url).then(() => {
-              written = window.history.state !== before
-            })
-          }
-
-          if (isChromeIOS) {
-            return new Promise<void>((resolve) => {
-              setTimeout(() => doWrite().then(resolve))
-            })
-          }
-
-          return doWrite()
-        })
+      return this.doPushState({ page: data }, url).then(() => {
+        written = window.history.state !== before
       })
-      .then(() => written)
+    }).then(() => written)
   }
 
   public go(delta: number): Promise<'answered' | 'timeout'> {
