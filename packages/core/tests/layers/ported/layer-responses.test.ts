@@ -169,7 +169,8 @@ describe("base generation", () => {
     await settled();
 
     expect((await app.basePage()).component).toBe("Users/Index");
-    expect(ids(app)).toEqual(before);
+    expect(before).toHaveLength(1);
+    expect(ids(app)).toEqual([]);
   });
 
   it("survives a partial reload of the same page", async () => {

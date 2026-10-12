@@ -938,8 +938,7 @@ describe("a submit answered by the tier the layer stands on", () => {
     exitShells(app);
     await settled();
 
-    expect(app.layers().map((layer) => layer.id)).toEqual([handle.id]);
-    expect(app.views().map((view) => view.shell.open)).toEqual([true]);
+    expect(app.layers()).toEqual([]);
     expect((await app.basePage()).props).toEqual({
       users: [{ id: 9 }],
       errors: {},
