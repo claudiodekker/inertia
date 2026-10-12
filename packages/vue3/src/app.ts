@@ -3,9 +3,6 @@ import {
   HeadManager,
   HeadManagerOnUpdateCallback,
   HeadManagerTitleCallback,
-  isPropsObject,
-  isPropsObjectOrCallback,
-  normalizeLayouts,
   Page,
   PageProps,
   resolveServerHead,
@@ -14,7 +11,6 @@ import {
   type ServerHeadOption,
 } from '@inertiajs/core'
 import {
-  Component,
   computed,
   DefineComponent,
   defineComponent,
@@ -28,44 +24,12 @@ import {
   shallowRef,
 } from 'vue'
 import { provideHydrationContext } from './hydration'
+import LayerStack from './LayerStack'
 import { state as layoutPropsState, resetLayoutProps } from './layoutProps'
 import remember from './remember'
+import renderPage from './renderPage'
 import { VuePageHandlerArgs } from './types'
 import useForm from './useForm'
-
-type LayoutComponent = DefineComponent | Component
-
-function isComponent(value: unknown): value is LayoutComponent {
-  if (!value) {
-    return false
-  }
-
-  if (typeof value === 'function') {
-    return true
-  }
-
-  if (typeof value === 'object') {
-    const obj = value as Record<string, unknown>
-    return (
-      typeof obj.render === 'function' ||
-      typeof obj.setup === 'function' ||
-      typeof obj.template === 'string' ||
-      '__file' in obj ||
-      '__name' in obj
-    )
-  }
-
-  return false
-}
-
-function isRenderFunction(value: unknown): boolean {
-  if (typeof value !== 'function') {
-    return false
-  }
-
-  const fn = value as Function
-  return fn.length === 2 && typeof fn.prototype === 'undefined'
-}
 
 export interface InertiaAppProps<SharedProps extends PageProps = PageProps> {
   initialPage: Page<SharedProps>
@@ -182,81 +146,34 @@ const App: InertiaApp = defineComponent({
     }
 
     return () => {
-      if (component.value) {
-        component.value.inheritAttrs = !!component.value.inheritAttrs
-
-        const child = h(component.value, {
-          ...page.value!.props,
-          key: key.value,
-        })
-
-        if (layout.value) {
-          component.value.layout = layout.value
-          layout.value = null
-        }
-
-        if (component.value.layout && isRenderFunction(component.value.layout)) {
-          return (component.value.layout as Function)(h, child)
-        }
-
-        let effectiveLayout: unknown
-        let callbackProps: Record<string, unknown> | null = null
-        const layoutValue = component.value.layout
-
-        if (
-          typeof layoutValue === 'function' &&
-          (layoutValue as Function).length <= 1 &&
-          typeof (layoutValue as Function).prototype === 'undefined'
-        ) {
-          const result = (layoutValue as Function)(page.value!.props)
-
-          if (isPropsObjectOrCallback(result, isComponent)) {
-            effectiveLayout = defaultLayout?.(page.value!.component, page.value!)
-            callbackProps = result as Record<string, unknown>
-          } else {
-            effectiveLayout = result
-          }
-        } else if (isPropsObject(layoutValue, isComponent)) {
-          effectiveLayout = defaultLayout?.(page.value!.component, page.value!)
-          callbackProps = layoutValue as Record<string, unknown>
-        } else {
-          effectiveLayout = layoutValue ?? defaultLayout?.(page.value!.component, page.value!)
-        }
-
-        if (effectiveLayout) {
-          let layouts = normalizeLayouts(
-            effectiveLayout,
-            isComponent,
-            component.value.layout && !callbackProps ? isRenderFunction : undefined,
-          )
-
-          if (callbackProps) {
-            layouts = layouts.map((l) => ({ ...l, props: { ...l.props, ...callbackProps } }))
-          }
-
-          if (layouts.length > 0) {
-            const dynamicProps = isServer ? { shared: {}, named: {} } : layoutPropsState.value
-
-            return layouts.reduceRight((childNode, layout) => {
-              const layoutComponent = layout.component as DefineComponent
-              layoutComponent.inheritAttrs = !!layoutComponent.inheritAttrs
-
-              return h(
-                layoutComponent,
-                {
-                  ...page.value!.props,
-                  ...layout.props,
-                  ...dynamicProps.shared,
-                  ...(layout.name ? dynamicProps.named[layout.name] || {} : {}),
-                },
-                () => childNode,
-              )
-            }, child)
-          }
-        }
-
-        return child
+      if (!component.value) {
+        return [undefined, h(LayerStack)]
       }
+
+      if (layout.value) {
+        component.value.layout = layout.value
+        layout.value = null
+      }
+
+      return [
+        renderPage(
+          component.value,
+          page.value!,
+          key.value,
+          isServer
+            ? { shared: {}, named: {} }
+            : {
+                get shared() {
+                  return layoutPropsState.value.shared
+                },
+                get named() {
+                  return layoutPropsState.value.named
+                },
+              },
+          defaultLayout,
+        ),
+        h(LayerStack),
+      ]
     }
   },
 })

@@ -2,9 +2,6 @@ import {
   createHeadManager,
   HeadManagerOnUpdateCallback,
   HeadManagerTitleCallback,
-  isPropsObject,
-  isPropsObjectOrCallback,
-  normalizeLayouts,
   Page,
   PageHandler,
   PageProps,
@@ -15,7 +12,6 @@ import {
 import {
   createElement,
   FunctionComponent,
-  isValidElement,
   ReactNode,
   useEffect,
   useMemo,
@@ -25,30 +21,11 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import HeadContext from './HeadContext'
+import LayerStack from './LayerStack'
 import { resetLayoutProps, store } from './layoutProps'
 import PageContext from './PageContext'
-import { LayoutFunction, ReactComponent, ReactPageHandlerArgs } from './types'
-
-function isComponent(value: unknown): value is ReactComponent {
-  return typeof value === 'function' || (typeof value === 'object' && value !== null && '$$typeof' in value)
-}
-
-function isRenderFunction(value: unknown): boolean {
-  if (typeof value !== 'function') {
-    return false
-  }
-
-  const fn = value as Function
-  return fn.length === 1 && typeof fn.prototype === 'undefined'
-}
-
-function isLayoutResolver(value: unknown): boolean {
-  return (
-    typeof value === 'function' &&
-    (value as Function).length <= 1 &&
-    typeof (value as Function).prototype === 'undefined'
-  )
-}
+import renderPage from './renderPage'
+import { ReactComponent, ReactPageHandlerArgs } from './types'
 
 let pendingInitialSwap: ReactPageHandlerArgs | null = null
 let routerIsInitialized = false
@@ -182,61 +159,7 @@ export default function App<SharedProps extends PageProps = PageProps>({
   }
 
   const renderChildren =
-    children ||
-    (({ Component, props, key }) => {
-      const child = createElement(Component, { key, ...props })
-
-      let effectiveLayout: unknown
-      let callbackProps: Record<string, unknown> | null = null
-      const layoutValue = Component.layout
-
-      if (isLayoutResolver(layoutValue)) {
-        const result = (layoutValue as Function)(props)
-
-        if (isValidElement(result)) {
-          return (layoutValue as LayoutFunction)(child)
-        }
-
-        if (isPropsObjectOrCallback(result, isComponent)) {
-          effectiveLayout = defaultLayout?.(current.page.component, current.page)
-          callbackProps = result as Record<string, unknown>
-        } else {
-          effectiveLayout = result
-        }
-      } else if (isPropsObject(layoutValue, isComponent)) {
-        effectiveLayout = defaultLayout?.(current.page.component, current.page)
-        callbackProps = layoutValue as unknown as Record<string, unknown>
-      } else {
-        effectiveLayout = layoutValue ?? defaultLayout?.(current.page.component, current.page)
-      }
-
-      let layouts = normalizeLayouts(
-        effectiveLayout,
-        isComponent,
-        layoutValue && !callbackProps ? isRenderFunction : undefined,
-      )
-
-      if (callbackProps) {
-        layouts = layouts.map((l) => ({ ...l, props: { ...l.props, ...callbackProps } }))
-      }
-
-      if (layouts.length > 0) {
-        return layouts.reduceRight((childNode, layout) => {
-          return createElement(
-            layout.component,
-            {
-              ...props,
-              ...layout.props,
-              ...dynamicLayoutProps.shared,
-              ...(layout.name ? dynamicLayoutProps.named[layout.name] || {} : {}),
-            },
-            childNode,
-          )
-        }, child)
-      }
-
-      return child
-    })
+    children || (({ Component, key }) => renderPage(Component, current.page, key, dynamicLayoutProps, defaultLayout))
 
   return createElement(
     HeadContext.Provider,
@@ -250,6 +173,7 @@ export default function App<SharedProps extends PageProps = PageProps>({
         props: current.page.props,
       }),
     ),
+    createElement(LayerStack),
   )
 }
 

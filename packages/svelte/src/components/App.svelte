@@ -20,7 +20,10 @@
   import { resetLayoutProps, storeState } from '../layoutProps.svelte'
   import { setPage } from '../page.svelte'
   import type { LayoutType, LayoutResolver } from '../types'
+  import LayerStack from './LayerStack.svelte'
   import Render, { h, type RenderProps } from './Render.svelte'
+
+  type LayoutSnapshot = { shared: Record<string, any>; named: Record<string, Record<string, any>> }
 
   interface Props {
     initialComponent: InertiaAppProps['initialComponent']
@@ -37,7 +40,7 @@
   let key = $state<number | null>(null)
   // svelte-ignore state_referenced_locally
   let page = $state({ ...initialPage, flash: initialPage.flash ?? {} })
-  let renderProps = $derived.by<RenderProps>(() => resolveRenderProps(component, page, key))
+  let renderProps = $derived.by<RenderProps>(() => resolveRenderProps(component, page, key, currentLayoutSnapshot()))
 
   // Synchronous initialization so the global page store is populated during SSR
   // ($effect.pre does not run during Svelte 5 SSR)
@@ -107,7 +110,26 @@
     )
   }
 
-  function resolveRenderProps(component: ResolvedComponent, page: Page, key: number | null = null): RenderProps {
+  function currentLayoutSnapshot(): LayoutSnapshot {
+    // Getters keep the reactive reads inside the layout branch, as in 3.x
+    return isServer
+      ? { shared: {}, named: {} }
+      : {
+          get shared() {
+            return storeState.shared
+          },
+          get named() {
+            return storeState.named
+          },
+        }
+  }
+
+  function resolveRenderProps(
+    component: ResolvedComponent,
+    page: Page,
+    key: number | null = null,
+    layoutSnapshot: LayoutSnapshot,
+  ): RenderProps {
     const child = h(component.default, page.props, [], key)
 
     if (component.layout && isRenderFunction(component.layout)) {
@@ -139,7 +161,15 @@
     }
 
     return effectiveLayout
-      ? resolveLayout(effectiveLayout, child, page.props, key, !!component.layout && !callbackProps, callbackProps)
+      ? resolveLayout(
+          effectiveLayout,
+          child,
+          page.props,
+          key,
+          layoutSnapshot,
+          !!component.layout && !callbackProps,
+          callbackProps,
+        )
       : child
   }
 
@@ -148,6 +178,7 @@
     child: RenderProps,
     pageProps: PageProps,
     key: number | null,
+    dynamicProps: LayoutSnapshot,
     isFromPage: boolean = true,
     callbackProps: Record<string, unknown> | null = null,
   ): RenderProps {
@@ -162,8 +193,6 @@
     }
 
     if (layouts.length > 0) {
-      const dynamicProps = isServer ? { shared: {}, named: {} } : { shared: storeState.shared, named: storeState.named }
-
       return layouts.reduceRight((child, layout) => {
         return {
           ...h(
@@ -187,3 +216,4 @@
 </script>
 
 <Render {...renderProps} />
+<LayerStack />

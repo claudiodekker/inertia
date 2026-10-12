@@ -24,6 +24,8 @@ export {
   type LayoutDefinition,
   type LayoutPropsStore,
 } from './layout'
+/** @internal Not part of the public API. May change or be removed without notice. */
+export { layerSlot, type LayerView } from './layers/slot'
 export { shouldIntercept, shouldNavigate } from './navigationEvents'
 export { isPathOrSubPath, partialReloadRequestsProp, partialReloadRequestsSomeProps } from './partialReload'
 export { progress, default as setupProgress } from './progress'
