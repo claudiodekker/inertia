@@ -1,0 +1,30 @@
+// PR: openLayerFor "finds the layer open under the response's key": with two open layers sharing a key, the response is
+//   matched to the FIRST (bottom) one (layers.filter(key).find(preferred) ?? matches[0]): layer-1.
+// Rebuilt: route.ts sameKey takes the TOPMOST (matches.at(-1)): a base-made answer rewrites the top row ('/panels/2' -> '/panels/3')
+//   and leaves the bottom one ('/panels/1').
+import { describe, expect, it } from 'vitest'
+import { page, ported, settled } from '../packages/core/tests/layers/ported/support'
+
+describe('openLayerFor', () => {
+  it("finds the layer open under the response's key", async () => {
+    const dashboard = page('Dashboard', '/dashboard', { props: { errors: {}, stats: 3 } })
+    const panel = (url: string, base?: string) =>
+      page('Panel', url, { props: { errors: {}, at: url }, layer: { key: 'Panel', base } })
+    const app = await ported(dashboard, {
+      '/go': panel('/panels/2', '/p1'),
+      '/p1': panel('/panels/1', '/dashboard'),
+      '/dashboard': dashboard,
+      '/panels/3': panel('/panels/3', '/dashboard'),
+    })
+
+    app.router.visit('/go')
+    await settled()
+
+    const [lower] = app.layers().map((layer) => layer.id)
+
+    app.router.visit('/panels/3')
+    await settled()
+
+    expect(app.layers()[0]).toMatchObject({ id: lower, url: '/panels/3' })
+  })
+})

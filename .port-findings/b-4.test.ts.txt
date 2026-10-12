@@ -1,0 +1,22 @@
+// PR: loadingBase "is undefined for a blank with no url at all": a blank page with url '' consults no loading resolver.
+// Rebuilt: wrapResolver calls loading('', { layers: [] }) for it (url falls back to '').
+import { describe, expect, it } from 'vitest'
+import { ported } from '../packages/core/tests/layers/ported/support'
+import { page } from '../packages/core/tests/layers/runtime'
+
+describe('loadingBase', () => {
+  it('is undefined for a blank with no url at all', async () => {
+    const seen: unknown[] = []
+    const app = await ported(page('Users/Index', '/users'), {}, {
+      loading: (url) => {
+        seen.push(url)
+
+        return { name: 'Loading' }
+      },
+    })
+
+    await app.resolve('', { ...page('', ''), url: '' } as never)
+
+    expect(seen).toEqual([])
+  })
+})

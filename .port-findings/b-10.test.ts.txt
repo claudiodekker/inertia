@@ -1,0 +1,21 @@
+// PR: withAddressHash "falls through a layer that has no url of its own": layers [A '/a', local B]: the hash lands on A:
+//   layer urls ['http://localhost/a#comments', null].
+// Rebuilt: the hash lands on the base page url; A stays '/a' (the entry's base url is 'http://localhost/users#comments').
+import { describe, expect, it } from 'vitest'
+import { page, ported, settled } from '../packages/core/tests/layers/ported/support'
+
+describe('withAddressHash', () => {
+  it('falls through a layer that has no url of its own', async () => {
+    const app = await ported(page('Users/Index', '/users', { props: { errors: {}, users: [] } }), {
+      '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }),
+    })
+
+    app.router.visit('/a')
+    await settled()
+    app.router.layer({ component: 'Prompt' })
+    await settled()
+    await app.anchor('/a#comments')
+
+    expect(app.entry().layers![0].url).toBe('http://localhost/a#comments')
+  })
+})
