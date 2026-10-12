@@ -131,3 +131,58 @@ describe('a refresh of the page beneath an open stack', () => {
     expect((await app.basePage()).props).toMatchObject({ stats: [1, 2, 3] })
   })
 })
+
+describe('a layer with no url of its own reloading', () => {
+  it('drops the carried target for a url-less layer and reloads the base beneath the stack', async () => {
+    const app = await scenario(users(), { '/users': users({ props: { users: [{ id: 9 }], errors: {} } }) })
+    const handle = app.router.layer({ component: 'Users/Edit', props: { user: { id: 5 } } })
+
+    await settled()
+    app.router.layerHandle(handle.id)!.router.reload({ only: ['users'] })
+    await settled()
+
+    expect(app.sent()).toEqual(['get /users'])
+    expect(app.requests[0].headers['X-Inertia-Partial-Component']).toBe('Users/Index')
+    expect((await app.basePage()).props.users).toEqual([{ id: 9 }])
+    expect(app.layers()).toEqual([
+      { id: handle.id, key: 'Users/Edit', component: 'Users/Edit', url: null, type: 'local' },
+    ])
+  })
+
+  it('drops the target for a url-less layer reloading through its own router', async () => {
+    const app = await scenario(users(), { '/users': users({ props: { users: [{ id: 9 }], errors: {} } }) })
+    const handle = app.router.layer({ component: 'Users/Preview' })
+
+    await settled()
+    app.router.layerHandle(handle.id)!.router.reload({ only: ['users'] })
+    await settled()
+
+    expect(app.sent()).toEqual(['get /users'])
+    expect(app.requests[0].headers['X-Inertia-Partial-Component']).toBe('Users/Index')
+    expect(app.layers().map((layer) => [layer.id, layer.type])).toEqual([[handle.id, 'local']])
+  })
+})
+
+describe('the asset version a layer arrives on', () => {
+  it('takes the asset version the layer arrived on', async () => {
+    const app = await scenario(users({ version: 'old' }), {
+      'post /users/5/edit': users({
+        component: 'Users/Edit',
+        url: '/users/5/edit',
+        version: 'new',
+        layer: { key: 'Users/Edit' },
+      }),
+      '/users': users({ version: 'new' }),
+    })
+
+    app.router.post('/users/5/edit')
+    await settled()
+
+    expect((await app.basePage()).version).toBe('new')
+
+    app.router.reload()
+    await settled()
+
+    expect(app.requests.at(-1)!.headers['X-Inertia-Version']).toBe('new')
+  })
+})
