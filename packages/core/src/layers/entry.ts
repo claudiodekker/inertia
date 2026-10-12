@@ -115,7 +115,8 @@ export function planBoot(response: Page, hash: string): BootPlan {
     return { base: response, seeds: [], walkTo: null, top: response, info: [] }
   }
 
-  if (!mark.base) {
+  // A layer with no base, or one that names itself as its base, has nothing beneath it to fetch.
+  if (!mark.base || samePathAndQuery(mark.base, response.url)) {
     return { base: page, seeds: [], walkTo: null, top: page, info: [] }
   }
 
@@ -141,6 +142,17 @@ export function planBoot(response: Page, hash: string): BootPlan {
   }
 
   return { base, seeds: [seed], walkTo: mark.base, top: seed.page, info: [info] }
+}
+
+/** The origin is left out: the server knows none, and it must plan what the client plans. */
+function samePathAndQuery(a: string, b: string): boolean {
+  const at = (url: string) => {
+    const { pathname, search } = new URL(url, 'http://localhost')
+
+    return pathname + search
+  }
+
+  return at(a) === at(b)
 }
 
 /** The placeholder a cold layer stands on until the walk lands its base. It carries the layer's version. */

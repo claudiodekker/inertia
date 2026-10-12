@@ -110,6 +110,22 @@ describe('planBoot', () => {
     expect(plan.walkTo).toBeNull()
   })
 
+  it.each(['/layers/panel/first', 'https://app.test/layers/panel/first', '/layers/panel/first#notes'])(
+    'renders a mark whose base is its own url (%s) as a plain page',
+    (base) => {
+      const plan = planBoot(marked({ key: 'own', base }), '')
+
+      expect(plan.base).toEqual(page('Layers/Panel', '/layers/panel/first', { name: 'first' }))
+      expect(plan).toMatchObject({ seeds: [], walkTo: null, info: [] })
+    },
+  )
+
+  it('walks for a base that differs from its own url only in the query', () => {
+    expect(planBoot(marked({ key: 'own', base: '/layers/panel/first?tab=2' }), '').walkTo).toBe(
+      '/layers/panel/first?tab=2',
+    )
+  })
+
   it('puts a declared base under a blank placeholder that carries the layer version, and seeds the layer', () => {
     const plan = planBoot({ ...marked({ key: 'panel:first', base: '/layers/base' }), version: 'v7' }, '#notes')
 
