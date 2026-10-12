@@ -207,6 +207,11 @@ export type StackEvent =
    * it waited on a prompt. A ticket whose visit is out ends at that visit's finish instead.
    */
   | { type: 'openRefused'; ticket: LayerId }
+  /**
+   * The open named a component to show at once, so its layer goes up before the answer: the ticket's row
+   * exists from here, keyed by its own id until the answer names the key.
+   */
+  | { type: 'placeholderOpened'; ticket: LayerId; ownsAddress: boolean }
   /** After the local layer's component resolved. */
   | { type: 'localOpened'; id: LayerId; owner: Owner; key: string }
   /** From scope.capture() for a visit the runtime tagged. Counted per id: a 409 re-issue dispatches the same id. */

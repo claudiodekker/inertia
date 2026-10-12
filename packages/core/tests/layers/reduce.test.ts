@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { entryRows } from '../../src/layers/close'
 import { reduce } from '../../src/layers/reduce'
-import { MAX_LAYER_CHAIN, type StackState } from '../../src/layers/state'
+import { MAX_LAYER_CHAIN, type StackEvent, type StackState } from '../../src/layers/state'
 import {
   arrival,
   arrived,
@@ -321,7 +321,7 @@ describe('rewrites and refreshes', () => {
     ).toEqual(landing('refresh', { id: 'a', remount: false }))
   })
 
-  it('L:1527 an instant visit inside a layer lands on that layer and its new url pushes', () => {
+  it('L:1527 an instant visit inside a layer lands on that layer, which takes its key, and its new url pushes', () => {
     const {
       state: s,
       effects,
@@ -332,7 +332,7 @@ describe('rewrites and refreshes', () => {
 
     expect(last.outcome).toEqual(landing('refresh', { id: 'a', remount: false }))
     expect(reduce(s, { type: 'layerCommitting', id: id('a'), requestedReplace: false, urlChanged: true })).toEqual({
-      state: state({ rows: [row('a', { key: 'panel:first', entries: 2 })] }),
+      state: state({ rows: [row('a', { key: 'panel:second', entries: 2 })] }),
       effects: [{ type: 'writeEntry', mode: 'push', charged: 'a' }],
       outcome: { kind: 'commit', decision: { kind: 'write', mode: 'push' } },
     })
@@ -1176,6 +1176,40 @@ describe('tickets', () => {
     expect(
       arrived(s, { origin: layerOrigin('a'), facts: { matchesAddressTier: true, hasErrors: true } }).outcome,
     ).toEqual(landing('base'))
+  })
+})
+
+describe('an open that shows a component at once', () => {
+  const opened: StackEvent[] = [
+    { type: 'openRequested', ticket: id('t1'), owner: id('a') },
+    { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', ticket: id('t1') } },
+    { type: 'placeholderOpened', ticket: id('t1'), ownsAddress: true },
+  ]
+
+  it('puts the layer up under the ticket id before any answer, keyed by that id, and the ticket is done', () => {
+    const { state: s, effects } = script(state({ rows: [row('a')] }), opened)
+
+    expect(s.rows).toEqual([row('a'), row('t1', { key: 't1', owner: id('a'), phase: 'opening', entries: 0 })])
+    expect(s.tickets.size).toBe(0)
+    expect(effects).toEqual([])
+  })
+
+  it('lands the answer on that layer, which takes the key the answer names', () => {
+    const { state: s, last } = script(state({ rows: [row('a')] }), [
+      ...opened,
+      { type: 'layerCommitting', id: id('t1'), requestedReplace: false, urlChanged: false },
+      arrival({ visit: 'v1', origin: layerOrigin('t1', true), layer: { key: 'Users/Edit', base: null } }),
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(last.effects).toEqual([])
+    expect(s.rows.at(-1)).toEqual(row('t1', { key: 'Users/Edit', owner: id('a') }))
+  })
+
+  it('does nothing for a ticket that is gone', () => {
+    const s = state({ rows: [row('a')] })
+
+    expect(reduce(s, { type: 'placeholderOpened', ticket: id('t1'), ownsAddress: true }).state).toBe(s)
   })
 })
 

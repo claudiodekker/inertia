@@ -100,6 +100,17 @@ export async function ported(initial: Answer, routes: Routes, raw: Raw = () => u
   }
 }
 
+/**
+ * A layer that lands cold: a visit that shows a placeholder page at once is answered by a layer, which
+ * cannot stand on the placeholder. Returns the layer's scope.
+ */
+export async function openCold(app: Awaited<ReturnType<typeof ported>>, url = 'http://localhost/users/5/edit') {
+  app.router.visit(url, { component: 'Users/Loading' })
+  await settled()
+
+  return app.router.layerHandle(app.layers()[0].id)!
+}
+
 export const counted = (handle: { onClose(listener: () => void): unknown }) => {
   const calls = { closed: 0 }
 

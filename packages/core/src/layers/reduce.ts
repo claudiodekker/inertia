@@ -44,6 +44,8 @@ export function reduce(s: StackState, e: StackEvent): Step {
       return openRequested(s, e)
     case 'openRefused':
       return openRefused(s, e)
+    case 'placeholderOpened':
+      return placeholderOpened(s, e)
     case 'localOpened':
       return localOpened(s, e)
     case 'visitDispatched':
@@ -125,6 +127,22 @@ function openRefused(s: StackState, e: E<'openRefused'>): Step {
     fx.push({ type: 'refuse', ticket: e.ticket })
 
     return { ...t, tickets: without(t.tickets, e.ticket) }
+  })
+}
+
+function placeholderOpened(s: StackState, e: E<'placeholderOpened'>): Step {
+  const ticket = s.tickets.get(e.ticket)
+
+  if (!ticket || row(s, ticket.id)) {
+    return only(s)
+  }
+
+  const owner = ticket.owner === 'base' || row(s, ticket.owner) ? ticket.owner : 'base'
+
+  return only({
+    ...s,
+    tickets: without(s.tickets, ticket.id),
+    rows: [...s.rows, opening(ticket.id, ticket.id, owner, { ownsAddress: e.ownsAddress })],
   })
 }
 
@@ -305,7 +323,11 @@ function responseArrived(s: StackState, e: E<'responseArrived'>): Step {
         case 'rewrite':
           return bind(rewrite(t, fx, landing, key), op)
         case 'refresh': {
-          const target = row(t, landing.id)!
+          // The answer to a layer's own placeholder names the key that layer has from now on.
+          const claimed = e.origin.kind === 'layer' && e.origin.instant && e.marks.layer !== null
+          const target = { ...row(t, landing.id)!, ...(claimed && { key }) }
+
+          t = setRow(t, target)
 
           if (!landing.remount) {
             return bind(t, op)

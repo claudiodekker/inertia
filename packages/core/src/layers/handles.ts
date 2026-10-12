@@ -1,7 +1,8 @@
 // Messaging and the opener's handle. An Inbox holds what a layer's children emit up to it. A
 // TicketHandle exists before its layer does: it collects listeners while pending and joins the
-// layer's instance once a landing names it.
+// layer's instance once a landing names it. A local layer opens here too: it has a handle and no ticket.
 
+import { page as currentPage, type CurrentPage } from '../page'
 import type { LayerId } from './state'
 import type { LayerHandle, LayerInfo, LayerMessageListener } from './types'
 
@@ -43,6 +44,44 @@ export interface Bindable {
   readonly id: LayerId
   readonly inbox: Inbox
   readonly closeListeners: Set<() => void>
+}
+
+/** No request and no ticket: `opened` adds the row once the component resolved, and the instance owns its page. */
+export function openLocal(
+  handle: TicketHandle,
+  { component, props }: { component: string; props?: Record<string, unknown> },
+  opened: () => { id: LayerId; inbox: Inbox; closeListeners: Set<() => void>; page: CurrentPage },
+): void {
+  handle.abort = () => handle.fireClose()
+
+  const landed = currentPage.resolve(component).then(() => {
+    if (handle.state !== 'pending') {
+      return
+    }
+
+    const instance = opened()
+
+    handle.bind(instance)
+
+    return instance.page.set(
+      {
+        component,
+        props: { errors: {}, ...props },
+        url: '',
+        version: currentPage.get().version,
+        flash: {},
+        rescuedProps: [],
+        rememberedState: {},
+      },
+      { preserveScroll: true, preserveState: false },
+    )
+  })
+
+  landed.catch((error) => {
+    handle.fireClose()
+
+    throw error
+  })
 }
 
 export class TicketHandle implements LayerHandle {

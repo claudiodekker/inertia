@@ -30,6 +30,7 @@ const kinds: [StackEvent['type'], number][] = [
   ['exited', 10],
   ['openRequested', 3],
   ['openRefused', 1],
+  ['placeholderOpened', 1],
   ['localOpened', 2],
   ['visitDispatched', 6],
   ['visitFinished', 5],
@@ -154,6 +155,12 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
       return { type: 'openRequested', ticket: id(fresh('t')), owner: owner() }
     case 'openRefused':
       return { type: 'openRefused', ticket: pick([...s.tickets.keys()], a) ?? id(fresh('t')) }
+    case 'placeholderOpened':
+      return {
+        type: 'placeholderOpened',
+        ticket: pick([...s.tickets.keys()], a) ?? id(fresh('t')),
+        ownsAddress: bit(0),
+      }
     case 'localOpened':
       return { type: 'localOpened', id: id(fresh('l')), owner: owner(), key: 'Local' }
     case 'visitDispatched': {

@@ -150,6 +150,16 @@ export class LayerInstance {
     return this
   }
 
+  /**
+   * Before a placeholder goes up: the props a placeholder is built from are those of the page it opens
+   * over, as they are for a placeholder that takes the page's place.
+   */
+  standingOn({ props, sharedProps, encryptHistory }: Page): this {
+    this.page.seed({ ...this.page.get(), props, sharedProps, encryptHistory })
+
+    return this
+  }
+
   /** Idempotent. The scope reads disposed at once; close listeners fire after the next paint. */
   dispose(): void {
     this.disposed = true
@@ -196,7 +206,12 @@ export class LayerPage extends CurrentPage {
   }
 
   public seed(page: Page): void {
-    this.page = page
+    this.page = withRecords(page)
+  }
+
+  /** A layer's page always carries its deferred, once and scroll records, empty when the answer names none. */
+  public set(page: Page, options?: Parameters<CurrentPage['set']>[1]): Promise<void> {
+    return super.set(withRecords(page), options)
   }
 
   /** Clearing history is global by decision: the stack runs it, never this page. */
@@ -258,12 +273,20 @@ export class LayerPage extends CurrentPage {
     this.componentId = {}
 
     return this.resolve(page.component, page).then((component) => {
-      this.page = page
+      this.page = withRecords(page)
       this.cleared = false
 
-      return this.swap({ component, page, preserveState, viewTransition: false })
+      return this.swap({ component, page: this.page, preserveState, viewTransition: false })
     })
   }
+}
+
+function withRecords(page: Page): Page {
+  page.deferredProps ??= {}
+  page.onceProps ??= {}
+  page.scrollProps ??= {}
+
+  return page
 }
 
 /** A layer's HistoryPort. Remembered state lives in the layer page and reaches history through the composite. */
@@ -311,6 +334,11 @@ export class LayerHistory implements HistoryPort {
 export class LayerRouter extends Router {
   public loadDeferred(deferred: Page['deferredProps']): void {
     this.loadDeferredProps(deferred)
+  }
+
+  /** A closed layer has no page to swap, so its placeholder goes up as the page, as a visit that names no layer does. */
+  protected performInstantSwap(visit: PendingVisit): Promise<void> {
+    return this.scope.disposed ? new LayerRouter(baseScope).performInstantSwap(visit) : super.performInstantSwap(visit)
   }
 }
 

@@ -95,6 +95,20 @@ describe('onClose fires exactly once however the layer ends', () => {
     expect(calls.closed).toBe(1)
   })
 
+  it('when onBefore refuses an open that names a component to show at once, with no layer put up', async () => {
+    const app = await runtime(users, { '/users/pick': picker })
+    const handle = app.router.layer('/users/pick', { component: 'Users/Pick', onBefore: () => false })
+    const calls = counted(handle)
+
+    await settled()
+
+    expect(app.sent).toEqual([])
+    expect(app.layers()).toEqual([])
+    expect(app.written()).toEqual([['replace', '/users']])
+    expect(handle.state).toBe('closed')
+    expect(calls.closed).toBe(1)
+  })
+
   it('when the handle is closed while its request is out, which cancels the request', async () => {
     const cancelled: string[] = []
     const app = await runtime(users, { '/users/pick': () => new Promise(() => {}) })

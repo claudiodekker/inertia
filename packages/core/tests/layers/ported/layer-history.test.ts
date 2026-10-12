@@ -80,14 +80,17 @@ describe("the history entry a layer open leaves behind", () => {
 
     expect(Object.keys(app.entry().layers![0]).sort()).toEqual([
       "component",
+      "deferredProps",
       "entries",
       "id",
       "key",
       "layer",
+      "onceProps",
       "owner",
       "props",
       "rememberedState",
       "rescuedProps",
+      "scrollProps",
       "type",
       "url",
       "version",

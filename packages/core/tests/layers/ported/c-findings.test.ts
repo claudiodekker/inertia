@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { base, counted, edit, holdBack, layerAt, ported, settled } from './layer-handles-support'
+import { base, counted, edit, holdBack, layerAt, openCold, ported, settled } from './layer-handles-support'
 
 const routes = () => ({
   '/users/5/edit': edit(),
@@ -7,14 +7,6 @@ const routes = () => ({
   '/teams/9': layerAt('Teams/Show', '/teams/9'),
   '/users': base(),
 })
-
-const openCold = async (app: Awaited<ReturnType<typeof ported>>) => {
-  const cold = app.router.layer('http://localhost/users/5/edit', { component: 'Users/Loading' } as never)
-
-  await settled()
-
-  return cold
-}
 
 describe('closing a layer', () => {
   it('unwinds the steps taken over a cold layer before writing the page beneath it', async () => {

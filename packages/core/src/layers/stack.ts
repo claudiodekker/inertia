@@ -23,7 +23,7 @@ import {
   type LayerEntry,
 } from './entry'
 import { against, entryFacts, isInterstitial, marksOf, routeFacts, snapshot, stripMark } from './facts'
-import { TicketHandle } from './handles'
+import { openLocal, TicketHandle } from './handles'
 import type { LayerInstance, StackPort } from './instance'
 import { reduce } from './reduce'
 import { refreshes } from './route'
@@ -672,10 +672,17 @@ export class Stack implements StackPort {
     const owner: Owner = asking?.id ?? this.state.rows.filter((row) => row.phase === 'open').at(-1)?.id ?? 'base'
 
     if (typeof target === 'object' && !(target instanceof URL) && !('url' in target)) {
-      this.openLocal(handle, id, owner, target)
+      openLocal(handle, target, () => {
+        this.dispatch({ type: 'localOpened', id, owner, key: target.component })
+
+        return this.create(id, 'local')
+      })
 
       return handle
     }
+
+    // A component to show at once goes up as the layer itself, and its answer lands on that layer.
+    const placeholder = typeof options.component === 'string' ? this.create(id).standingOn(scope.page.get()) : null
 
     this.pending.set(id, handle)
     this.dispatch({ type: 'openRequested', ticket: id, owner })
@@ -689,55 +696,19 @@ export class Stack implements StackPort {
           options.onCancelToken?.(token)
         },
       },
-      (followed) => scope.router.visit(target, followed),
+      (followed) => (placeholder?.router ?? scope.router).visit(target, followed),
     )
 
     if (handle.visit === null) {
+      this.instances.delete(id)
       this.dispatch({ type: 'openRefused', ticket: id })
+    } else if (placeholder) {
+      this.pending.delete(id)
+      this.dispatch({ type: 'placeholderOpened', ticket: id, ownsAddress: !options.preserveUrl })
+      handle.bind(placeholder)
     }
 
     return handle
-  }
-
-  /** No request and no ticket: the row exists once the component resolved, with the instance owning its page. */
-  protected openLocal(
-    handle: TicketHandle,
-    id: LayerId,
-    owner: Owner,
-    { component, props }: { component: string; props?: Record<string, unknown> },
-  ): void {
-    handle.abort = () => handle.fireClose()
-
-    const opened = currentPage.resolve(component).then(() => {
-      if (handle.state !== 'pending') {
-        return
-      }
-
-      this.dispatch({ type: 'localOpened', id, owner, key: component })
-
-      const instance = this.create(id, 'local')
-
-      handle.bind(instance)
-
-      return instance.page.set(
-        {
-          component,
-          props: { errors: {}, ...props },
-          url: '',
-          version: currentPage.get().version,
-          flash: {},
-          rescuedProps: [],
-          rememberedState: {},
-        },
-        { preserveScroll: true, preserveState: false },
-      )
-    })
-
-    opened.catch((error) => {
-      handle.fireClose()
-
-      throw error
-    })
   }
 
   /** Closes `id` (default: the top open layer) and every layer above it. Settles once they are gone. */

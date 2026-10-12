@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { base, counted, edit, holdBack, layerAt, page, ported, settled } from './layer-handles-support'
+import { base, counted, edit, holdBack, layerAt, openCold, page, ported, settled } from './layer-handles-support'
 
 describe('closing a layer', () => {
   const routes = () => ({
@@ -185,9 +185,7 @@ describe('closing a layer', () => {
 
   it('pushes the page beneath a standalone layer, leaving the entry the layer arrived on', async () => {
     const app = await ported(base(), routes())
-    const handle = app.router.layer('http://localhost/users/5/edit', { component: 'Users/Loading' } as never)
-
-    await settled()
+    const handle = await openCold(app)
 
     const go = app.go()
 
@@ -201,9 +199,7 @@ describe('closing a layer', () => {
 
   it('leaves the page the stack was opened over in place', async () => {
     const app = await ported(base(), routes())
-    const handle = app.router.layer('http://localhost/users/5/edit', { component: 'Users/Loading' } as never)
-
-    await settled()
+    const handle = await openCold(app)
 
     const over = app.current.get()
 
@@ -243,9 +239,7 @@ describe('closing a layer', () => {
 
     Object.assign(window, { crypto: globalThis.crypto })
 
-    const handle = app.router.layer('http://localhost/users/5/edit', { component: 'Users/Loading' } as never)
-
-    await settled()
+    const handle = await openCold(app)
 
     const entry = (window.history.state as { page: unknown }).page
     const { history } = await import('../../../src/history')
