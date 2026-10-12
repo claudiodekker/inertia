@@ -22,8 +22,6 @@ const response = {
   props: { errors: {}, name: 'first' },
   url: '/layers/panel/first',
   version: 'v1',
-  flash: {},
-  rescuedProps: [],
   layer: { key: 'panel:first', base: '/layers/base' },
 }
 

@@ -131,7 +131,13 @@ export function planBoot(response: Page, hash: string): BootPlan {
       ownsAddress: true,
       entries: 0,
     },
-    page: { ...page, url: hash && !page.url.includes('#') ? page.url + hash : page.url },
+    // A document may name no flash or rescued props: the seed gets what 3.x gives its initial page.
+    page: {
+      ...page,
+      flash: page.flash ?? {},
+      rescuedProps: page.rescuedProps ?? [],
+      url: hash && !page.url.includes('#') ? page.url + hash : page.url,
+    },
   }
   const info: LayerInfo = {
     id: seed.row.id,

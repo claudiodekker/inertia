@@ -120,6 +120,16 @@ describe('planBoot', () => {
     },
   )
 
+  it('gives a seed the empty flash and rescued props 3.x gives an initial page that names none', () => {
+    const { component, props, url, version } = page('Layers/Panel', '/layers/panel/first')
+    const plan = planBoot(
+      { component, props, url, version, layer: { key: 'panel', base: '/layers/base' } } as never,
+      '',
+    )
+
+    expect(plan.seeds[0].page).toMatchObject({ flash: {}, rescuedProps: [] })
+  })
+
   it('walks for a base that differs from its own url only in the query', () => {
     expect(planBoot(marked({ key: 'own', base: '/layers/panel/first?tab=2' }), '').walkTo).toBe(
       '/layers/panel/first?tab=2',
