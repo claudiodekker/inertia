@@ -2,14 +2,16 @@
 // decides: each hook reads its inputs, dispatches one event, and runs the returned effects in order.
 // Client only: on the server every hook returns the 3.x value.
 
+import { get } from 'es-toolkit/compat'
 import { history } from '../history'
 import { page as currentPage } from '../page'
 import { RequestParams } from '../requestParams'
+import { Scroll } from '../scroll'
 import type { Response } from '../response'
 import type { Page, PageResolver, PendingVisit, VisitOptions } from '../types'
 import { uid } from '../uid'
 import { hrefToUrl, isSameUrlWithoutHash } from '../url'
-import { compose as composeEntry, type CompositeEntry, type LayerEntry } from './entry'
+import { compose as composeEntry, decompose, isBlank, layerPage, type CompositeEntry, type LayerEntry } from './entry'
 import type { LayerInstance, StackPort } from './instance'
 import { reduce } from './reduce'
 import type { PageScope } from './scope'
@@ -17,16 +19,20 @@ import {
   idle,
   initialState,
   type CloseId,
+  type EntryFacts,
   type Landing,
   type LayerId,
   type LayerRow,
   type Marks,
   type Origin,
   type Outcome,
+  type Owner,
   type StackEffect,
   type StackEvent,
   type StackState,
   type VisitId,
+  type VisitTag,
+  type WaiterId,
 } from './state'
 import type { LayerHandle, LayerInfo, LayerScope, LayerShellProps, LayerTarget } from './types'
 
@@ -47,6 +53,7 @@ interface Connection {
   baseScope: PageScope
   createInstance(
     id: LayerId,
+    type: 'routed' | 'local',
     port: StackPort,
     options: { resolveComponent: PageResolver; version: string | null },
   ): LayerInstance
@@ -67,6 +74,11 @@ export class Stack implements StackPort {
   protected shells = new Map<LayerId, Pick<LayerShellProps, 'close' | 'done'>>()
   /** Disposed instances whose close listeners fire once the paint removing them has landed. */
   protected leaving: LayerInstance[] = []
+  protected waiters = new Map<WaiterId, () => void>()
+  /** Visits the stack started, by visit id, until their scope captures them. */
+  protected tags = new Map<string, VisitTag>()
+  /** The layers of the entry a popstate is applying, for its reopen and rewind effects. */
+  protected restoring: readonly LayerEntry[] = []
 
   public connect(connection: Connection): void {
     this.connection = connection
@@ -100,27 +112,30 @@ export class Stack implements StackPort {
         return history.writeEntry(data, url, effect.mode)
       }
       case 'dispose':
-        effect.ids.forEach((id) => {
-          const instance = this.instances.get(id)
-
-          if (instance) {
-            instance.dispose()
-            this.instances.delete(id)
-            this.leaving.push(instance)
-          }
-        })
-        return
+        return effect.ids.forEach((id) => this.dispose(id))
       case 'historyGo':
+        return void history
+          .go(effect.delta)
+          .then((how) => this.dispatch({ type: 'unwindSettled', token: effect.token, how }))
       case 'startVisit':
+        return this.startVisit(effect)
+      case 'reopen':
+        return effect.ids.forEach((id) => this.reopen(id))
+      case 'rewind':
+        return effect.ids.forEach((id) => this.rewind(id))
+      case 'settle':
+        return effect.waiters.forEach((waiter) => {
+          this.waiters.get(waiter)?.()
+          this.waiters.delete(waiter)
+        })
+      case 'cancelAll':
+        return this.connected().baseScope.router.cancelAll({ prefetch: false })
+      case 'warn':
+        return console.warn(effect.message)
       case 'installBase':
       case 'capturePin':
       case 'releasePin':
-      case 'reopen':
-      case 'rewind':
-      case 'settle':
       case 'refuse':
-      case 'cancelAll':
-      case 'warn':
         throw new Error(`The layer effect "${effect.type}" is not wired yet.`)
       default:
         return assertNever(effect)
@@ -131,7 +146,7 @@ export class Stack implements StackPort {
     const rendered = this.state.rows.filter((row) => this.instances.get(row.id)?.view)
     const ghosts = this.state.ghosts.filter((id) => this.instances.get(id)?.view)
     const views = [
-      ...rendered.map((row, index) => this.viewOf(row.id, index, index === rendered.length - 1, true)),
+      ...rendered.map((row, index) => this.viewOf(row.id, index, index === rendered.length - 1, row.close === null)),
       ...ghosts.map((id, index) => this.viewOf(id, rendered.length + index, false, false)),
     ]
     const leaving = this.leaving
@@ -152,6 +167,105 @@ export class Stack implements StackPort {
     return Promise.all([...this.listeners].map((listener) => listener())).then(() =>
       leaving.forEach((instance) => instance.fireClose()),
     )
+  }
+
+  /** Close listeners fire once the paint that removes the view has landed, or at once when none shows it. */
+  protected dispose(id: LayerId): void {
+    const instance = this.instances.get(id)
+
+    if (!instance) {
+      return
+    }
+
+    instance.dispose()
+    this.instances.delete(id)
+
+    if (this.painted.views.some((view) => view.id === id)) {
+      this.leaving.push(instance)
+    } else {
+      queueMicrotask(() => instance.fireClose())
+    }
+  }
+
+  protected startVisit(effect: Extract<StackEffect, { type: 'startVisit' }>): void {
+    const { tag } = effect
+
+    if (tag.kind !== 'refresh') {
+      throw new Error(`The layer visit "${tag.kind}" is not wired yet.`)
+    }
+
+    const router = effect.via === 'base' ? this.connected().baseScope.router : this.instance(effect.via).router
+    let id: string | null = null
+
+    router.reload({
+      onBefore: (visit) => {
+        id = visit.id
+        this.tags.set(visit.id, tag)
+      },
+      onFinish: (visit) => {
+        this.dispatch({ type: 'visitFinished', visit: visit.id as VisitId })
+      },
+    })
+
+    if (id !== null && !this.tags.delete(id)) {
+      return
+    }
+
+    // A before listener refused it, so its scope never captured it: the refresh is over at once.
+    const refused = (id ?? uid()) as VisitId
+
+    queueMicrotask(() => {
+      this.dispatch({ type: 'visitDispatched', visit: refused, tag })
+      this.dispatch({ type: 'visitFinished', visit: refused })
+    })
+  }
+
+  /** A scope captured a visit at dispatch: one the stack started reports its tag. */
+  public captured(visit: PendingVisit): void {
+    const tag = this.tags.get(visit.id)
+
+    if (tag) {
+      this.tags.delete(visit.id)
+      this.dispatch({ type: 'visitDispatched', visit: visit.id as VisitId, tag })
+    }
+  }
+
+  /** Recreates a layer from the entry being restored, with no request. */
+  protected reopen(id: LayerId): void {
+    const entry = this.restoring.find((layer) => layer.id === id)
+
+    if (!entry) {
+      return
+    }
+
+    const instance = this.create(id, entry.type)
+    const page = layerPage(entry)
+
+    instance.historyPage = page
+    instance.lastWrite = 'replace'
+    instance.page.setQuietly(page).then(() => {
+      const props = instance.page.get().props
+      const missing = Object.entries(page.initialDeferredProps ?? page.deferredProps ?? {})
+        .map(([group, names]) => [group, names.filter((name) => get(props, name) === undefined)] as const)
+        .filter(([, names]) => names.length > 0)
+
+      if (missing.length > 0 && !instance.disposed) {
+        instance.router.loadDeferred(Object.fromEntries(missing))
+      }
+    })
+  }
+
+  /** Same layer, another snapshot of it: set the entry's page quietly. */
+  protected rewind(id: LayerId): void {
+    const entry = this.restoring.find((layer) => layer.id === id)
+    const instance = this.instances.get(id)
+
+    if (entry && instance) {
+      const page = layerPage(entry)
+
+      instance.historyPage = page
+      instance.page.setQuietly(page, { preserveState: false })
+    }
   }
 
   protected viewOf(id: LayerId, index: number, isTop: boolean, open: boolean): LayerView {
@@ -193,7 +307,11 @@ export class Stack implements StackPort {
 
   // ---------------------------------------------------------------- hooks called from 3.x seam lines
 
-  public captureBase(_visit: PendingVisit, previous?: Origin): Origin {
+  public captureBase(visit: PendingVisit, previous?: Origin): Origin {
+    if (!previous) {
+      this.captured(visit)
+    }
+
     const top = this.state.rows.filter((row) => row.phase === 'open').at(-1)?.id ?? null
 
     return {
@@ -265,9 +383,12 @@ export class Stack implements StackPort {
       case 'rewrite':
       case 'refresh':
         return response.retarget(this.instance(landing.id).scope).land()
+      case 'close':
+        return response.succeed(
+          landing.beneath === 'base' ? currentPage.get() : this.instance(landing.beneath).page.get(),
+        )
       case 'cold':
       case 'handback':
-      case 'close':
       case 'return':
       case 'walk-base':
       case 'walk-beneath':
@@ -277,10 +398,10 @@ export class Stack implements StackPort {
     }
   }
 
-  protected create(id: LayerId): LayerInstance {
+  protected create(id: LayerId, type: 'routed' | 'local' = 'routed'): LayerInstance {
     history.composer = this
 
-    const instance = this.connected().createInstance(id, this, {
+    const instance = this.connected().createInstance(id, type, this, {
       resolveComponent: (name, page) => currentPage.resolve(name, page),
       version: currentPage.get().version,
     })
@@ -320,7 +441,12 @@ export class Stack implements StackPort {
 
     instance.historyPage = page
 
-    const { outcome, waits } = this.dispatch({ type: 'layerCommitting', id: instance.id, requestedReplace: replace, urlChanged })
+    const { outcome, waits } = this.dispatch({
+      type: 'layerCommitting',
+      id: instance.id,
+      requestedReplace: replace,
+      urlChanged,
+    })
     const decision = (outcome as Extract<Outcome, { kind: 'commit' }>).decision
 
     if (decision.kind === 'write') {
@@ -386,11 +512,72 @@ export class Stack implements StackPort {
       owner: row.owner === 'base' ? null : row.owner,
       entries: row.entries,
       ...(!row.ownsAddress && { preservesUrl: true as const }),
+      ...(row.standalone && { standalone: true as const }),
     }
   }
 
+  /** The eventHandler popstate hook. Returns what 3.x restores, or null when the stack handled the entry. */
   public popstate(data: Page): Page | null {
-    return data
+    if (isServer) {
+      return data
+    }
+
+    const { base, layers } = decompose(data)
+
+    if (idle(this.state) && layers.length === 0) {
+      return data
+    }
+
+    const unwinding = this.state.expect?.kind === 'unwind'
+
+    this.restoring = layers
+
+    const { outcome } = this.dispatch({ type: 'popstate', entry: this.entryFacts(base, layers) })
+
+    this.restoring = []
+
+    if (unwinding) {
+      history.answerGo()
+    }
+
+    const { restore } = outcome as Extract<Outcome, { kind: 'restore' }>
+
+    if (restore.kind === 'handled') {
+      // 3.x restores the entry's scroll on every traversal it runs; this one the stack ran.
+      Scroll.restore(history.getScrollRegions())
+
+      return null
+    }
+
+    return restore.kind === 'pass' ? data : base
+  }
+
+  protected entryFacts(base: Page, layers: readonly LayerEntry[]): EntryFacts {
+    const live = currentPage.get()
+
+    return {
+      layers: layers.map((layer) => ({
+        id: layer.id as LayerId,
+        key: layer.key,
+        type: layer.type,
+        owner: (layer.owner ?? 'base') as Owner,
+        standalone: !!layer.standalone,
+        ownsAddress: !layer.preservesUrl,
+        entries: layer.entries,
+      })),
+      url: base.url,
+      baseSame: base.component === live.component && base.url === live.url,
+      blank: isBlank(base),
+      sameSnapshot: new Set(
+        layers
+          .filter((layer) => {
+            const page = this.instances.get(layer.id as LayerId)?.page.get()
+
+            return page?.component === layer.component && page.url === layer.url
+          })
+          .map((layer) => layer.id as LayerId),
+      ),
+    }
   }
 
   public restoreOnLoad(data: Page): Page {
@@ -455,8 +642,23 @@ export class Stack implements StackPort {
     throw new Error('Opening a layer by handle is not built yet.')
   }
 
-  public close(_id?: string): Promise<void> {
-    throw new Error('Closing a layer is not built yet.')
+  /** Closes `id` (default: the top open layer) and every layer above it. Settles once they are gone. */
+  public close(id?: string): Promise<void> {
+    if (isServer) {
+      return Promise.resolve()
+    }
+
+    return new Promise((resolve) => {
+      const waiter = uid() as WaiterId
+
+      this.waiters.set(waiter, resolve)
+      this.dispatch({
+        type: 'closeRequested',
+        target: id === undefined ? 'top' : (id as LayerId),
+        close: uid() as CloseId,
+        waiter,
+      })
+    })
   }
 
   public key(id: LayerId): string {
@@ -504,7 +706,7 @@ function marksOf(page: Page | string): Marks {
 
   return {
     layer: mark ? { key: mark.key || (page as Page).component, base: mark.base ?? null } : null,
-    close: false,
+    close: typeof page === 'object' && (page as Page & { close?: unknown }).close === true,
   }
 }
 

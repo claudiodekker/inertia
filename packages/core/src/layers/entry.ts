@@ -13,6 +13,8 @@ export type LayerEntry = Omit<Page, 'flash'> & {
   owner: string | null
   entries: number
   preservesUrl?: true
+  /** Opened cold: its close pushes the page beneath. */
+  standalone?: true
 }
 
 export type CompositeEntry = Page & { layers?: LayerEntry[] }
@@ -67,8 +69,14 @@ function pageOf(layer: LayerEntry): Omit<Page, 'flash'> {
     owner: _owner,
     entries: _entries,
     preservesUrl: _preservesUrl,
+    standalone: _standalone,
     ...page
   } = layer
 
   return page
+}
+
+/** The page a layer entry stores, as its instance holds it. */
+export function layerPage(layer: LayerEntry): Page {
+  return { ...pageOf(layer), flash: {} }
 }

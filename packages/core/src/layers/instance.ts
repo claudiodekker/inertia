@@ -8,7 +8,17 @@ import { createLayoutPropsStore } from '../layout'
 import { CurrentPage } from '../page'
 import type { Response } from '../response'
 import { Router } from '../router'
-import type { Component, LayoutProps, NamedLayoutProps, Page, PageHandler, PageResolver, RouterInitParams, ScrollRegion } from '../types'
+import type {
+  Component,
+  LayoutProps,
+  NamedLayoutProps,
+  Page,
+  PageHandler,
+  PageResolver,
+  PendingVisit,
+  RouterInitParams,
+  ScrollRegion,
+} from '../types'
 import { hrefToUrl } from '../url'
 import { baseScope, type HistoryPort, type PageScope } from './scope'
 import { stack } from './stack'
@@ -20,6 +30,8 @@ export interface StackPort {
   layerCommitting(layer: LayerInstance, page: Page, replace: boolean): Promise<void>
   layerSwapped(layer: LayerInstance): Promise<void>
   route(response: Response): Promise<void> | undefined
+  /** The scope captured a visit at dispatch. */
+  captured(visit: PendingVisit): void
   /** Rewrite the live composite in place (remembered state changed). */
   rewriteEntry(layer: LayerInstance): void
   /** A layer page carried `clearHistory`, which is global by decision. */
@@ -76,7 +88,13 @@ export class LayerInstance {
         return layer.router
       },
       reloadUrl: () => this.page.get().url,
-      capture: (_visit, previous) => ({ kind: 'layer', id, instant: previous !== undefined }),
+      capture: (visit, previous) => {
+        if (!previous) {
+          port.captured(visit)
+        }
+
+        return { kind: 'layer', id, instant: previous !== undefined }
+      },
       route: (response) => port.route(response),
       get disposed() {
         return layer.disposed
@@ -86,7 +104,15 @@ export class LayerInstance {
     this.history = new LayerHistory(this)
     this.router = new LayerRouter(this.scope)
     this.page = new LayerPage(this).init({
-      initialPage: { component: '', props: { errors: {} }, url: '', version, flash: {}, rescuedProps: [], rememberedState: {} },
+      initialPage: {
+        component: '',
+        props: { errors: {} },
+        url: '',
+        version,
+        flash: {},
+        rescuedProps: [],
+        rememberedState: {},
+      },
       resolveComponent,
       swapComponent: ({ component, page, preserveState }) => {
         if (this.disposed) {
@@ -382,5 +408,5 @@ class PublicScope implements LayerScope {
 // after ./router, and it hands the stack what it needs to build instances.
 stack.connect({
   baseScope,
-  createInstance: (id, port, options) => new LayerInstance(id, 'routed', port, options),
+  createInstance: (id, type, port, options) => new LayerInstance(id, type, port, options),
 })

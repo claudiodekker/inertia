@@ -72,12 +72,17 @@ describe('LayerPage.set', () => {
     const spies = spyOnGlobals()
     const reported: unknown[] = []
     const port = {
-      layerCommitting: async (layer: InstanceType<Singletons['LayerInstance']>, page: { url: string }, replace: boolean) => {
+      layerCommitting: async (
+        layer: InstanceType<Singletons['LayerInstance']>,
+        page: { url: string },
+        replace: boolean,
+      ) => {
         reported.push(['committing', page.url, replace])
         layer.lastWrite = 'push'
       },
       layerSwapped: async () => void reported.push(['swapped']),
       route: () => undefined,
+      captured: () => {},
       rewriteEntry: () => {},
       clearHistory: () => void reported.push(['clearHistory']),
       key: () => 'users-edit',
