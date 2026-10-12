@@ -1,16 +1,23 @@
 import { Router } from '../router'
-import type { Page, ReloadOptions, RequestPayload, UrlMethodPair, VisitOptions } from '../types'
+import type { Page, PendingVisit, ReloadOptions, RequestPayload, UrlMethodPair, VisitOptions } from '../types'
 import { baseScope, type PageScope } from './scope'
 
 /** A 3.x Router on the layer's scope. Shares the module request streams; never init()ed. */
 export type LayerRouter = Router & { loadDeferred(deferred: Page['deferredProps']): void }
 
-let LayerRouterClass: (new (scope: PageScope, local: boolean) => LayerRouter) | undefined
+interface Options {
+  /** A layer with no url of its own. */
+  readonly local: boolean
+  /** The placeholder of an instant visit could not be shown, so its request is never sent. */
+  placeholderFailed(visit: PendingVisit): void
+}
 
-export function createLayerRouter(scope: PageScope, local: boolean): LayerRouter {
+let LayerRouterClass: (new (scope: PageScope, options: Options) => LayerRouter) | undefined
+
+export function createLayerRouter(scope: PageScope, options: Options): LayerRouter {
   LayerRouterClass ??= defineLayerRouter()
 
-  return new LayerRouterClass(scope, local)
+  return new LayerRouterClass(scope, options)
 }
 
 /** router.ts reaches this module through the stack, so Router may not exist yet when it loads. */
@@ -18,7 +25,7 @@ function defineLayerRouter() {
   return class LayerRouter extends Router {
     constructor(
       scope: PageScope,
-      protected local: boolean,
+      protected options: Options,
     ) {
       super(scope)
     }
@@ -41,7 +48,16 @@ function defineLayerRouter() {
     protected doReload<T extends RequestPayload = RequestPayload>(
       options?: ReloadOptions<T> & { deferredProps?: boolean; poll?: boolean },
     ): void {
-      return this.local ? super.doReload.call(baseScope.router, options as never) : super.doReload(options)
+      return this.options.local ? super.doReload.call(baseScope.router, options as never) : super.doReload(options)
+    }
+
+    /** The rejection stays as 3.x has it for a page placeholder. */
+    protected performInstantSwap(visit: PendingVisit): Promise<void> {
+      return super.performInstantSwap(visit).catch((error) => {
+        this.options.placeholderFailed(visit)
+
+        throw error
+      })
     }
   }
 }

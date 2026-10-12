@@ -212,6 +212,11 @@ export type StackEvent =
    * exists from here, keyed by its own id until the answer names the key.
    */
   | { type: 'placeholderOpened'; request: LayerId; ownsAddress: boolean }
+  /**
+   * The placeholder of an instant visit made in layer `id` could not be shown, so the visit is never
+   * sent. A layer that was opening on that placeholder opens nothing.
+   */
+  | { type: 'placeholderFailed'; id: LayerId; visit: VisitId }
   /** After the local layer's component resolved. */
   | { type: 'localOpened'; id: LayerId; owner: Owner; key: string }
   /** From scope.capture() for a visit the runtime tagged. Counted per id: a 409 re-issue dispatches the same id. */

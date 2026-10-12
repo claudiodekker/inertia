@@ -3,7 +3,7 @@
 // from state.nextToken. The only writer of StackState. Responses are handled in route.ts, commits in
 // commit.ts, closing in close.ts, history restores in restore.ts, and update.ts holds what they share.
 
-import { closeRequested, completeUnwind, exited, finishClose } from './close'
+import { closeRequested, completeUnwind, exited, finishClose, forgetInCloses } from './close'
 import { anchored, baseCommitting, baseSwapped, layerCommitting } from './commit'
 import { popstate, restoredOnLoad } from './restore'
 import { responseArrived } from './route'
@@ -36,6 +36,8 @@ export function reduce(s: StackState, e: StackEvent): Step {
       return openRefused(s, e)
     case 'placeholderOpened':
       return placeholderOpened(s, e)
+    case 'placeholderFailed':
+      return placeholderFailed(s, e)
     case 'localOpened':
       return localOpened(s, e)
     case 'visitDispatched':
@@ -136,6 +138,18 @@ function placeholderOpened(s: StackState, e: E<'placeholderOpened'>): Step {
     ...s,
     openRequests: without(s.openRequests, request.id),
     rows: [...s.rows, openingRow(request.id, request.id, owner, { ownsAddress: e.ownsAddress })],
+  })
+}
+
+function placeholderFailed(s: StackState, e: E<'placeholderFailed'>): Step {
+  return run({ ...s, ops: without(s.ops, e.visit) }, (t, fx) => {
+    if (row(t, e.id)?.phase !== 'opening') {
+      return t
+    }
+
+    fx.push({ type: 'dispose', ids: [e.id], reason: 'closed' })
+
+    return forgetInCloses({ ...t, rows: withoutRows(t.rows, [e.id]) }, fx, [e.id])
   })
 }
 

@@ -41,6 +41,7 @@ class ServerPort implements StackPort {
   layerSwapped = () => Promise.resolve()
   route = () => undefined
   captured() {}
+  placeholderFailed() {}
   rewriteEntry() {}
   clearHistory() {}
   close = () => Promise.resolve()

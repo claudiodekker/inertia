@@ -23,6 +23,8 @@ export interface StackPort {
   route(response: Response): Promise<void> | undefined
   /** The scope captured a visit at dispatch. */
   captured(visit: PendingVisit): void
+  /** The placeholder of an instant visit made in the layer could not be shown. */
+  placeholderFailed(layer: LayerInstance, visit: PendingVisit): void
   /** Rewrite the live composite in place (remembered state changed). */
   rewriteEntry(layer: LayerInstance): void
   /** A layer page carried `clearHistory`, which is global by decision. */
@@ -93,7 +95,10 @@ export class LayerInstance {
     }
 
     this.history = new LayerHistory(this)
-    this.router = createLayerRouter(this.scope, type === 'local')
+    this.router = createLayerRouter(this.scope, {
+      local: type === 'local',
+      placeholderFailed: (visit) => port.placeholderFailed(this, visit),
+    })
     this.page = createLayerPage(this)
     this.page.init({
       initialPage: {

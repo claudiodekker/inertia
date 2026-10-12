@@ -159,6 +159,10 @@ export class Stack implements StackPort {
     this.visits.captured(visit)
   }
 
+  public placeholderFailed(instance: LayerInstance, visit: PendingVisit): void {
+    this.dispatch({ type: 'placeholderFailed', id: instance.id, visit: visit.id as VisitId })
+  }
+
   /** The decision and its state change happen in one reduce call. */
   public route(response: Response): Promise<void> | undefined {
     if (isServer) {

@@ -83,6 +83,7 @@ describe('LayerPage.set', () => {
       layerSwapped: async () => void reported.push(['swapped']),
       route: () => undefined,
       captured: () => {},
+      placeholderFailed: () => {},
       rewriteEntry: () => {},
       clearHistory: () => void reported.push(['clearHistory']),
       key: () => 'users-edit',
