@@ -538,6 +538,11 @@ function baseCommitting(s: StackState, e: E<'baseCommitting'>): Step {
     }
 
     if (e.answer === 'refresh' && (e.against !== 'other' || t.base.blank)) {
+      const top = t.rows.filter((r) => r.phase === 'open').at(-1)
+
+      // An entry pushed beneath a stack that owns no address is one more for the top layer's close to step over.
+      t = e.mode === 'push' && top ? setRow(t, { ...top, entries: top.entries + 1 }) : t
+
       return { ...t, base: { blank: false, gen: t.base.gen + (e.against === 'same' ? 0 : 1) }, walk: null }
     }
 

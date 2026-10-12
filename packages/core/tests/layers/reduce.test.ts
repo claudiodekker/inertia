@@ -138,8 +138,20 @@ describe('opening over the page on screen', () => {
 
     expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'same' })).state).toEqual(kept(3))
     expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'moved' })).state).toEqual(kept(4))
-    expect(reduce(s, committing({ answer: 'refresh', mode: 'push', against: 'elsewhere' })).state).toEqual(kept(4))
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'elsewhere' })).state).toEqual(kept(4))
     expect(reduce(s, committing({ answer: 'refresh', mode: 'push', against: 'other' })).state.rows).toEqual([])
+  })
+
+  it('charges the entry a refresh pushes beneath a kept stack to the top open row', () => {
+    const rows = [row('a', { ownsAddress: false }), row('b', { ownsAddress: false }), row('c', { phase: 'opening' })]
+    const s = state({ base: { blank: false, gen: 3 }, rows })
+
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'push', against: 'moved' })).state.rows).toEqual([
+      rows[0],
+      { ...rows[1], entries: rows[1].entries + 1 },
+      rows[2],
+    ])
+    expect(reduce(s, committing({ answer: 'refresh', mode: 'replace', against: 'moved' })).state.rows).toEqual(rows)
   })
 
   it('the answer to a partial or a reload that fills a blank base keeps the stack and ends the walk', () => {
