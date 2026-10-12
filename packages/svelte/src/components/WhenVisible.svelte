@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { router, type ReloadOptions } from '@inertiajs/core'
+  import type { ReloadOptions } from '@inertiajs/core'
   import { get } from 'es-toolkit/compat'
+  import { useRouter } from '../layerContext.svelte'
   import { usePage } from '../page.svelte'
 
   interface Props {
@@ -20,6 +21,7 @@
   let fetching = $state(false)
   let observer: IntersectionObserver | null = null
 
+  const router = useRouter()
   const page = usePage()
 
   function attachObserver(el: HTMLElement) {

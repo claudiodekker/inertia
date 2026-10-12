@@ -1,5 +1,6 @@
 import {
   isUrlMethodPair,
+  layerSlot,
   mergeDataIntoQueryString,
   resolveUrlMethodPairComponent,
   router,
@@ -11,6 +12,7 @@ import {
   type LinkComponentBaseProps,
   type LinkPrefetchOption,
   type Method,
+  type Router,
   type VisitOptions,
 } from '@inertiajs/core'
 import type { ActionReturn } from 'svelte/action'
@@ -51,7 +53,8 @@ type ActionAttributes = {
 
 function link(
   node: ActionElement,
-  initialParams: ActionParameters = {},
+  initialParams: ActionParameters,
+  getRouter: (node: HTMLElement) => Router,
 ): ActionReturn<ActionParameters, ActionAttributes> {
   let inFlightCount = 0
   let hoverTimeout: NodeJS.Timeout
@@ -69,7 +72,7 @@ function link(
   const handleClick = (event: MouseEvent) => {
     if (shouldIntercept(event)) {
       event.preventDefault()
-      router.visit(href, visitParams)
+      getRouter(node).visit(href, visitParams)
     }
   }
 
@@ -103,13 +106,13 @@ function link(
     mouseup: (event: MouseEvent) => {
       if (shouldIntercept(event)) {
         event.preventDefault()
-        router.visit(href, visitParams)
+        getRouter(node).visit(href, visitParams)
       }
     },
     keyup: (event: KeyboardEvent) => {
       if (shouldNavigate(event)) {
         event.preventDefault()
-        router.visit(href, visitParams)
+        getRouter(node).visit(href, visitParams)
       }
     },
     click: (event: MouseEvent) => {
@@ -237,7 +240,7 @@ function link(
   }
 
   function prefetch() {
-    router.prefetch(
+    getRouter(node).prefetch(
       href,
       {
         ...baseParams,
@@ -302,4 +305,13 @@ function link(
   return { update, destroy }
 }
 
-export default link
+/**
+ * An action that visits through the router `getRouter` names for the node. It is asked when a visit or
+ * prefetch starts, so a node whose layer binds after it mounted still finds its layer.
+ */
+export function createInertiaAction(getRouter: (node: HTMLElement) => Router) {
+  return (node: ActionElement, params: ActionParameters = {}) => link(node, params, getRouter)
+}
+
+/** The bare `use:inertia` action: the router of the layer the node sits in, else the global router. */
+export default createInertiaAction((node) => layerSlot.scopeOf(node)?.router ?? router)

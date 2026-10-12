@@ -22,9 +22,10 @@ import type {
   UseFormWithPrecognitionArguments,
   VisitOptions,
 } from '@inertiajs/core'
-import { router, UseFormUtils } from '@inertiajs/core'
+import { UseFormUtils } from '@inertiajs/core'
 import { cloneDeep } from 'es-toolkit'
 import type { NamedInputEvent, PrecognitionPath, ValidationConfig, Validator } from 'laravel-precognition'
+import { useRouter } from './layerContext.svelte'
 import useFormState, { type FormStateWithPrecognition, type InternalPrecognitionState } from './useFormState.svelte'
 
 // Reserved keys validation - logs console.error at runtime when form data keys conflict with form properties
@@ -141,6 +142,7 @@ export default function useForm<TForm extends FormDataType<TForm>>(): InertiaFor
 export default function useForm<TForm extends FormDataType<TForm>>(
   ...args: UseFormArguments<TForm>
 ): InertiaFormStore<TForm> | InertiaPrecognitiveFormStore<TForm> {
+  const router = useRouter()
   const { rememberKey, data, precognitionEndpoint } = UseFormUtils.parseUseFormArguments<TForm>(...args)
 
   // Resolve data for validation (useFormState handles the actual function data logic)

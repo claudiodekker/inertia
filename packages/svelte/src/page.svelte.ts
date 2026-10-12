@@ -1,4 +1,5 @@
 import { type Page, type PageProps, type SharedPageProps } from '@inertiajs/core'
+import { useLayerContext } from './layerContext.svelte'
 
 type SveltePage<TPageProps extends PageProps = PageProps> = Omit<Page<TPageProps & SharedPageProps>, 'props'> & {
   props: Page<TPageProps & SharedPageProps>['props'] & {
@@ -18,7 +19,7 @@ export function setPage(newPage: SveltePage) {
 }
 
 export function usePage<TPageProps extends PageProps = PageProps>(): SveltePage<TPageProps> {
-  return page as SveltePage<TPageProps>
+  return (useLayerContext()?.page ?? page) as SveltePage<TPageProps>
 }
 
 export default page

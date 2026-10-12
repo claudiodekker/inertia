@@ -1,7 +1,8 @@
 <script lang="ts">
   import { isUrlMethodPair, resolveUrlMethodPairComponent } from '@inertiajs/core'
   import type { LinkComponentBaseProps } from '@inertiajs/core'
-  import { inertia } from '../index'
+  import { createInertiaAction } from '../link'
+  import { useRouter } from '../layerContext.svelte'
 
   interface Props {
     href?: LinkComponentBaseProps['href']
@@ -27,6 +28,10 @@
     children?: import('svelte').Snippet
     [key: string]: any
   }
+
+  // The layer's router comes from context, so a link needs no DOM lookup to find its layer
+  const contextRouter = useRouter()
+  const inertia = createInertiaAction(() => contextRouter)
 
   // Are these defined anywhere else?
   type Callbacks = {

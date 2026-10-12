@@ -5,12 +5,14 @@
   let { name, count, errors }: { name: string; count?: number; errors?: { note?: string } } = $props()
 
   const page = usePage()
-  const layer = useLayer()!
+  const layer = useLayer()
   const form = useForm('note', { note: '' })
 
   let childEvents = $state('')
 
-  onDestroy(layer.on('saved', (payload) => (childEvents = `saved ${(payload as { id: number }).id}`)))
+  const stopListening = layer?.on('saved', (payload) => (childEvents = `saved ${(payload as { id: number }).id}`))
+
+  onDestroy(() => stopListening?.())
 
   const save = () => {
     router.post(`/layers/panel/${name}/save`)
@@ -33,7 +35,7 @@
   }
 
   const openNextInstantly = () => {
-    layer.router.visit('/layers/panel/second?delay=500', { component: 'Layers/Panel' })
+    layer!.router.visit('/layers/panel/second?delay=500', { component: 'Layers/Panel' })
   }
 
   const openNextWithoutMovingTheAddress = () => {
@@ -41,11 +43,11 @@
   }
 
   const partialReload = () => {
-    layer.router.reload({ only: ['count'] })
+    layer!.router.reload({ only: ['count'] })
   }
 
   const partialThroughTheLayerRouter = () => {
-    layer.router.get(`/layers/panel/${name}`, {}, { only: ['count'] })
+    layer!.router.get(`/layers/panel/${name}`, {}, { only: ['count'] })
   }
 
   const reloadBase = () => {
@@ -53,7 +55,7 @@
   }
 
   const bumpCount = () => {
-    layer.router.replaceProp('count', (old: unknown) => Number(old ?? 0) + 1)
+    layer!.router.replaceProp('count', (old: unknown) => Number(old ?? 0) + 1)
   }
 
   const openChild = () => {
@@ -63,16 +65,16 @@
 
   const likeAndClose = () => {
     router.post('/layers/like')
-    layer.close()
+    layer!.close()
   }
 
   const likeInBackgroundAndClose = () => {
     router.post('/layers/like', {}, { async: true })
-    layer.close()
+    layer!.close()
   }
 
   const openChildThroughTheLayer = () => {
-    const handle = layer.router.layer('/layers/child')
+    const handle = layer!.router.layer('/layers/child')
     window.testing.layerChildHandle = handle
   }
 </script>

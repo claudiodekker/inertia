@@ -1,5 +1,6 @@
-import { router, type PollOptions, type ReloadOptions } from '@inertiajs/core'
+import type { PollOptions, ReloadOptions } from '@inertiajs/core'
 import { onDestroy, onMount } from 'svelte'
+import { useRouter } from './layerContext.svelte'
 
 export default function usePoll(
   interval: number,
@@ -8,6 +9,7 @@ export default function usePoll(
     autoStart: true,
   },
 ) {
+  const router = useRouter()
   const autoStart = options.autoStart ?? true
 
   const { stop, start, destroy } = router.poll(interval, requestOptions, {

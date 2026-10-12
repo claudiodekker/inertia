@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { isSameUrlWithoutQueryOrHash, router, partialReloadRequestsSomeProps } from '@inertiajs/core'
+  import { hrefToUrl, isSameUrlWithoutQueryOrHash, partialReloadRequestsSomeProps } from '@inertiajs/core'
   import { get } from 'es-toolkit/compat'
-  import { page } from '../index'
+  import { useLayer, useRouter } from '../layerContext.svelte'
+  import { usePage } from '../page.svelte'
 
   interface Props {
     data: string | string[]
@@ -11,6 +12,10 @@
   }
 
   let { data, rescue, fallback, children }: Props = $props()
+
+  const router = useRouter()
+  const layer = useLayer()
+  const page = usePage()
 
   const keys = $derived(Array.isArray(data) ? data : [data])
   const rescuedKeys = $derived(new Set(page.rescuedProps))
@@ -26,7 +31,7 @@
 
       if (
         visit.preserveState === true &&
-        isSameUrlWithoutQueryOrHash(visit.url, window.location) &&
+        isSameUrlWithoutQueryOrHash(visit.url, layer ? hrefToUrl(page.url) : window.location) &&
         partialReloadRequestsSomeProps(visit, keys)
       ) {
         activeReloads.add(visit)

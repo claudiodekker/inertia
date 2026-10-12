@@ -9,11 +9,12 @@ import type {
   UseFormTransformCallback,
   UseFormWithPrecognitionArguments,
 } from '@inertiajs/core'
-import { router, UseFormUtils } from '@inertiajs/core'
+import { UseFormUtils } from '@inertiajs/core'
 import { cloneDeep, isEqual } from 'es-toolkit'
 import { get, has, set } from 'es-toolkit/compat'
 import type { NamedInputEvent, ValidationConfig, Validator } from 'laravel-precognition'
 import { createValidator, resolveName, toSimpleValidationErrors } from 'laravel-precognition'
+import { useRouter } from './layerContext.svelte'
 import { config } from '.'
 
 type TransformCallback<TForm> = (data: TForm) => object
@@ -104,6 +105,7 @@ export interface UseFormStateReturn<TForm extends object> {
 export default function useFormState<TForm extends object>(
   options: UseFormStateOptions<TForm>,
 ): UseFormStateReturn<TForm> {
+  const router = useRouter()
   const { data: dataOption, rememberKey, precognitionEndpoint: initialPrecognitionEndpoint } = options
 
   const isDataFunction = typeof dataOption === 'function'

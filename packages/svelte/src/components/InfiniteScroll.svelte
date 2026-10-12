@@ -9,6 +9,7 @@
     useInfiniteScroll,
   } from '@inertiajs/core'
   import { onDestroy, onMount } from 'svelte'
+  import { useLayerContext } from '../layerContext.svelte'
   import { usePage } from '../page.svelte'
 
   interface Props {
@@ -58,8 +59,10 @@
   let itemsElementRef: HTMLElement = $state(null!)
   let startElementRef: HTMLElement = $state(null!)
   let endElementRef: HTMLElement = $state(null!)
+  const layer = useLayerContext()
+  const page = usePage()
   // svelte-ignore state_referenced_locally
-  const scrollProp = usePage().scrollProps?.[data]
+  const scrollProp = page.scrollProps?.[data]
 
   let loadingPrevious = $state(false)
   let loadingNext = $state(false)
@@ -132,6 +135,7 @@
     const resolvedEndElement = resolveHTMLElement(endElement, endElementRef)
 
     infiniteScrollInstance = useInfiniteScroll({
+      ...(layer && { scope: { router: layer.scope.router, page: { get: () => page } } }),
       // Data
       getPropName: () => data,
       inReverseMode: () => reverse ?? false,
