@@ -1,5 +1,7 @@
 import { Config } from './config'
 import { Router } from './router'
+// Hands the stack its instance factory. After ./router: LayerPage and LayerRouter extend 3.x classes.
+import './layers/instance'
 
 export { UseFormUtils } from './useFormUtils'
 
@@ -24,8 +26,19 @@ export {
   type LayoutDefinition,
   type LayoutPropsStore,
 } from './layout'
+export { layerDialogAttributes, mountLayerDialog } from './layers/dialog'
 /** @internal Not part of the public API. May change or be removed without notice. */
 export { layerSlot, type LayerView } from './layers/slot'
+export type {
+  LayerHandle,
+  LayerInfo,
+  LayerMessageListener,
+  LayerScope,
+  LayerShellProps,
+  LayerTarget,
+  LoadingResolver,
+  MountedLayerDialog,
+} from './layers/types'
 export { shouldIntercept, shouldNavigate } from './navigationEvents'
 export { isPathOrSubPath, partialReloadRequestsProp, partialReloadRequestsSomeProps } from './partialReload'
 export { progress, default as setupProgress } from './progress'

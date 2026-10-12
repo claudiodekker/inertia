@@ -4,10 +4,10 @@ import { page, type CurrentPage } from '../page'
 import type { Response } from '../response'
 import type { Router } from '../router'
 import type { Page, PendingVisit } from '../types'
+import { stack } from './stack'
+import type { Origin } from './state'
 
-export type Origin =
-  | { kind: 'base'; top: string | null; gen: number; instantGen: number | null }
-  | { kind: 'layer'; id: string; instant: boolean }
+export type { Origin }
 
 export interface HistoryPort {
   preserveUrl: boolean
@@ -36,8 +36,8 @@ export const baseScope: PageScope = {
   get router() {
     return router
   },
-  reloadUrl: () => window.location.href,
-  capture: () => ({ kind: 'base', top: null, gen: 0, instantGen: null }),
-  route: () => undefined,
+  reloadUrl: () => stack.baseReloadUrl() ?? window.location.href,
+  capture: (visit, previous) => stack.captureBase(visit, previous),
+  route: (response) => stack.route(response),
   disposed: false,
 }

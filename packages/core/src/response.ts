@@ -176,6 +176,10 @@ export class Response {
     }
   }
 
+  public getVisit(): ActiveVisit {
+    return this.requestParams.all()
+  }
+
   public getPageResponse(): Page {
     const data = this.getDataFromResponse(this.response.data)
 

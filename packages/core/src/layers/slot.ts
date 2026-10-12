@@ -1,19 +1,13 @@
-import type { Page } from '../types'
+import { stack } from './stack'
 
-export interface LayerView<Component = unknown> {
-  readonly id: string
-  readonly component: Component
-  readonly page: Page
-  readonly renderKey: number
-}
-
-const noViews: readonly LayerView[] = []
+export type { LayerView } from './stack'
 
 /** @internal The adapters' single window onto the layer stack. */
 export const layerSlot = {
-  views: (): readonly LayerView[] => noViews,
-  subscribe:
-    (_fn: () => void): (() => void) =>
-    () => {},
-  topPage: (): Page | null => null,
+  views: () => stack.views(),
+  info: () => stack.info(),
+  subscribe: (listener: () => void | Promise<void>) => stack.subscribe(listener),
+  topPage: () => stack.topPage(),
+  bindElement: (id: string, el: Element | null) => stack.bindElement(id, el),
+  scopeOf: (el: Element) => stack.scopeOf(el),
 }
