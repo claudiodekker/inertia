@@ -1,0 +1,30 @@
+// FINDING f-2. PR: a hash the browser wrote (popstate with null state) lands on the layer that owns the address:
+//   replace 'http://localhost/users/5/edit#comments', base url stays '/users', layers[0].url carries the hash.
+// Rebuilt: replace '/users/5/edit' (the hash is lost from the address bar), entry.url === 'http://localhost/users#comments'
+//   (the hash is merged into the BASE url, History.replaceState -> currentPage.merge), layers[0].url === '/users/5/edit'.
+import { expect, it, vi } from 'vitest'
+import { page, settled, start } from '../packages/core/tests/layers/ported/f-support'
+
+const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
+const edit = page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit', base: '/users' }, props: { errors: {}, user: { id: 5 } } })
+
+const walkOnto = async (app: Awaited<ReturnType<typeof start>>, address: string) => {
+  window.location.href = address
+  app.popstate(null)
+  await settled()
+  await app.history.processQueue()
+}
+
+it('writes it onto the layer that owns the address, leaving the base beneath it alone', async () => {
+  const app = await start(users, { '/users/5/edit': edit })
+
+  app.router.layer('/users/5/edit')
+  await settled()
+
+  const before = app.written().length
+
+  await walkOnto(app, 'http://localhost/users/5/edit#comments')
+
+  expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']]) // rebuilt: [['replace', '/users/5/edit']]
+  expect(app.entry()).toMatchObject({ url: '/users', layers: [{ url: 'http://localhost/users/5/edit#comments' }] })
+})
