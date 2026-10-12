@@ -113,10 +113,10 @@ export function removeOrUnwind(s: StackState, fx: Fx, close: CloseRow): StackSta
     return finishClose(s, fx, close.id)
   }
 
-  if (covered[0].standalone || entries === 0) {
+  if (entries === 0) {
     const t = { ...s, rows: withoutRows(s.rows, close.layers) }
 
-    fx.push({ type: 'writeEntry', mode: covered[0].standalone ? 'push' : 'replace' })
+    fx.push({ type: 'writeEntry', mode: beneathWrite(covered[0]) })
 
     return continueAfterRemoval(paint(t, fx), fx, close, covered[0], s.rows)
   }
@@ -131,13 +131,21 @@ export function removeOrUnwind(s: StackState, fx: Fx, close: CloseRow): StackSta
   }
 }
 
+/**
+ * How the page beneath is written once the covered rows are gone. A row opened cold has no entry of
+ * the page beneath to return to, so that page is pushed over the row's own entry.
+ */
+function beneathWrite(bottom: LayerRow | undefined): 'push' | 'replace' {
+  return bottom?.standalone ? 'push' : 'replace'
+}
+
 /** The browser answered our history.go (or timed out): the covered rows leave the model. */
 export function completeUnwind(s: StackState, fx: Fx, closeId: CloseId): StackState {
   const close = s.closes.get(closeId)!
   const covered = s.rows.filter((r) => close.layers.includes(r.id))
   const t = { ...s, expect: null, rows: withoutRows(s.rows, close.layers) }
 
-  fx.push({ type: 'writeEntry', mode: 'replace' })
+  fx.push({ type: 'writeEntry', mode: beneathWrite(covered[0]) })
 
   return startQueued(continueAfterRemoval(paint(t, fx), fx, close, covered[0], s.rows), fx)
 }

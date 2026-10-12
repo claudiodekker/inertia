@@ -871,6 +871,33 @@ describe('closing', () => {
     expect(s.rows).toEqual([])
   })
 
+  it('closing a cold layer with layers stepped over it unwinds those entries, then pushes the base', () => {
+    const rows = [row('a', { standalone: true, entries: 0 }), row('b'), row('c')]
+    const stepped = script(state({ rows }), [
+      { type: 'closeRequested', target: id('a'), close: cid('c1'), waiter: wid('w1') },
+      { type: 'exited', id: id('c') },
+      { type: 'exited', id: id('b') },
+      { type: 'exited', id: id('a') },
+    ])
+
+    expect(stepped.effects).toEqual([{ type: 'paint' }, { type: 'historyGo', delta: -2, token: 1 }])
+    expect(stepped.state.rows.map((r) => r.id)).toEqual(['a', 'b', 'c'])
+
+    // The step back lands on the entry that still holds the cold layer: it is not put back.
+    const landed = reduce(stepped.state, {
+      type: 'popstate',
+      entry: entry([entryLayer('a', { standalone: true, entries: 0 })]),
+    })
+
+    expect(landed.effects).toEqual([
+      { type: 'writeEntry', mode: 'push' },
+      { type: 'paint' },
+      { type: 'startVisit', tag: { kind: 'refresh', close: 'c1' }, via: 'base', url: null },
+    ])
+    expect(landed.state.rows).toEqual([])
+    expect(landed.outcome).toEqual(handled)
+  })
+
   it('L:425 a local layer closes without a refresh beneath', () => {
     const { effects } = script(state({ rows: [row('a'), row('l', { type: 'local', ownsAddress: false })] }), [
       { type: 'closeRequested', target: id('l'), close: cid('c1'), waiter: wid('w1') },
