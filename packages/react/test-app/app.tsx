@@ -56,7 +56,7 @@ createInertiaApp({
     return pages[`./Pages/${name}.tsx`]
   },
   layer: Layer,
-  loading: (url, page) => {
+  loading: (url, { layers }) => {
     window.loadingResolved = [url, ...layers.map((layer) => layer.key)].join('|')
 
     if (url.startsWith('/ssr/layer-loading-base')) {

@@ -3,12 +3,15 @@ import { useEffect, useState } from 'react'
 
 export default ({ name, count, errors }: { name: string; count?: number; errors?: { note?: string } }) => {
   const page = usePage()
-  const layer = useLayer()!
+  const layer = useLayer()
   const form = useForm('note', { note: '' })
 
   const [childEvents, setChildEvents] = useState('')
 
-  useEffect(() => layer.on('saved', (payload) => setChildEvents(`saved ${(payload as { id: number }).id}`)), [layer])
+  useEffect(
+    () => layer?.on('saved', (payload) => setChildEvents(`saved ${(payload as { id: number }).id}`)),
+    [layer],
+  )
 
   const save = () => {
     router.post(`/layers/panel/${name}/save`)
@@ -31,7 +34,7 @@ export default ({ name, count, errors }: { name: string; count?: number; errors?
   }
 
   const openNextInstantly = () => {
-    layer.router.visit('/layers/panel/second?delay=500', { component: 'Layers/Panel' })
+    layer!.router.visit('/layers/panel/second?delay=500', { component: 'Layers/Panel' })
   }
 
   const openNextWithoutMovingTheAddress = () => {
@@ -39,11 +42,11 @@ export default ({ name, count, errors }: { name: string; count?: number; errors?
   }
 
   const partialReload = () => {
-    layer.router.reload({ only: ['count'] })
+    layer!.router.reload({ only: ['count'] })
   }
 
   const partialThroughTheLayerRouter = () => {
-    layer.router.get(`/layers/panel/${name}`, {}, { only: ['count'] })
+    layer!.router.get(`/layers/panel/${name}`, {}, { only: ['count'] })
   }
 
   const reloadBase = () => {
@@ -51,7 +54,7 @@ export default ({ name, count, errors }: { name: string; count?: number; errors?
   }
 
   const bumpCount = () => {
-    layer.router.replaceProp('count', (old: unknown) => Number(old ?? 0) + 1)
+    layer!.router.replaceProp('count', (old: unknown) => Number(old ?? 0) + 1)
   }
 
   const openChild = () => {
@@ -61,16 +64,16 @@ export default ({ name, count, errors }: { name: string; count?: number; errors?
 
   const likeAndClose = () => {
     router.post('/layers/like')
-    layer.close()
+    layer!.close()
   }
 
   const likeInBackgroundAndClose = () => {
     router.post('/layers/like', {}, { async: true })
-    layer.close()
+    layer!.close()
   }
 
   const openChildThroughTheLayer = () => {
-    const handle = layer.router.layer('/layers/child')
+    const handle = layer!.router.layer('/layers/child')
     window.testing.layerChildHandle = handle
   }
 
