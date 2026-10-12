@@ -1,0 +1,26 @@
+// FINDING c-3 (PR row 1998 'keeps a layer being closed out of the entry a write leaves behind'):
+// PR outcome: while layer-2 is marked closing, a base write replaces the entry with layers ['layer-1'] only, at url '/b'.
+// Rebuilt outcome: written [['replace','/b']] but history.state.page.layers = [a, b]: the layer being closed is still in the entry
+// (compose() in stack.ts keeps every row with phase 'open', and a closing row keeps phase 'open').
+// Helpers: ./layer-handles-support (ported, base, edit, layerAt, settled, holdBack)
+import { describe, expect, it } from 'vitest'
+import { base, layerAt, ported, settled } from './layer-handles-support'
+
+describe('finding c-3', () => {
+  it('keeps a layer being closed out of the entry a write leaves behind', async () => {
+    const app = await ported(base(), { '/a': layerAt('Users/A', '/a'), '/b': layerAt('Users/B', '/b') })
+    const a = app.router.layer('http://localhost/a')
+    await settled()
+    const b = app.router.layer('http://localhost/b')
+    await settled()
+    void b.close()
+    await settled()
+    const writes = app.written().length
+    await new Promise<void>((resolve) => {
+      app.router.replace({ props: { users: ['ada'] }, onSuccess: () => resolve() })
+    })
+
+    expect(app.written().slice(writes)).toEqual([['replace', '/b']])
+    expect((app.entry().layers as { id: string }[]).map((layer) => layer.id)).toEqual([a.id])
+  })
+})
