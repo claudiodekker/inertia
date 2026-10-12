@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { page, runtime, settled } from './runtime'
+import { page, runtime, settled } from './support/runtime'
 
 const panel = page('Panel', '/panel', { layer: { key: 'panel', base: '/users' } })
 

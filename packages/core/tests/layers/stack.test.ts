@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { page, runtime, settled } from './runtime'
+import { page, runtime, settled } from './support/runtime'
 
 const users = page('Users/Index', '/users')
 const picker = page('Users/Pick', '/users/pick', { layer: { key: 'picker', base: '/users' } })

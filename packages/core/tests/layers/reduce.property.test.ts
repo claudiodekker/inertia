@@ -14,7 +14,7 @@ import {
   type VisitId,
   type WaiterId,
 } from '../../src/layers/state'
-import { cid, id, visit, wid } from './fixtures'
+import { cid, id, visit, wid } from './support/fixtures'
 
 type Command = [kind: number, a: number, b: number, c: number, flags: number]
 

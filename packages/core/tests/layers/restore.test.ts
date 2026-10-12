@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { planRestore } from '../../src/layers/restore'
-import { cid, entry, entryLayer, id, row, state } from './fixtures'
+import { cid, entry, entryLayer, id, row, state } from './support/fixtures'
 
 const plan = (overrides: object = {}) => ({
   kind: 'restore',

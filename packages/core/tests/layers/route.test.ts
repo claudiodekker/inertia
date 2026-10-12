@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { classify } from '../../src/layers/route'
 import { MAX_LAYER_CHAIN, type Landing, type StackState } from '../../src/layers/state'
-import { arrival, baseOrigin, id, layerOrigin, row, state, tok, visit, type Arrival } from './fixtures'
+import { arrival, baseOrigin, id, layerOrigin, row, state, tok, visit, type Arrival } from './support/fixtures'
 
 const walk = (overrides: Partial<StackState> = {}) =>
   state({
