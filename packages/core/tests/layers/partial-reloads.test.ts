@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { held, scenario, settled, type Answer, type App, type Route, page } from './support/a-support'
-import { bench, byPath, gate } from './support/e-support'
+import { held, openAppSentCall, type SentCallApp, type Route, openApp, byPath, gate } from './support/app'
+import { settled, type Answer, page } from './support/browser'
 
 const usersAnswer = (overrides: Answer = {}): Answer => ({
   component: 'Users/Index',
@@ -18,7 +18,7 @@ const editLayerProps = (props: Record<string, unknown>): Answer =>
     props,
   })
 
-const visited = (app: App, url: string, options: Record<string, unknown> = {}): Promise<void> =>
+const visited = (app: SentCallApp, url: string, options: Record<string, unknown> = {}): Promise<void> =>
   new Promise((resolve) => {
     app.router.visit(url, {
       ...options,
@@ -46,10 +46,6 @@ const editLayer = (overrides: Answer = {}): Answer =>
     ...overrides,
   })
 
-const users = page('Users/Index', '/users', {
-  props: { users: [], errors: {} },
-})
-
 describe('a partial reload with a cold layer open', () => {
   it("merges a cold layer's props when a partial is answered by the layer, keeping its siblings", async () => {
     const walk = held()
@@ -57,7 +53,7 @@ describe('a partial reload with a cold layer open', () => {
       'post /login': editLayerProps({ user: { id: 5 } }),
       '/users': () => walk.answer(),
     }
-    const app = await scenario(usersAnswer({ component: 'Auth/Login', url: '/login' }), routes)
+    const app = await openAppSentCall(usersAnswer({ component: 'Auth/Login', url: '/login' }), routes)
 
     await visited(app, '/login', { method: 'post' })
     await settled()
@@ -82,7 +78,7 @@ describe('a partial reload with a cold layer open', () => {
 describe('a refresh of the page beneath an open stack', () => {
   const warm = async () => {
     const routes: Record<string, Route> = { '/users/5/edit': editLayerProps({ user: { id: 5 } }) }
-    const app = await scenario(usersAnswer(), routes)
+    const app = await openAppSentCall(usersAnswer(), routes)
 
     await visited(app, '/users/5/edit')
     await settled()
@@ -97,7 +93,7 @@ describe('a refresh of the page beneath an open stack', () => {
       'post /login': editLayerProps({ user: { id: 5 } }),
       '/users': () => (hops++ === 0 ? walk.answer() : Promise.resolve(usersAnswer())),
     }
-    const app = await scenario(usersAnswer({ component: 'Auth/Login', url: '/login' }), routes)
+    const app = await openAppSentCall(usersAnswer({ component: 'Auth/Login', url: '/login' }), routes)
 
     await visited(app, '/login', { method: 'post' })
     await settled()
@@ -158,7 +154,9 @@ describe('a refresh of the page beneath an open stack', () => {
 
 describe('a layer with no url of its own reloading', () => {
   it('drops the carried target for a url-less layer and reloads the base beneath the stack', async () => {
-    const app = await scenario(usersAnswer(), { '/users': usersAnswer({ props: { users: [{ id: 9 }], errors: {} } }) })
+    const app = await openAppSentCall(usersAnswer(), {
+      '/users': usersAnswer({ props: { users: [{ id: 9 }], errors: {} } }),
+    })
     const handle = app.router.layer({ component: 'Users/Edit', props: { user: { id: 5 } } })
 
     await settled()
@@ -174,7 +172,9 @@ describe('a layer with no url of its own reloading', () => {
   })
 
   it('drops the target for a url-less layer reloading through its own router', async () => {
-    const app = await scenario(usersAnswer(), { '/users': usersAnswer({ props: { users: [{ id: 9 }], errors: {} } }) })
+    const app = await openAppSentCall(usersAnswer(), {
+      '/users': usersAnswer({ props: { users: [{ id: 9 }], errors: {} } }),
+    })
     const handle = app.router.layer({ component: 'Users/Preview' })
 
     await settled()
@@ -189,7 +189,7 @@ describe('a layer with no url of its own reloading', () => {
 
 describe('the asset version a layer arrives on', () => {
   it('takes the asset version the layer arrived on', async () => {
-    const app = await scenario(usersAnswer({ version: 'old' }), {
+    const app = await openAppSentCall(usersAnswer({ version: 'old' }), {
       'post /users/5/edit': usersAnswer({
         component: 'Users/Edit',
         url: '/users/5/edit',
@@ -215,8 +215,8 @@ describe('a partial reload answered while nothing is open', () => {
   it('keeps a layer that opened before the answer was committed', async () => {
     const resolving = gate()
     let held = false
-    const app = await bench(usersAt(), byPath({ '/users?page=2': usersAt('/users?page=2') }), {
-      resolve: (name) => (held && name === 'Users/Index' ? resolving.opened.then(() => ({ name })) : { name }),
+    const app = await openApp(usersAt(), byPath({ '/users?page=2': usersAt('/users?page=2') }), {
+      resolveComponent: (name) => (held && name === 'Users/Index' ? resolving.opened.then(() => ({ name })) : { name }),
     })
 
     held = true
@@ -240,7 +240,7 @@ describe('an open layer across a partial or reload', () => {
     const routes: Record<string, Route> = {
       '/users/5/edit': editLayer({ props: layerProps }),
     }
-    const app = await scenario(base, routes)
+    const app = await openAppSentCall(base, routes)
 
     await visited(app, '/users/5/edit')
     await settled()
@@ -460,7 +460,7 @@ describe('an open layer across a partial or reload', () => {
   })
 
   it('keeps a nested sibling on the base itself across a dotted partial path', async () => {
-    const app = await scenario(pw({ props: { user: { id: 5, name: 'Claud' } } }), {
+    const app = await openAppSentCall(pw({ props: { user: { id: 5, name: 'Claud' } } }), {
       '/users': pw({ props: { user: { id: 9 } } }),
     })
 
@@ -473,7 +473,7 @@ describe('an open layer across a partial or reload', () => {
   })
 
   it('emits no layers key when a layerless partial reload refreshes the base', async () => {
-    const app = await scenario(pw({ props: { stats: [1] } }), {
+    const app = await openAppSentCall(pw({ props: { stats: [1] } }), {
       '/users': pw({ props: { stats: [1, 2, 3] } }),
     })
 
@@ -580,7 +580,7 @@ describe('an open layer across a partial or reload', () => {
     const routes: Record<string, Route> = {
       '/users/filtered': filtered({ props: { items: [1], filter: 'open' } }),
     }
-    const app = await scenario(pw({ props: { users: [], items: [10] } }), routes)
+    const app = await openAppSentCall(pw({ props: { users: [], items: [10] } }), routes)
 
     await visited(app, '/users/filtered')
     await settled()
@@ -603,7 +603,7 @@ describe('an open layer across a partial or reload', () => {
 
 describe('a response that refreshes the base', () => {
   it('does not merge a plain reload into the props already held', async () => {
-    const app = await scenario(
+    const app = await openAppSentCall(
       page('Users/Index', '/users', {
         props: { users: [], stale: true, errors: {} },
       }),

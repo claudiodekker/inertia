@@ -1,8 +1,6 @@
 import { vi } from 'vitest'
 import type { HttpRequestConfig, HttpResponse, Page } from '../../../src/types'
-import { fakeBrowser, settled } from './runtime'
-
-export type Answer = Partial<Page> & Record<string, unknown>
+import { fakeBrowser, settled, type Answer } from './browser'
 
 export const pageWith = (overrides: Answer = {}): Answer => ({
   component: 'Users/Index',

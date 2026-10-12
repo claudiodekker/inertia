@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bench, byPath, page, settled } from './support/e-support'
+import { openApp, byPath } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
@@ -17,7 +18,7 @@ describe("an infinite scroll's url sync", () => {
     }) as unknown as HTMLElement
 
   const scene = async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': editPage }))
+    const app = await openApp(users, byPath({ '/users/5/edit': editPage }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -63,7 +64,7 @@ describe("an infinite scroll's url sync", () => {
   })
 
   it('writes no page number for a layer with no url of its own', async () => {
-    const app = await bench(users, byPath({}))
+    const app = await openApp(users, byPath({}))
     const handle = app.router.layer({ component: 'Users/Pick' })
 
     await settled()
@@ -102,7 +103,7 @@ describe("an infinite scroll's url sync", () => {
     }) as unknown as HTMLElement
 
   const scene = async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': editPage }))
+    const app = await openApp(users, byPath({ '/users/5/edit': editPage }))
 
     app.router.visit('/users/5/edit')
     await settled()

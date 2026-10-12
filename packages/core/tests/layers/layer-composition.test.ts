@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { planBoot, compose } from '../../src/layers/entry'
 import { marksOf } from '../../src/layers/facts'
-import { asPage, dashboard, edit, users, type Answer, held, layerEntry, teams } from './support/layers-fixtures'
-import { page, ported, settled, failure } from './support/support'
+import { openApp, failure } from './support/app'
+import { type Answer, page, settled } from './support/browser'
+import { asPage, dashboard, edit, users, heldRoute, layerEntry, teams } from './support/pages'
 
 const usersPage = () => page('Users/Index', '/users', { props: { errors: {}, users: [] } })
-
-const layer = (name: string, url: string) => page(name, url, { layer: { key: name, base: '/users' } })
 
 describe('composeLayer', () => {
   it('strips the layer mark from the layer it composes', async () => {
@@ -14,7 +13,7 @@ describe('composeLayer', () => {
       props: { errors: {}, user: { id: 5 } },
       layer: { key: 'Users/Edit', base: '/users' },
     })
-    const app = await ported(usersPage(), { '/users/5/edit': edit })
+    const app = await openApp(usersPage(), { '/users/5/edit': edit })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -39,7 +38,7 @@ describe('promoteDeepestLayer', () => {
     })
 
   const promoted = async (answers: { show?: Answer; initial?: Answer; cold?: Answer; pending?: boolean } = {}) => {
-    const app = await ported(answers.initial ?? dashboard, {
+    const app = await openApp(answers.initial ?? dashboard, {
       '/go': answers.cold ?? editBeneath,
       '/users/5': answers.show ?? show(),
       '/users/5?tab=profile': () =>
@@ -103,7 +102,7 @@ describe('promoteDeepestLayer', () => {
   })
 
   it('leaves a page with no layers alone', async () => {
-    const app = await ported(users, {}, { boot: true })
+    const app = await openApp(users, {}, { boot: true })
 
     expect(await app.basePage()).toEqual({
       ...users,
@@ -154,7 +153,7 @@ describe('promoteLayer', () => {
     page('Users/Edit', '/users/5/edit', { props: { errors: {}, users: [] }, layer: { key: 'Users/Edit' } })
 
   const promote = async () => {
-    const app = await ported(dashboard, { '/go': response() })
+    const app = await openApp(dashboard, { '/go': response() })
 
     app.router.visit('/go')
     await settled()
@@ -200,7 +199,7 @@ describe('closeLayer', () => {
   const panel = (name: string) => page(`Panels/${name}`, `/panels/${name}`, { layer: { key: name, base: '/users' } })
 
   const open = async (...names: string[]) => {
-    const app = await ported(users, {
+    const app = await openApp(users, {
       '/users': users,
       ...Object.fromEntries(names.map((name) => [`/panels/${name}`, panel(name)])),
     })
@@ -214,7 +213,7 @@ describe('closeLayer', () => {
     return { app, handles }
   }
 
-  const closed = async (app: Awaited<ReturnType<typeof ported>>, id?: string) => {
+  const closed = async (app: Awaited<ReturnType<typeof openApp>>, id?: string) => {
     const done = app.router.close(id)
 
     await settled()
@@ -299,7 +298,7 @@ describe('nextLayerId', () => {
   const panel = (name: string) => page(`Panels/${name}`, `/panels/${name}`, { layer: { key: name, base: '/users' } })
 
   it("skips ids already on the base's stack", async () => {
-    const app = await ported(users, { '/panels/A': panel('A'), '/panels/B': panel('B') })
+    const app = await openApp(users, { '/panels/A': panel('A'), '/panels/B': panel('B') })
     const first = app.router.layer('/panels/A')
     await settled()
     const second = app.router.layer('/panels/B')
@@ -310,7 +309,7 @@ describe('nextLayerId', () => {
   })
 
   it('does not collide with a restored stack after the counter resets', async () => {
-    const app = await ported(users, { '/panels/A': panel('A'), '/panels/B': panel('B') })
+    const app = await openApp(users, { '/panels/A': panel('A'), '/panels/B': panel('B') })
     const first = app.router.layer('/panels/A')
     await settled()
 
@@ -332,7 +331,7 @@ describe('nextLayerId', () => {
   })
 
   it('gives every layer on a stack a different id', async () => {
-    const app = await ported(users, {
+    const app = await openApp(users, {
       '/panels/C0': panel('C0'),
       '/panels/C1': panel('C1'),
       '/panels/C2': panel('C2'),
@@ -350,7 +349,7 @@ describe('nextLayerId', () => {
 
 describe('composeLayer', () => {
   const open = async (routes: Record<string, Answer | (() => Promise<Answer>)> = {}) =>
-    ported(users, { '/users/5/edit': edit(), '/teams/1': teams, ...routes })
+    openApp(users, { '/users/5/edit': edit(), '/teams/1': teams, ...routes })
 
   it('keeps the page it composes onto as the base', async () => {
     const app = await open()
@@ -392,7 +391,7 @@ describe('composeLayer', () => {
   })
 
   it('marks a layer opened over nothing as standalone', async () => {
-    const app = await ported(dashboard, { '/go': edit(), '/users': users })
+    const app = await openApp(dashboard, { '/go': edit(), '/users': users })
     app.router.visit('/go')
     await settled()
 
@@ -486,7 +485,7 @@ describe('composeLayer', () => {
 
   it('keeps whether the layer it rewrites was standalone', async () => {
     const cold = edit()
-    const app = await ported(cold, { '/users': users, '/users/5/edit': cold }, { boot: true })
+    const app = await openApp(cold, { '/users': users, '/users/5/edit': cold }, { boot: true })
     await settled()
     const [seeded] = app.layers()
 
@@ -510,7 +509,7 @@ describe('composeLayer', () => {
   })
 
   it('does not rewrite an open key when the new layer is standalone', async () => {
-    const app = await ported(dashboard, {
+    const app = await openApp(dashboard, {
       '/go': edit(),
       '/users': edit({ layer: { key: 'Users/Edit', base: '/dashboard' } }),
       '/dashboard': dashboard,
@@ -577,7 +576,7 @@ describe('insertLayerBeneath', () => {
   })
 
   const walk = async (routes: Record<string, Answer | (() => Promise<Answer>)> = {}) => {
-    const app = await ported(dashboard, { '/go': cold, '/users': fetched, '/dashboard': dashboard, ...routes })
+    const app = await openApp(dashboard, { '/go': cold, '/users': fetched, '/dashboard': dashboard, ...routes })
 
     app.router.visit('/go')
     await settled()
@@ -621,7 +620,7 @@ describe('insertLayerBeneath', () => {
   })
 
   it('leaves the layers above it exactly where they were', async () => {
-    const hop = held(page('Teams/Show', '/teams/1', { layer: { key: 'Teams/Show', base: '/dashboard' } }))
+    const hop = heldRoute(page('Teams/Show', '/teams/1', { layer: { key: 'Teams/Show', base: '/dashboard' } }))
     const app = await walk({
       '/users': { ...fetched, layer: { key: 'Users/Index', base: '/teams/1' } },
       '/teams/1': hop.route,
@@ -667,8 +666,8 @@ describe('composeColdLayer', () => {
   const cold = edit()
 
   const arrive = async (visit: Record<string, unknown> = {}, answer: Answer = cold) => {
-    const hop = held(users)
-    const app = await ported(dashboard, { '/go': answer, '/users': hop.route })
+    const hop = heldRoute(users)
+    const app = await openApp(dashboard, { '/go': answer, '/users': hop.route })
 
     app.router.visit('/go', visit)
     await settled()
@@ -701,7 +700,7 @@ describe('composeColdLayer', () => {
   })
 
   it('gives the layer no url of its own when the visit preserved the url', async () => {
-    const app = await ported(users, { '/users/5/edit': cold })
+    const app = await openApp(users, { '/users/5/edit': cold })
 
     app.router.visit('/users/5/edit', { preserveUrl: true })
     await settled()

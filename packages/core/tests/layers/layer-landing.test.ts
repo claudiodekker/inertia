@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { held, scenario, type Answer, type App } from './support/a-support'
-import { bench, byPath, exitShells, gate, page, settled, type Bench } from './support/e-support'
+import { held, openAppSentCall, type SentCallApp, openApp, byPath, exitShells, gate, type App } from './support/app'
+import { type Answer, page, settled } from './support/browser'
 
 const plainUsers = page('Users/Index', '/users')
 
@@ -17,7 +17,7 @@ const teamsShow = page('Teams/Show', '/teams/9', {
 
 const teamsIndex = page('Teams/Index', '/teams')
 
-const components = (app: Bench) => app.layers().map((layer) => layer.component)
+const components = (app: App) => app.layers().map((layer) => layer.component)
 
 const pw = (overrides: Answer = {}): Answer => ({
   component: 'Users/Index',
@@ -44,7 +44,7 @@ const notesLayer = (overrides: Answer = {}): Answer =>
     ...overrides,
   })
 
-const visited = (app: App, url: string, options: Record<string, unknown> = {}): Promise<void> =>
+const visited = (app: SentCallApp, url: string, options: Record<string, unknown> = {}): Promise<void> =>
   new Promise((resolve) => {
     app.router.visit(url, {
       ...options,
@@ -57,7 +57,7 @@ describe('a layer response landing', () => {
   const cold = { ...layerEdit, layer: { key: 'Users/Edit', base: '/users' } }
 
   it('opens a new layer over the base, leaving the base standing', async () => {
-    const app = await bench(plainUsers, byPath({ '/users/5/edit': layerEdit }))
+    const app = await openApp(plainUsers, byPath({ '/users/5/edit': layerEdit }))
     const before = app.written().length
 
     app.router.visit('/users/5/edit')
@@ -88,7 +88,7 @@ describe('a layer response landing', () => {
   })
 
   it('rewrites the layer already open under the same key rather than stacking a second', async () => {
-    const app = await bench(
+    const app = await openApp(
       plainUsers,
       byPath({
         '/users/5/edit': layerEdit,
@@ -113,7 +113,7 @@ describe('a layer response landing', () => {
   })
 
   it('opens under the id the call created, so its handle answers for it', async () => {
-    const app = await bench(plainUsers, byPath({ '/users/5/edit': layerEdit }))
+    const app = await openApp(plainUsers, byPath({ '/users/5/edit': layerEdit }))
     const handle = app.router.layer('/users/5/edit')
     const id = handle.id
 
@@ -127,7 +127,7 @@ describe('a layer response landing', () => {
   })
 
   it('closes the stack down to the layer a deeper link named before landing', async () => {
-    const app = await bench(plainUsers, byPath({ '/users/5/edit': layerEdit, '/teams/9': teamsShow }))
+    const app = await openApp(plainUsers, byPath({ '/users/5/edit': layerEdit, '/teams/9': teamsShow }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -148,7 +148,7 @@ describe('a layer response landing', () => {
   })
 
   it('leaves the stack alone when a refresh in place answers a layer beneath the top', async () => {
-    const app = await bench(plainUsers, byPath({ '/users/5/edit': layerEdit, '/teams/9': teamsShow }))
+    const app = await openApp(plainUsers, byPath({ '/users/5/edit': layerEdit, '/teams/9': teamsShow }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -171,7 +171,10 @@ describe('a layer response landing', () => {
 
   it('stands a layer with nowhere valid to sit on a cold base and walks to fetch it', async () => {
     const walk = gate()
-    const app = await bench(plainLogin, byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }))
+    const app = await openApp(
+      plainLogin,
+      byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }),
+    )
 
     app.router.visit('/login')
     await settled()
@@ -204,7 +207,7 @@ describe('a layer response landing', () => {
   })
 
   it('promotes a layer that declares no base and cannot compose to the page', async () => {
-    const app = await bench(plainLogin, byPath({ '/login': layerEdit }))
+    const app = await openApp(plainLogin, byPath({ '/login': layerEdit }))
 
     app.router.visit('/login')
     await settled()
@@ -222,7 +225,7 @@ describe('a layer response landing', () => {
 
 describe('a page response landing', () => {
   const openOver = async (routes: Parameters<typeof byPath>[0]) => {
-    const app = await bench(plainUsers, byPath({ '/users/5/edit': layerEdit, ...routes }))
+    const app = await openApp(plainUsers, byPath({ '/users/5/edit': layerEdit, ...routes }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -341,7 +344,7 @@ describe('a page response landing', () => {
   })
 
   it('hands errors back to a local layer submitted from the address beneath it', async () => {
-    const app = await bench(
+    const app = await openApp(
       plainUsers,
       byPath({
         'post /users': {
@@ -384,7 +387,7 @@ describe('a page response landing', () => {
 
 describe("a layer's own component across a rewrite", () => {
   const openEdit = async () => {
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users/6/edit': editLayer({ props: { user: { id: 6 } } }),
     })
@@ -420,7 +423,7 @@ describe("a layer's own component across a rewrite", () => {
 
 describe('a layer response that names an earlier level', () => {
   const stack = async (routes: Record<string, Route> = {}) => {
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users/5/edit/notes': notesLayer(),
       ...routes,

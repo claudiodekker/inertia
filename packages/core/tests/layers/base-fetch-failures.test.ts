@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { compose } from '../../src/layers/entry'
-import { settled } from './support/runtime'
-import { elsewhere, layerAt, pageWith, world, errorPage } from './support/walk-support'
+import { elsewhere, layerAt, pageWith, world, errorPage } from './support/base-fetch'
+import { settled } from './support/browser'
 
 const login = pageWith({ component: 'Auth/Login', url: '/login' })
 

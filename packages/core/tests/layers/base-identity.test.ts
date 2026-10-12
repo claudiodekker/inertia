@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { exitShells, page, scenario, settled, type Answer, type Route } from './support/a-support'
+import { exitShells, openAppSentCall, type Route } from './support/app'
+import { page, settled, type Answer } from './support/browser'
 
 const users = page('Users/Index', '/users', {
   props: { users: [], errors: {} },
@@ -18,7 +19,7 @@ const teams = page('Teams/Show', '/teams/9', {
 })
 
 const open = async (initial: Answer = users, routes: Record<string, Route> = {}) => {
-  const app = await scenario(initial, {
+  const app = await openAppSentCall(initial, {
     '/users/5/edit': editLayerPage(),
     '/teams/9': teams,
     ...routes,
@@ -30,7 +31,7 @@ const open = async (initial: Answer = users, routes: Record<string, Route> = {})
   return app
 }
 
-const ids = (app: Awaited<ReturnType<typeof scenario>>) => app.layers().map((layer) => layer.id)
+const ids = (app: Awaited<ReturnType<typeof openAppSentCall>>) => app.layers().map((layer) => layer.id)
 
 /** Records what each base swap hands the adapter. */
 async function recordSwaps() {
@@ -157,7 +158,7 @@ describe('base generation', () => {
   })
 
   it('changes when history restores a page', async () => {
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       '/dashboard': page('Dashboard', '/dashboard'),
       '/users/5/edit': editLayerPage(),
     })
@@ -192,7 +193,7 @@ describe('base generation', () => {
 })
 
 describe('base id', () => {
-  const ownersOf = (app: Awaited<ReturnType<typeof scenario>>) =>
+  const ownersOf = (app: Awaited<ReturnType<typeof openAppSentCall>>) =>
     (app.entry().layers as { owner: string | null }[]).map((layer) => layer.owner)
 
   it('is created for the base it is given', async () => {
@@ -260,7 +261,7 @@ describe('base id', () => {
   })
 
   it('survives a preserved visit to another url of the same component', async () => {
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       '/users?filter=x': page('Users/Index', '/users?filter=x', {
         props: { users: [], errors: {} },
       }),

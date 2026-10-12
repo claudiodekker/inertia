@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { page, scenario, settled, type Answer, type Route } from './support/a-support'
+import { openAppSentCall, type Route } from './support/app'
+import { page, settled, type Answer } from './support/browser'
 
 const users = page('Users/Index', '/users', {
   props: { users: [], errors: {} },
@@ -18,7 +19,7 @@ const teams = page('Teams/Show', '/teams/9', {
 })
 
 const open = async (initial: Answer = users, routes: Record<string, Route> = {}) => {
-  const app = await scenario(initial, {
+  const app = await openAppSentCall(initial, {
     '/users/5/edit': editLayerPage(),
     '/teams/9': teams,
     ...routes,
@@ -30,7 +31,7 @@ const open = async (initial: Answer = users, routes: Record<string, Route> = {})
   return app
 }
 
-const ids = (app: Awaited<ReturnType<typeof scenario>>) => app.layers().map((layer) => layer.id)
+const ids = (app: Awaited<ReturnType<typeof openAppSentCall>>) => app.layers().map((layer) => layer.id)
 
 describe('a client visit aimed at a layer', () => {
   const holdLayer = async () => {

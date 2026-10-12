@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { keysHeld, page, seedKeys, settled, start, cached } from './support/f-support'
-import { users, type Answer } from './support/layers-fixtures'
-import { ported } from './support/support'
+import { openAppSync, openApp } from './support/app'
+import { page, settled, type Answer } from './support/browser'
+import { users } from './support/pages'
+import { keysHeld, seedKeys, cached } from './support/peek'
 
 const usersIndex = page('Users/Index', '/users', {
   props: { errors: {}, users: [] },
@@ -30,7 +31,7 @@ describe('encrypting the history entry a stack leaves behind', () => {
   }
 
   const openedOver = async (base: typeof usersIndex, layer: typeof editOverUsers) => {
-    const app = await start(base, { '/users/5/edit': layer })
+    const app = await openAppSync(base, { '/users/5/edit': layer })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -84,7 +85,7 @@ describe('encrypting the history entry a stack leaves behind', () => {
   })
 
   it('still encrypts a page with no layers that asks for it', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5': { ...show, encryptHistory: true },
     })
 
@@ -95,7 +96,7 @@ describe('encrypting the history entry a stack leaves behind', () => {
   })
 
   it('leaves a page with no layers that does not ask for it readable', async () => {
-    const app = await start(usersIndex, { '/users/5': show })
+    const app = await openAppSync(usersIndex, { '/users/5': show })
 
     app.router.visit('/users/5')
     await settled()
@@ -111,7 +112,7 @@ describe('clearing the history keys from a stack', () => {
   })
 
   it('discards them when the layer asks to clear history', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5/edit': { ...editOverUsers, clearHistory: true },
     })
 
@@ -123,7 +124,7 @@ describe('clearing the history keys from a stack', () => {
   })
 
   it('keeps them when neither the base nor the layer asks', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     seedKeys(app)
     app.router.layer('/users/5/edit')
@@ -133,7 +134,7 @@ describe('clearing the history keys from a stack', () => {
   })
 
   it('does not discard them again when a second layer opens over one that asked', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5/edit': { ...editOverUsers, clearHistory: true },
       '/teams/9': second,
     })
@@ -149,7 +150,7 @@ describe('clearing the history keys from a stack', () => {
   })
 
   it('does not discard them again when the page beneath a layer that asked is rewritten', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5/edit': { ...editOverUsers, clearHistory: true },
     })
 
@@ -170,7 +171,7 @@ describe('clearing the history keys from a stack', () => {
 })
 
 describe('encryptsHistory', () => {
-  const encrypted = (app: Awaited<ReturnType<typeof ported>>) => app.rawEntry() instanceof ArrayBuffer
+  const encrypted = (app: Awaited<ReturnType<typeof openApp>>) => app.rawEntry() instanceof ArrayBuffer
 
   const stacked = async (base: Answer, ...layers: Answer[]) => {
     const routes: Record<string, Answer> = {}
@@ -179,7 +180,7 @@ describe('encryptsHistory', () => {
       routes[`/l${index}`] = page(`L${index}`, `/l${index}`, { layer: { key: `L${index}`, base: '/users' }, ...layer })
     })
 
-    const app = await ported({ ...users, ...base }, routes)
+    const app = await openApp({ ...users, ...base }, routes)
 
     for (let index = 0; index < layers.length; index++) {
       app.router.visit(`/l${index}`)
@@ -190,14 +191,14 @@ describe('encryptsHistory', () => {
   }
 
   it('is false for a page nobody asked to encrypt', async () => {
-    const app = await ported(users, {})
+    const app = await openApp(users, {})
 
     expect(app.entry()).toMatchObject({ component: 'Users/Index', url: '/users' })
     expect(encrypted(app)).toBe(false)
   })
 
   it('is true for a page that asks for it', async () => {
-    const app = await ported({ ...users, encryptHistory: true }, {})
+    const app = await openApp({ ...users, encryptHistory: true }, {})
 
     expect(encrypted(app)).toBe(true)
   })
@@ -249,7 +250,7 @@ describe('clearing history', () => {
   const logout = page('Auth/Logout', '/logout', { clearHistory: true })
 
   it('discards the keys when the page asks', async () => {
-    const app = await start(usersIndex, { '/logout': logout })
+    const app = await openAppSync(usersIndex, { '/logout': logout })
 
     seedKeys(app)
     app.router.visit('/logout')
@@ -260,7 +261,7 @@ describe('clearing history', () => {
   })
 
   it('keeps them when the page does not ask', async () => {
-    const app = await start(usersIndex, { '/users/5': plainShow })
+    const app = await openAppSync(usersIndex, { '/users/5': plainShow })
 
     seedKeys(app)
     app.router.visit('/users/5')
@@ -271,7 +272,7 @@ describe('clearing history', () => {
   })
 
   it('leaves no pending request on the entry it writes', async () => {
-    const app = await start(usersIndex, { '/logout': logout })
+    const app = await openAppSync(usersIndex, { '/logout': logout })
 
     app.router.visit('/logout')
     await settled()
@@ -281,7 +282,7 @@ describe('clearing history', () => {
   })
 
   it('does not discard them again when a client visit rewrites the page', async () => {
-    const app = await start(usersIndex, { '/logout': logout })
+    const app = await openAppSync(usersIndex, { '/logout': logout })
 
     app.router.visit('/logout')
     await settled()
@@ -299,7 +300,7 @@ describe('clearing history', () => {
   })
 
   it('still asks on a second visit, after the first one flushed its prefetch', async () => {
-    const app = await start(usersIndex, { '/logout': logout })
+    const app = await openAppSync(usersIndex, { '/logout': logout })
 
     app.router.prefetch('/logout', {}, { cacheFor: '30s' })
     await vi.waitFor(() => expect(app.sent).toEqual(['get /logout']))

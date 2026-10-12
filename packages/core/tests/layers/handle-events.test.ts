@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { base, counted, edit, layerAt, notes, page, ported, settled } from './support/layer-handles-support'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
+import { counted } from './support/handles'
+import { base, edit, notes } from './support/pages'
 
 describe('layer events', () => {
   const layerAt = (path: string, component: string) =>
@@ -14,7 +17,7 @@ describe('layer events', () => {
   }
 
   it('delivers an event to the immediate owner only, never up the chain', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
     const a = app.router.layer('http://localhost/a')
     await settled()
     const b = app.router.layer('http://localhost/b')
@@ -34,7 +37,7 @@ describe('layer events', () => {
   })
 
   it('distinguishes the same-named events of two children by the emitting id', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
     const a = app.router.layer('http://localhost/a')
     await settled()
     const b = app.router.layerHandle(a.id)!.router.layer('http://localhost/b')
@@ -60,7 +63,7 @@ describe('layer events', () => {
   })
 
   it('drops an event no one subscribed to, silently', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
 
     app.router.layer('http://localhost/a')
     await settled()
@@ -72,7 +75,7 @@ describe('layer events', () => {
   })
 
   it('drops an event a layer emits to the page, which has no handle to hear it', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
     const a = app.router.layer('http://localhost/a')
 
     await settled()
@@ -83,7 +86,7 @@ describe('layer events', () => {
   })
 
   it('closes a child opened through layer.layer(), leaving the layer that opened it', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
     const a = app.router.layer('http://localhost/a')
     await settled()
     const child = app.router.layerHandle(a.id)!.router.layer('http://localhost/b')
@@ -100,7 +103,7 @@ describe('layer events', () => {
   })
 
   it('hears a layer event through once() exactly once, and through on() every time', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
     const heard: string[] = []
     const a = app.router.layer('http://localhost/a')
 
@@ -118,7 +121,7 @@ describe('layer events', () => {
   })
 
   it('stops a once() subscription that never fired', async () => {
-    const app = await ported(base(), routes)
+    const app = await openApp(base(), routes)
     const heard: string[] = []
     const a = app.router.layer('http://localhost/a')
     const stop = a.once('saved', () => heard.push('once'))
@@ -135,7 +138,7 @@ describe('layer events', () => {
   })
 
   it('keeps the page hearing its children across a preserved visit of its own component', async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       ...routes,
       '/a?filter=x': page('Users/A', '/a?filter=x', {
         layer: { key: 'Users/A', base: '/users' },
@@ -165,7 +168,7 @@ describe('layer handles across restores and navigations', () => {
   const dashboard = page('Dashboard', '/dashboard')
 
   it('fires a handle onClose exactly once when the restore drops its layer, then clears it', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -182,7 +185,7 @@ describe('layer handles across restores and navigations', () => {
   })
 
   it('gives a restored stack the page it lands on as its owner, so its events are still heard', async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/a': page('Users/A', '/a', { layer: { key: 'Users/A', base: '/users' } }),
       '/b': page('Users/B', '/b', { layer: { key: 'Users/B', base: '/users' } }),
       '/dashboard': dashboard,
@@ -215,7 +218,7 @@ describe('layer handles across restores and navigations', () => {
   })
 
   it('keeps the layer and page handles when a newer write supersedes an older one', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -239,7 +242,7 @@ describe('layer handles across restores and navigations', () => {
   })
 
   it('keeps a handle whose layer the restored stack still holds', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users/5/notes': notes(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users/5/notes': notes(), '/users': base() })
     const outer = app.router.layer('http://localhost/users/5/edit')
     const heard: string[] = []
 
@@ -271,7 +274,7 @@ describe('layer handles across restores and navigations', () => {
   })
 
   it('fires a handle onClose when a navigation from the base takes its layer away', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/teams': page('Teams/Index', '/teams') })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/teams': page('Teams/Index', '/teams') })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -295,7 +298,7 @@ describe('layer handles across restores and navigations', () => {
   })
 
   it('keeps the handle of a layer whose own response clears the history', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit({ clearHistory: true }) })
+    const app = await openApp(base(), { '/users/5/edit': edit({ clearHistory: true }) })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 

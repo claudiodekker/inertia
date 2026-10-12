@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import createHeadManager, { resolveServerHead } from '../../src/head'
 import { planBoot } from '../../src/layers/entry'
 import type { Page } from '../../src/types'
-import { page, settled, start } from './support/f-support'
+import { openAppSync } from './support/app'
+import { page, settled } from './support/browser'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -46,7 +47,7 @@ describe('createHeadManager', () => {
         layer: { key: 'Users/Edit', base: '/users' },
         props: { errors: {}, head: ['<title>Layer</title>'] },
       })
-      const app = await start(base, { '/users/5/edit': layer })
+      const app = await openAppSync(base, { '/users/5/edit': layer })
 
       app.router.layer('/users/5/edit')
       await settled()

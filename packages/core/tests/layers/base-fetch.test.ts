@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bench, byPath, gate, page, settled, type Bench } from './support/e-support'
-import { layerAt, pageWith, world } from './support/walk-support'
+import { openApp, byPath, gate, type App } from './support/app'
+import { layerAt, pageWith, world } from './support/base-fetch'
+import { page, settled } from './support/browser'
 
 const login = pageWith({ component: 'Auth/Login', url: '/login' })
 
@@ -15,7 +16,7 @@ const layerEdit = page('Users/Edit', '/users/5/edit', {
   props: { errors: {}, user: { id: 5 } },
 })
 
-const components = (app: Bench) => app.layers().map((layer) => layer.component)
+const components = (app: App) => app.layers().map((layer) => layer.component)
 
 describe('the walk a cold layer sends for the base beneath it', () => {
   it('does not interrupt a visit the user made while the walk is running', async () => {
@@ -65,7 +66,10 @@ describe('a walk hop landing', () => {
 
   it('fills in the blank base beneath the stack', async () => {
     const walk = gate()
-    const app = await bench(plainLogin, byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }))
+    const app = await openApp(
+      plainLogin,
+      byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }),
+    )
 
     app.router.visit('/login')
     await settled()
@@ -90,7 +94,7 @@ describe('a walk hop landing', () => {
 
   it('inserts a base that is itself a layer beneath the stack and keeps walking', async () => {
     const walk = gate()
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/login': cold,

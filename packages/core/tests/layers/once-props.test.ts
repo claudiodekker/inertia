@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bench, byPath, page, settled, type Bench } from './support/e-support'
+import { openApp, byPath, type App } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
@@ -9,7 +10,7 @@ const editPage = page('Users/Edit', '/users/5/edit', {
 })
 
 describe('once props per layer', () => {
-  const cached = (app: Awaited<ReturnType<Awaited<ReturnType<typeof bench>>['modules']>>) =>
+  const cached = (app: Awaited<ReturnType<Awaited<ReturnType<typeof openApp>>['modules']>>) =>
     (app.prefetchedRequests as unknown as { cached: { response: Promise<{ getPageResponse(): Promise<any> }> }[] })
       .cached
 
@@ -19,7 +20,7 @@ describe('once props per layer', () => {
   })
 
   it("does not put the page's once props into a cached layer response", async () => {
-    const app = await bench(
+    const app = await openApp(
       baseOnce,
       byPath({ '/users/5/edit': { ...editPage, onceProps: { baseKey: { prop: 'baseProp' } } } }),
     )
@@ -48,7 +49,7 @@ describe('once props per layer', () => {
     onceProps: { layerKey: { prop: 'layerProp' } },
     props: { errors: {}, user: { id: 5 }, layerProp: 'layer value' },
   }
-  const cached = (app: Awaited<ReturnType<Bench['modules']>>) =>
+  const cached = (app: Awaited<ReturnType<App['modules']>>) =>
     (
       app.prefetchedRequests as unknown as {
         cached: { response: Promise<{ getPageResponse(): Promise<any> }> }[]
@@ -57,7 +58,7 @@ describe('once props per layer', () => {
   const except = (request: { headers: Record<string, string> }) => request.headers['X-Inertia-Except-Once-Props']
 
   it('names no once keys at all on the visit that opens a layer', async () => {
-    const app = await bench(baseOnce, byPath({ '/users/5/edit': editPage }))
+    const app = await openApp(baseOnce, byPath({ '/users/5/edit': editPage }))
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -67,7 +68,7 @@ describe('once props per layer', () => {
   })
 
   it("a layer-targeted partial names the layer's once keys in the except header", async () => {
-    const app = await bench(baseOnce, byPath({ '/users/5/edit': layerOnce }))
+    const app = await openApp(baseOnce, byPath({ '/users/5/edit': layerOnce }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -86,7 +87,7 @@ describe('once props per layer', () => {
         props: { errors: {}, user: { id: 9 } },
       },
     ]
-    const app = await bench(baseOnce, () => answers.shift()!)
+    const app = await openApp(baseOnce, () => answers.shift()!)
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -108,7 +109,7 @@ describe('once props per layer', () => {
       onceProps: { token: { prop: 'token' } },
       props: { errors: {}, user: { id: 5 }, token: 'live' },
     }
-    const app = await bench(users, (request) =>
+    const app = await openApp(users, (request) =>
       request.path === '/users/5/notes'
         ? {
             ...editPage,
@@ -145,7 +146,7 @@ describe('once props per layer', () => {
   })
 
   it('flushes the cached prefetch of the layer a fresh response landed on', async () => {
-    const app = await bench(users, (request) =>
+    const app = await openApp(users, (request) =>
       request.method === 'post' ? { ...editPage, props: { errors: {}, user: { id: 9 } } } : editPage,
     )
     const modules = await app.modules()

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { scenario, settled, type Answer, type App, exitShells, held, page, type Route } from './support/a-support'
+import { openAppSentCall, type SentCallApp, exitShells, held, type Route } from './support/app'
+import { settled, type Answer, page } from './support/browser'
 
 const pw = (overrides: Answer = {}): Answer => ({
   component: 'Users/Index',
@@ -26,7 +27,7 @@ const notesLayer = (overrides: Answer = {}): Answer =>
     ...overrides,
   })
 
-const visited = (app: App, url: string, options: Record<string, unknown> = {}): Promise<void> =>
+const visited = (app: SentCallApp, url: string, options: Record<string, unknown> = {}): Promise<void> =>
   new Promise((resolve) => {
     app.router.visit(url, {
       ...options,
@@ -46,7 +47,7 @@ const editWith = (extra: Record<string, unknown> = {}) =>
   })
 
 const open = async (initial: Record<string, unknown>, routes: Record<string, Route>, url = '/users/5/edit') => {
-  const app = await scenario(initial, routes)
+  const app = await openAppSentCall(initial, routes)
 
   app.router.visit(url)
   await settled()
@@ -54,7 +55,7 @@ const open = async (initial: Record<string, unknown>, routes: Record<string, Rou
   return app
 }
 
-const scopeOf = (app: App, index = 0) => app.router.layerHandle(app.layers()[index].id)!
+const scopeOf = (app: SentCallApp, index = 0) => app.router.layerHandle(app.layers()[index].id)!
 
 const inertia = (answer: Record<string, unknown>) => ({
   status: 200,
@@ -64,7 +65,7 @@ const inertia = (answer: Record<string, unknown>) => ({
 
 describe('the prefetch cache shared between the page and its layers', () => {
   const openTwo = async () => {
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users/5/edit/notes': notesLayer(),
       '/users/5/edit?tab=2': editLayer({ url: '/users/5/edit?tab=2' }),
@@ -165,7 +166,7 @@ describe('a reload or partial issued from inside a layer', () => {
   })
 
   it('keeps the identity of the props a base response left untouched', async () => {
-    const app = await scenario(index({ props: { users: [{ id: 1 }], team: { id: 7 }, errors: {} } }), {
+    const app = await openAppSentCall(index({ props: { users: [{ id: 1 }], team: { id: 7 }, errors: {} } }), {
       '/users': index({
         props: { users: [{ id: 2 }], team: { id: 7 }, errors: {} },
       }),
@@ -180,7 +181,7 @@ describe('a reload or partial issued from inside a layer', () => {
   })
 
   it('never takes the identity of a base prop that happens to equal the layer prop', async () => {
-    const app = await scenario(page('Users/Edit', '/users', { props: { user: { id: 5 }, errors: {} } }), {
+    const app = await openAppSentCall(page('Users/Edit', '/users', { props: { user: { id: 5 }, errors: {} } }), {
       '/users/5/edit': editWith(),
     })
 
@@ -327,7 +328,7 @@ describe('requests aimed at a layer and the page', () => {
     const pending = held()
     let calls = 0
     const cold = editWith({ layer: { key: 'Users/Edit', base: '/users' } })
-    const app = await scenario(index(), {
+    const app = await openAppSentCall(index(), {
       '/users/5/edit': () => (++calls === 1 ? Promise.resolve(cold) : pending.answer()),
       '/users': index(),
     })

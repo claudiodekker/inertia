@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { bench, byPath, exitShells, gate, page, settled, type Bench } from './support/e-support'
-import { start } from './support/f-support'
+import { openApp, byPath, exitShells, gate, type App, openAppSync } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
@@ -9,7 +9,7 @@ const editPage = page('Users/Edit', '/users/5/edit', {
   props: { errors: {}, user: { id: 5 } },
 })
 
-const partialOf = (app: Bench) =>
+const partialOf = (app: App) =>
   app.requests.filter((request) => request.headers['X-Inertia-Partial-Data'] !== undefined)
 
 afterEach(() => {
@@ -19,8 +19,8 @@ afterEach(() => {
 describe("a layer's deferred and rescued props", () => {
   it('drops what a layer was owing when the write that lands has closed it', async () => {
     const resolving = gate()
-    const app = await bench(users, byPath({ '/users/5/edit': { ...editPage, deferredProps: { slow: ['stats'] } } }), {
-      resolve: (name) => (name === 'Users/Edit' ? resolving.opened.then(() => ({ name })) : { name }),
+    const app = await openApp(users, byPath({ '/users/5/edit': { ...editPage, deferredProps: { slow: ['stats'] } } }), {
+      resolveComponent: (name) => (name === 'Users/Edit' ? resolving.opened.then(() => ({ name })) : { name }),
     })
 
     app.router.visit('/users/5/edit')
@@ -41,7 +41,7 @@ describe("a layer's deferred and rescued props", () => {
 describe("a layer's deferred and rescued props", () => {
   it('loads the deferred props a layer response declared into the layer', async () => {
     let opens = 0
-    const app = await bench(users, (request) => {
+    const app = await openApp(users, (request) => {
       if (request.headers['X-Inertia-Partial-Data'] === undefined && opens++ === 0) {
         return {
           ...editPage,
@@ -73,7 +73,7 @@ describe("a layer's deferred and rescued props", () => {
   })
 
   it('aims the deferred follow-up at a layer that preserved the url, not at the page', async () => {
-    const app = await bench(users, (request) =>
+    const app = await openApp(users, (request) =>
       request.headers['X-Inertia-Partial-Data']?.includes('stats')
         ? { ...editPage, props: { errors: {}, user: { id: 5 }, stats: [1] } }
         : { ...editPage, deferredProps: { slow: ['stats'] } },
@@ -102,7 +102,7 @@ describe("a layer's deferred and rescued props", () => {
   })
 
   it("does not re-fire the page's pending deferred props when a layer opens over it", async () => {
-    const app = await bench(users, (request) => {
+    const app = await openApp(users, (request) => {
       if (request.headers['X-Inertia-Partial-Data']?.includes('stats')) {
         return new Promise(() => {})
       }
@@ -128,7 +128,7 @@ describe("a layer's deferred and rescued props", () => {
 
   it('rescued props travel with the layer and resolve into its props', async () => {
     const follow = gate()
-    const app = await bench(users, (request) =>
+    const app = await openApp(users, (request) =>
       request.headers['X-Inertia-Partial-Data'] === undefined
         ? {
             ...editPage,
@@ -162,7 +162,7 @@ describe("a layer's deferred and rescued props", () => {
   })
 
   it("re-asks for the deferred props a restored entry's layer is still missing", async () => {
-    const app = await bench(
+    const app = await openApp(
       {
         ...users,
         props: { errors: {}, users: [], sidebar: ['loaded'] },
@@ -208,8 +208,8 @@ describe('the deferred props a page write was carrying', () => {
     ...overrides,
   })
 
-  const listening = async (handle: Parameters<typeof bench>[1]) => {
-    const app = await bench(users, handle)
+  const listening = async (handle: Parameters<typeof openApp>[1]) => {
+    const app = await openApp(users, handle)
     const { page: base, eventHandler } = await app.modules()
     const groups: unknown[] = []
     const stop = eventHandler.on('loadDeferredProps', (deferredProps: unknown) => groups.push(deferredProps))
@@ -298,12 +298,12 @@ describe('partialReloadFillsDeferred', () => {
   })
   const withStats = { props: { errors: {}, stats: 3 } }
 
-  type App = Awaited<ReturnType<typeof start>>
+  type App = Awaited<ReturnType<typeof openAppSync>>
 
   const startedOf = (app: App) => app.fired.findLast((event) => event.type === 'inertia:start')!.detail.visit
 
   it('matches a base reload against the base url while a layer owns the address', async () => {
-    const app = await start(page('Users/Index', '/users'), {
+    const app = await openAppSync(page('Users/Index', '/users'), {
       '/users/5/edit': edit,
       '/users': { ...page('Users/Index', '/users'), ...withStats },
     })
@@ -333,7 +333,7 @@ describe('partialReloadFillsDeferred', () => {
   })
 
   it('matches a base reload against the address when no layer is open', async () => {
-    const app = await start(page('Users/Index', '/users'), {
+    const app = await openAppSync(page('Users/Index', '/users'), {
       '/users': { ...page('Users/Index', '/users'), ...withStats },
     })
 
@@ -349,7 +349,7 @@ describe('partialReloadFillsDeferred', () => {
   })
 
   it('matches a layer reload against the layer url, on that layer only', async () => {
-    const app = await start(page('Users/Index', '/users'), {
+    const app = await openAppSync(page('Users/Index', '/users'), {
       '/users/5/edit': () => Promise.resolve(app.sent.length > 1 ? { ...edit, ...withStats } : edit),
     })
     const handle = app.router.layer('/users/5/edit')
@@ -380,7 +380,7 @@ describe('partialReloadFillsDeferred', () => {
       layer: { key: 'Users/Pick', base: '/users' },
       props: { errors: {} },
     })
-    const app = await start(page('Users/Index', '/users'), {
+    const app = await openAppSync(page('Users/Index', '/users'), {
       '/users?pick=1': picker,
       '/users': page('Users/Index', '/users'),
     })

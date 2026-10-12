@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { page, runtime, settled } from './support/runtime'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
 
 const panel = page('Panel', '/panel', { layer: { key: 'panel', base: '/users' } })
 
@@ -16,7 +17,7 @@ const modules = Object.entries(import.meta.glob('../../src/**/*.ts')).filter(
 
 describe('opening a layer whichever core module is loaded first', () => {
   it.each(modules)('opens a layer when %s is loaded first', async (_path, loadFirst) => {
-    const app = await runtime(page('Users', '/users'), { '/panel': panel }, loadFirst)
+    const app = await openApp(page('Users', '/users'), { '/panel': panel }, { loadFirst })
 
     app.router.layer('/panel')
     await settled()

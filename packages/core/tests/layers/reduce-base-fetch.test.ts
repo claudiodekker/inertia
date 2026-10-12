@@ -6,7 +6,6 @@ import {
   arrived,
   baseOrigin,
   cid,
-  close,
   committing,
   entry,
   entryLayer,

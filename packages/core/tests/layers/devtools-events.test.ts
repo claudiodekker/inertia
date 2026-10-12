@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { exitShells, page, settled, start, type App } from './support/f-support'
+import { exitShells, openAppSync, type SyncApp } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users', {
   props: { errors: {}, users: [] },
@@ -25,12 +26,12 @@ afterEach(() => {
 })
 
 describe('layer events for development tooling', () => {
-  type Heard = Parameters<Parameters<App['interceptors']['onLayerEvent']>[0]>[0]
+  type Heard = Parameters<Parameters<SyncApp['interceptors']['onLayerEvent']>[0]>[0]
 
   const kinds = (events: Heard[]) =>
     events.map((event) => (event.type === 'event' ? event.name : `${event.type}:${event.layer.id}`))
 
-  const watched = (app: App, heard: string[]) => {
+  const watched = (app: SyncApp, heard: string[]) => {
     const events: Heard[] = []
 
     return app.interceptors.onLayerEvent((event) => {
@@ -40,7 +41,7 @@ describe('layer events for development tooling', () => {
   }
 
   it('announces a layer landing on the stack', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const events: Heard[] = []
 
     app.interceptors.onLayerEvent((event) => events.push(event))
@@ -63,7 +64,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('announces every layer of a stack that opens at once, deepest first', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const first = app.router.layer('/users/5/edit')
     await settled()
     const second = app.router.layer('/teams/9')
@@ -83,7 +84,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('announces a layer leaving the stack, however it was written out', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const first = app.router.layer('/users/5/edit')
     await settled()
     const second = app.router.layer('/teams/9')
@@ -100,7 +101,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('announces a dismissed layer once the shell has run its exit', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     app.router.layer('/users/5/edit')
     await settled()
     const second = app.router.layer('/teams/9')
@@ -121,7 +122,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('announces a rewrite as nothing: the layer is still the layer it was', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const handle = app.router.layer('/users/5/edit')
     await settled()
     const heard: string[] = []
@@ -144,7 +145,7 @@ describe('layer events for development tooling', () => {
 
   it('announces the whole stack of a document that opens on one', async () => {
     const events: Heard[] = []
-    const app = await start(
+    const app = await openAppSync(
       edit,
       { '/users': users },
       {
@@ -170,7 +171,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('announces what a layer emits, and to whom', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const first = app.router.layer('/users/5/edit')
     await settled()
     const second = app.router.layerHandle(first.id)!.router.layer('/teams/9')
@@ -195,7 +196,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('announces an emit from a layer nobody opened, with no recipient', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const handle = app.router.layer('/users/5/edit')
     await settled()
     const events: Heard[] = []
@@ -219,7 +220,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('keeps a handler that throws from breaking the write that announced', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const bug = new Error('tooling bug')
     const outcome: string[] = []
@@ -240,7 +241,7 @@ describe('layer events for development tooling', () => {
   })
 
   it('stops announcing to a handler once it is unsubscribed', async () => {
-    const app = await start(users, routes)
+    const app = await openAppSync(users, routes)
     const heard: string[] = []
     const stop = watched(app, heard)
 

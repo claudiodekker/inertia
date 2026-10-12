@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi, beforeAll } from 'vitest'
-import { page, settled, start } from './support/f-support'
+import { openAppSync } from './support/app'
+import { page, settled } from './support/browser'
 
 const usersIndex = page('Users/Index', '/users', {
   props: { errors: {}, users: [] },
@@ -32,7 +33,7 @@ describe('methods that never read `this` before layers', () => {
     const edit = page('Users/Edit', '/users/5/edit', {
       layer: { key: 'Users/Edit', base: '/users' },
     })
-    const app = await start(usersIndex, { '/users/5/edit': edit })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': edit })
     const handle = app.router.layer('/users/5/edit')
 
     await settled()

@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { planBoot } from '../../src/layers/entry'
-import { page, scenario, settled } from './support/a-support'
-import { layerAt, world, elsewhere, errorPage, pageWith } from './support/walk-support'
-
-const usersAt = (url = '/users') => page('Users/Index', url, { props: { errors: {}, users: [] } })
+import { openAppSentCall } from './support/app'
+import { layerAt, world, elsewhere, errorPage, pageWith } from './support/base-fetch'
+import { page, settled } from './support/browser'
 
 const editOver = (base: string) =>
   page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit', base }, props: { errors: {}, user: { id: 5 } } })
@@ -16,7 +15,7 @@ const from = (href = 'http://localhost/login') => ({ href })
 
 describe('a layer that declares its own url as its base, landing in session', () => {
   it('lands as an ordinary page and sends for no base', async () => {
-    const app = await scenario(page('Auth/Login', '/login'), { '/users/5': editOver('/users/5/edit') })
+    const app = await openAppSentCall(page('Auth/Login', '/login'), { '/users/5': editOver('/users/5/edit') })
 
     app.router.visit('/users/5')
     await settled()

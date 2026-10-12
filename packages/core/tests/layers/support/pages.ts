@@ -1,8 +1,19 @@
 import type { LayerEntry } from '../../../src/layers/entry'
 import type { Page } from '../../../src/types'
-import { page } from './support'
+import { page, type Answer } from './browser'
 
-export type Answer = Record<string, unknown>
+export const base = (extra: Partial<Page> = {}): Answer =>
+  page('Users/Index', '/users', { props: { users: [], errors: {} }, ...extra })
+
+export const notes = (extra: Answer = {}): Answer =>
+  page('Users/Notes', '/users/5/notes', {
+    layer: { key: 'Users/Notes', base: '/users' },
+    props: { errors: {} },
+    ...extra,
+  })
+
+export const layerAt = (component: string, url: string, extra: Answer = {}) =>
+  page(component, url, { layer: { key: component, base: '/users' }, props: { errors: {} }, ...extra })
 
 export const users = page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 export const dashboard = page('Dashboard', '/dashboard', { props: { errors: {}, stats: 3 } })
@@ -16,7 +27,7 @@ export const edit = (extra: Answer = {}) =>
 
 export const teams = page('Teams/Show', '/teams/1', { layer: { key: 'Teams/Show', base: '/users' } })
 
-export const held = (answer: Answer) => {
+export const heldRoute = (answer: Answer) => {
   let release!: () => void
 
   return {

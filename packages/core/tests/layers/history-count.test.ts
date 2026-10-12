@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { page, runtime, settled } from './support/runtime'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users')
 const layer = (url: string) => page('Users/Edit', url, { layer: { key: 'Users/Edit', base: '/users' } })
 
-const steppedBack = async (app: Awaited<ReturnType<typeof runtime>>) => {
+const steppedBack = async (app: Awaited<ReturnType<typeof openApp>>) => {
   const deltas: number[] = []
   const go = window.history.go.bind(window.history)
 
@@ -26,7 +27,7 @@ const steppedBack = async (app: Awaited<ReturnType<typeof runtime>>) => {
 
 describe('the entries a close steps back over', () => {
   it('are the ones the restored entry counted, after Back inside a layer', async () => {
-    const app = await runtime(users, {
+    const app = await openApp(users, {
       '/users/5/edit': layer('/users/5/edit'),
       '/users/6/edit': layer('/users/6/edit'),
       '/users': users,
@@ -48,7 +49,7 @@ describe('the entries a close steps back over', () => {
   })
 
   it('are the ones the restored entry counted, after Back off an anchor', async () => {
-    const app = await runtime(users, { '/users/5/edit': layer('/users/5/edit'), '/users': users })
+    const app = await openApp(users, { '/users/5/edit': layer('/users/5/edit'), '/users': users })
 
     app.router.visit('/users/5/edit')
     await settled()

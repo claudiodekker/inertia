@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import { layerDialogAttributes } from '../../src/layers/dialog'
 import { createLayoutPropsStore } from '../../src/layout'
-import { edit, teams, users } from './support/layers-fixtures'
-import { page, ported, settled } from './support/support'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
+import { edit, teams, users } from './support/pages'
 
 const usersPage = () => page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
-const layer = (name: string, url: string) => page(name, url, { layer: { key: name, base: '/users' } })
-
 describe('resolveLayers, the layout page', () => {
   it('leaves the url empty for a layer with no url of its own, so it never reaches the address', async () => {
-    const app = await ported(usersPage(), {})
+    const app = await openApp(usersPage(), {})
 
     app.router.layer({ component: 'Users/Edit', props: { user: { id: 5 }, errors: { name: 'required' } } })
     await settled()
@@ -28,10 +27,8 @@ describe('resolveLayers, the layout page', () => {
 })
 
 describe('resolveLayers, the layout page', () => {
-  const localEdit = { component: 'Users/Edit', props: { user: { id: 5 }, errors: { name: 'required' } } }
-
   it('keeps the layer url when the layer has one', async () => {
-    const app = await ported(users, { '/users/5/edit': edit() })
+    const app = await openApp(users, { '/users/5/edit': edit() })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -40,7 +37,7 @@ describe('resolveLayers, the layout page', () => {
   })
 
   it('derives the shell props from the layer and its place on the stack', async () => {
-    const app = await ported(users, { '/users/5/edit': edit(), '/teams/1': teams })
+    const app = await openApp(users, { '/users/5/edit': edit(), '/teams/1': teams })
     const first = app.router.layer('/users/5/edit')
     await settled()
     const second = app.router.layer('/teams/1')
@@ -61,7 +58,7 @@ describe('resolveLayers, the layout page', () => {
   })
 
   it('reads a layer id back off the wrapper carrying its attributes', async () => {
-    const app = await ported(users, { '/users/5/edit': edit() })
+    const app = await openApp(users, { '/users/5/edit': edit() })
     const handle = app.router.layer('/users/5/edit')
     await settled()
 
@@ -77,7 +74,7 @@ describe('resolveLayers, the layout page', () => {
   })
 
   it('invents no accessible name, leaving the app to give the dialog one', async () => {
-    const app = await ported(users, { '/users/5/edit': edit() })
+    const app = await openApp(users, { '/users/5/edit': edit() })
     app.router.layer('/users/5/edit')
     await settled()
 
@@ -94,7 +91,7 @@ describe('resolveLayers, the layout page', () => {
   })
 
   it('marks a local layer as one for the shell', async () => {
-    const app = await ported(users, {})
+    const app = await openApp(users, {})
 
     app.router.layer({ component: 'Prompt' })
     await settled()
@@ -105,7 +102,7 @@ describe('resolveLayers, the layout page', () => {
 
 describe('createLayoutPropsStore, per-layer slots', () => {
   const twoLayers = async () => {
-    const app = await ported(users, { '/users/5/edit': edit(), '/teams/1': teams })
+    const app = await openApp(users, { '/users/5/edit': edit(), '/teams/1': teams })
     const first = app.router.layer('/users/5/edit')
     await settled()
     const second = app.router.layer('/teams/1')
@@ -168,7 +165,7 @@ describe('createLayoutPropsStore, per-layer slots', () => {
   })
 
   it('swap drops the base slot unless state is preserved, and every layer slot no longer on the stack', async () => {
-    const app = await ported(users, { '/users/5/edit': edit(), '/other': page('Other', '/other') })
+    const app = await openApp(users, { '/users/5/edit': edit(), '/other': page('Other', '/other') })
     const handle = app.router.layer('/users/5/edit')
     await settled()
     const scope = app.router.layerHandle(handle.id)!

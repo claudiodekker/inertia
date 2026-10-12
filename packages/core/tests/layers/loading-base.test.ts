@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { bootId, planBoot } from '../../src/layers/entry'
 import type { Page } from '../../src/types'
-import { asPage, edit, held, layerAtBase, users } from './support/layers-fixtures'
-import { page, ported, settled } from './support/support'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
+import { asPage, heldRoute, layerAtBase, users } from './support/pages'
 
 const usersPage = () => page('Users/Index', '/users', { props: { errors: {}, users: [] } })
-
-const layer = (name: string, url: string) => page(name, url, { layer: { key: name, base: '/users' } })
 
 describe('resolveInitialPage', () => {
   it('renders a layer whose base is its own url as an ordinary page', async () => {
@@ -14,7 +13,7 @@ describe('resolveInitialPage', () => {
       props: { errors: {} },
       layer: { key: 'Users/Edit', base: '/users/5/edit' },
     })
-    const app = await ported(own, { '/users/5/edit': own }, { boot: true })
+    const app = await openApp(own, { '/users/5/edit': own }, { boot: true })
 
     await settled()
 
@@ -28,7 +27,7 @@ describe('resolveInitialPage', () => {
 describe('loadingBase', () => {
   it('is undefined for a blank with no url at all', async () => {
     const seen: unknown[] = []
-    const app = await ported(
+    const app = await openApp(
       usersPage(),
       {},
       {
@@ -57,7 +56,7 @@ describe('resolveInitialPage', () => {
     expect(planBoot(response, '').base).toBe(response)
     expect(planBoot(response, '').layers).toEqual([])
 
-    const app = await ported(users, {}, { boot: true })
+    const app = await openApp(users, {}, { boot: true, swapsAs: 'resolved' })
 
     expect(await app.basePage()).toMatchObject({ component: 'Users/Index', url: '/users' })
     expect(app.swaps.map((swap) => swap.component)).toEqual([{ name: 'Users/Index' }])
@@ -65,8 +64,12 @@ describe('resolveInitialPage', () => {
   })
 
   it('opens a layer loaded cold over a base that has not arrived yet', async () => {
-    const hop = held(users)
-    const app = await ported(layerAt('/users/5/edit', 'Users/Edit', '/users'), { '/users': hop.route }, { boot: true })
+    const hop = heldRoute(users)
+    const app = await openApp(
+      layerAt('/users/5/edit', 'Users/Edit', '/users'),
+      { '/users': hop.route },
+      { boot: true, swapsAs: 'resolved' },
+    )
 
     expect((await app.basePage()).component).toBe('')
     expect((await app.basePage()).url).toBe('/users')
@@ -78,7 +81,7 @@ describe('resolveInitialPage', () => {
   })
 
   it('renders a layer that declares no base as an ordinary page', async () => {
-    const app = await ported(layerAt('/users/5/edit', 'Users/Edit'), {}, { boot: true })
+    const app = await openApp(layerAt('/users/5/edit', 'Users/Edit'), {}, { boot: true, swapsAs: 'resolved' })
 
     expect((await app.basePage()).component).toBe('Users/Edit')
     expect(await app.basePage()).not.toHaveProperty('layer')
@@ -96,9 +99,9 @@ describe('resolveInitialPage', () => {
   })
 
   it("puts the browser's hash on the layer that owns the address", async () => {
-    const app = await ported(
+    const app = await openApp(
       layerAt('/users/5/edit', 'Users/Edit', '/users'),
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         href: 'http://localhost/users/5/edit#profile',
@@ -110,9 +113,9 @@ describe('resolveInitialPage', () => {
   })
 
   it('does not append the hash to a url that already carries it', async () => {
-    const app = await ported(
+    const app = await openApp(
       layerAt('/users/5/edit#profile', 'Users/Edit', '/users'),
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         href: 'http://localhost/users/5/edit#profile',
@@ -124,11 +127,12 @@ describe('resolveInitialPage', () => {
 
   it('resolves the base a cold open is missing through the loading resolver', async () => {
     const seen: unknown[] = []
-    const app = await ported(
+    const app = await openApp(
       layerAt('/users/5/edit', 'Users/Edit', '/users'),
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
+        swapsAs: 'resolved',
         loading: (url, context) => {
           seen.push([url, context])
 
@@ -158,11 +162,12 @@ describe('resolveInitialPage', () => {
   })
 
   it('never calls the loading resolver for an ordinary page', async () => {
-    const app = await ported(
+    const app = await openApp(
       users,
       {},
       {
         boot: true,
+        swapsAs: 'resolved',
         loading: () => {
           throw new Error('consulted')
         },
@@ -178,9 +183,9 @@ describe('loadingBase', () => {
 
   it('is the base the blank page is waiting on', async () => {
     const seen: unknown[] = []
-    await ported(
+    await openApp(
       cold,
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         loading: (url) => void seen.push(url),
@@ -192,9 +197,9 @@ describe('loadingBase', () => {
 
   it("is the blank page's own url once the layer above it has gone", async () => {
     const seen: unknown[] = []
-    const app = await ported(
+    const app = await openApp(
       cold,
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         loading: (url, context) => void seen.push([url, context.layers.length]),
@@ -214,7 +219,7 @@ describe('loadingBase', () => {
 
   it('is undefined for a page that has a component', async () => {
     const seen: unknown[] = []
-    const app = await ported(users, {}, { boot: true, loading: (url) => void seen.push(url) })
+    const app = await openApp(users, {}, { boot: true, loading: (url) => void seen.push(url) })
 
     await app.resolve('Users/Index', asPage(users))
 
@@ -297,9 +302,9 @@ describe('resolving a blank base through the page', () => {
   const coldEdit = layerAtBase('/users/5/edit', 'Users/Edit', '/users')
 
   it('resolves the placeholder for the base the blank is missing', async () => {
-    const app = await ported(
+    const app = await openApp(
       coldEdit,
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         loading: (url, { layers }) => ({ name: `loading:${url}:${layers.length}` }),
@@ -310,9 +315,9 @@ describe('resolving a blank base through the page', () => {
   })
 
   it('resolves the placeholder for a blank page whose layer was dismissed', async () => {
-    const app = await ported(
+    const app = await openApp(
       coldEdit,
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         loading: (url) => ({ name: `loading:${url}` }),
@@ -328,16 +333,16 @@ describe('resolving a blank base through the page', () => {
   })
 
   it('resolves nothing without a loading resolver', async () => {
-    const app = await ported(coldEdit, { '/users': held(users).route }, { boot: true })
+    const app = await openApp(coldEdit, { '/users': heldRoute(users).route }, { boot: true })
 
     await expect(app.resolve('', asPage(page('', '/users')))).resolves.toEqual({ name: 'Blank' })
   })
 
   it('never sends a blank page to the ordinary resolver', async () => {
     const named: string[] = []
-    const app = await ported(
+    const app = await openApp(
       coldEdit,
-      { '/users': held(users).route },
+      { '/users': heldRoute(users).route },
       {
         boot: true,
         resolveComponent: (name) => {

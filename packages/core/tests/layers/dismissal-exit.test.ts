@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest'
-import { base, edit, holdBack, layerAt, page, ported, settled } from './support/layer-handles-support'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
+import { holdBack } from './support/handles'
+import { base, edit, layerAt } from './support/pages'
 
 describe('a dismissal and the refresh of a close', () => {
   it('a dismissal waits for the layers it marked, not for a close still refreshing', async () => {
     let answerRefresh = () => {}
     let holding = false
     const refresh = new Promise<void>((resolve) => (answerRefresh = resolve))
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/a': layerAt('Users/A', '/a'),
       '/b': () => (holding ? refresh : Promise.resolve()).then(() => layerAt('Users/B', '/b')),
       '/c': layerAt('Users/C', '/c'),
@@ -50,7 +53,7 @@ describe('a dismissal and the refresh of a close', () => {
 
 describe('the window between close and done', () => {
   const stack = async (...urls: string[]) => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': edit(),
       '/a': layerAt('Users/A', '/a'),
       '/b': layerAt('Users/B', '/b'),
@@ -206,7 +209,7 @@ describe('the window between close and done', () => {
 
   it('keeps the pending removal when the layer is refreshed where it stands', async () => {
     let answer: Record<string, unknown> = edit()
-    const app = await ported(base(), { '/users/5/edit': () => Promise.resolve(answer), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': () => Promise.resolve(answer), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -242,7 +245,7 @@ describe('the window between close and done', () => {
   })
 
   it('does nothing on a page that has no stack at all', async () => {
-    const app = await ported(base(), {})
+    const app = await openApp(base(), {})
     const go = app.go()
     const writes = app.written().length
 
@@ -257,7 +260,7 @@ describe('the window between close and done', () => {
 
 describe('while the unwind is in flight', () => {
   const stack = async (...urls: string[]) => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': edit(),
       '/users/5/notes': layerAt('Users/Notes', '/users/5/notes'),
       '/users/9': page('Users/Show', '/users/9'),
@@ -379,7 +382,7 @@ describe('while the unwind is in flight', () => {
   it('holds a response that lands mid-close until the step back has restored', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': edit({ layer: { key: 'Users/Edit' } }),
       'post /users/5': () =>
         held.then(() => page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit' }, props: { errors: {} } })),

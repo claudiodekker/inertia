@@ -1,8 +1,7 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { exitShells, scenario } from './support/a-support'
-import { start, type App } from './support/f-support'
-import { users } from './support/layers-fixtures'
-import { page, ported, settled } from './support/support'
+import { exitShells, openAppSentCall, openAppSync, type SyncApp, openApp } from './support/app'
+import { page, settled } from './support/browser'
+import { users } from './support/pages'
 
 const usersPage = () => page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
@@ -25,7 +24,7 @@ const notes = page('Users/Notes', '/users/5/notes', {
   props: { errors: {} },
 })
 
-const walkOnto = async (app: App, address: string) => {
+const walkOnto = async (app: SyncApp, address: string) => {
   window.location.href = address
   app.popstate(null)
   await settled()
@@ -42,7 +41,7 @@ afterEach(() => {
 
 describe('history entry counting', () => {
   it('counts the entry against the layer that owns the address', async () => {
-    const app = await ported(usersPage(), { '/a': layer('A', '/a') })
+    const app = await openApp(usersPage(), { '/a': layer('A', '/a') })
 
     app.router.visit('/a')
     await settled()
@@ -63,7 +62,7 @@ describe('history entry counting', () => {
   })
 
   it('gives the entry back when the browser refused to write it', async () => {
-    const app = await ported(usersPage(), {
+    const app = await openApp(usersPage(), {
       '/a': layer('A', '/a'),
       '/users': usersPage(),
     })
@@ -100,7 +99,7 @@ describe('history entry counting', () => {
 
 describe('the entry a page commit writes while a stack is open', () => {
   it('pushes the page a navigation lands when it drops a layer that owned the address', async () => {
-    const app = await scenario(usersAt(), { '/users/5/edit': editOver('/users'), '/users': usersAt() })
+    const app = await openAppSentCall(usersAt(), { '/users/5/edit': editOver('/users'), '/users': usersAt() })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -115,7 +114,7 @@ describe('the entry a page commit writes while a stack is open', () => {
   })
 
   it('rewrites the entry when a navigation to the very same page drops a layer that owned no address', async () => {
-    const app = await scenario(usersAt(), { '/users': usersAt() })
+    const app = await openAppSentCall(usersAt(), { '/users': usersAt() })
 
     app.router.layer({ component: 'Prompt' })
     await settled()
@@ -133,7 +132,7 @@ describe('the entry a page commit writes while a stack is open', () => {
   })
 
   it('charges the top layer for the entry a refresh pushes beneath a stack that owns no address', async () => {
-    const app = await scenario(usersAt(), { '/users?page=2': usersAt('/users?page=2') })
+    const app = await openAppSentCall(usersAt(), { '/users?page=2': usersAt('/users?page=2') })
 
     app.router.layer({ component: 'Prompt' })
     await settled()
@@ -148,7 +147,7 @@ describe('the entry a page commit writes while a stack is open', () => {
   })
 
   it('gives the entry back when the browser refuses the push a refresh makes beneath a stack', async () => {
-    const app = await scenario(usersAt(), { '/users?page=2': usersAt('/users?page=2') })
+    const app = await openAppSentCall(usersAt(), { '/users?page=2': usersAt('/users?page=2') })
     const pushState = window.history.pushState
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
 
@@ -177,7 +176,7 @@ describe('the entry a page commit writes while a stack is open', () => {
 
 describe('the history entry a layer open leaves behind', () => {
   it('gives the count back when the browser refuses the entry', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     const refusal = new Error('Attempt to use history.pushState() more than 100 times per 10 seconds')
 
@@ -201,7 +200,7 @@ describe('the history entry a layer open leaves behind', () => {
 
 describe('a hash the browser wrote', () => {
   it('writes it onto the layer that owns the address, leaving the base beneath it alone', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -215,7 +214,7 @@ describe('a hash the browser wrote', () => {
   })
 
   it('writes it onto the layer beneath one with no url of its own', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers, '/users/5/notes': notes })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers, '/users/5/notes': notes })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -236,7 +235,7 @@ describe('a hash the browser wrote', () => {
 
 describe('the history entry a layer open leaves behind', () => {
   it('is pushed, so the entry the base sits on survives', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
     const before = app.written().length
 
     app.router.layer('/users/5/edit')
@@ -246,7 +245,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it('is still replaced when a page lands where the user already is', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users': { ...usersIndex, props: { errors: {}, users: [{ id: 1 }] } },
     })
     const before = app.written().length
@@ -259,7 +258,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it("carries the layer's address, so the address bar shows the layer", async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
     const handle = app.router.layer('/users/5/edit')
 
     await settled()
@@ -273,7 +272,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it("carries the page's own url when there are no layers", async () => {
-    const app = await start(usersIndex, { '/users/5': show })
+    const app = await openAppSync(usersIndex, { '/users/5': show })
 
     app.router.visit('/users/5')
     await settled()
@@ -284,7 +283,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it("serialises a layer's own fields onto the entry, and nothing more", async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -308,7 +307,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it('counts the entry it pushed against the layer that owns the address', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -317,7 +316,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it("keeps the layer's address when the page beneath it is rewritten in place", async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -338,7 +337,7 @@ describe('the history entry a layer open leaves behind', () => {
 
   it('leaves the flash off the entry a close rewrites in place', async () => {
     const flashed = { ...usersIndex, flash: { message: 'Saved.' } }
-    const app = await start(flashed, {
+    const app = await openAppSync(flashed, {
       '/users/5/edit': editOverUsers,
       '/users': flashed,
     })
@@ -365,7 +364,7 @@ describe('the history entry a layer open leaves behind', () => {
   })
 
   it("rewrites in place with the page's own url when there are no layers", async () => {
-    const app = await start(usersIndex, {})
+    const app = await openAppSync(usersIndex, {})
     const before = app.written().length
 
     await new Promise<void>((resolve) => {
@@ -382,13 +381,17 @@ describe('the history entry a layer open leaves behind', () => {
 
 describe('a document loaded onto a back_forward entry holding a stack', () => {
   it('rewrites the entry it was handed rather than pushing another', async () => {
-    const opened = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const opened = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
     const handle = opened.router.layer('/users/5/edit')
 
     await settled()
 
     const entry = opened.entry()
-    const cold = await start(editOverUsers, { '/users': usersIndex }, { navigation: 'back_forward', entry, boot: true })
+    const cold = await openAppSync(
+      editOverUsers,
+      { '/users': usersIndex },
+      { navigation: 'back_forward', entry, boot: true },
+    )
 
     await settled()
 
@@ -413,7 +416,7 @@ describe('the base beneath a stack a restore moves', () => {
   })
 
   it('is left alone when a back step moves within the layer above it', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5/edit/one': { ...step, url: '/users/5/edit/one' },
       '/users/5/edit/two': step,
     })
@@ -452,7 +455,7 @@ describe('the base beneath a stack a restore moves', () => {
 
   it('is remade when the restore lands on another page altogether', async () => {
     const teams = page('Teams/Index', '/teams')
-    const app = await start(teams, { '/users': usersIndex, '/users/5/edit': editOverUsers })
+    const app = await openAppSync(teams, { '/users': usersIndex, '/users/5/edit': editOverUsers })
 
     app.router.visit('/users')
     await settled()
@@ -470,12 +473,7 @@ describe('the base beneath a stack a restore moves', () => {
 })
 
 describe('the hash on an entry the browser wrote', () => {
-  const notes = page('Users/Notes', '/users/5/notes', {
-    layer: { key: 'Users/Notes', base: '/users' },
-    props: { errors: {} },
-  })
-
-  const walkOnto = async (app: Awaited<ReturnType<typeof start>>, address: string) => {
+  const walkOnto = async (app: Awaited<ReturnType<typeof openAppSync>>, address: string) => {
     window.location.href = address
     app.popstate(null)
     await settled()
@@ -483,7 +481,7 @@ describe('the hash on an entry the browser wrote', () => {
   }
 
   it("writes it onto the page's own url when there are no layers", async () => {
-    const app = await start(usersIndex, {})
+    const app = await openAppSync(usersIndex, {})
     const before = app.written().length
 
     await walkOnto(app, 'http://localhost/users#comments')
@@ -505,7 +503,7 @@ describe('history entry counting', () => {
   }
 
   it('never counts a layer below zero entries', async () => {
-    const app = await ported(users, { '/a': panel, '/users': users })
+    const app = await openApp(users, { '/a': panel, '/users': users })
 
     app.router.visit('/a', { replace: true })
     await settled()
@@ -523,7 +521,7 @@ describe('history entry counting', () => {
   })
 
   it('does nothing on a page with no layers', async () => {
-    const app = await ported(users, { '/other': page('Other', '/other') })
+    const app = await openApp(users, { '/other': page('Other', '/other') })
     const before = structuredClone(await app.basePage())
 
     await app.router.close()

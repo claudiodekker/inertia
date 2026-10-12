@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { Page } from '../../src/types'
-import { edit, users, type Answer } from './support/layers-fixtures'
-import { page, ported, settled } from './support/support'
+import { openApp } from './support/app'
+import { type Answer, page, settled } from './support/browser'
+import { edit, users } from './support/pages'
 
 const usersPage = () => page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
@@ -9,7 +10,7 @@ const layer = (name: string, url: string) => page(name, url, { layer: { key: nam
 
 describe('layerPageOf', () => {
   it('falls back to the address for a layer with no url of its own', async () => {
-    const app = await ported(usersPage(), {})
+    const app = await openApp(usersPage(), {})
 
     app.router.layer({ component: 'Prompt' })
     await settled()
@@ -19,7 +20,7 @@ describe('layerPageOf', () => {
 
   it('falls back to the address beneath it, never the address of a layer above it', async () => {
     const notes = page('Users/Notes', '/users/9/notes', { layer: { key: 'notes', base: '/users' } })
-    const app = await ported(usersPage(), { '/users/9/notes': notes, '/a': layer('A', '/a') })
+    const app = await openApp(usersPage(), { '/users/9/notes': notes, '/a': layer('A', '/a') })
 
     app.router.layer({ component: 'Prompt' })
     await settled()
@@ -35,7 +36,7 @@ describe('layerPageOf', () => {
   })
 
   it('follows the page beneath it to the url a partial reload moves it to', async () => {
-    const app = await ported(usersPage(), { '/users?page=2': { ...usersPage(), url: '/users?page=2' } })
+    const app = await openApp(usersPage(), { '/users?page=2': { ...usersPage(), url: '/users?page=2' } })
 
     app.router.layer({ component: 'Prompt' })
     await settled()
@@ -58,7 +59,7 @@ describe('layerPageOf', () => {
     edit({ version: 'v9', props: { user: { id: 5 }, errors: { name: 'required' } }, ...extra })
 
   it("swaps in the layer's component, props and url in place of the page's", async () => {
-    const app = await ported(versioned, { '/users/5/edit': layerWith() })
+    const app = await openApp(versioned, { '/users/5/edit': layerWith() })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -72,7 +73,7 @@ describe('layerPageOf', () => {
   })
 
   it('keeps the global version and clearHistory for the layer', async () => {
-    const app = await ported(versioned, { '/users/5/edit': layerWith({ clearHistory: true }) })
+    const app = await openApp(versioned, { '/users/5/edit': layerWith({ clearHistory: true }) })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -82,7 +83,7 @@ describe('layerPageOf', () => {
   })
 
   it("reads errors from the layer's own props, not the page's", async () => {
-    const app = await ported(versioned, { '/users/5/edit': layerWith() })
+    const app = await openApp(versioned, { '/users/5/edit': layerWith() })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -92,7 +93,7 @@ describe('layerPageOf', () => {
   })
 
   it("carries the stack as structure only, never another tier's props", async () => {
-    const app = await ported(users, {
+    const app = await openApp(users, {
       '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }),
       '/users/5/edit': edit(),
     })
@@ -109,7 +110,7 @@ describe('layerPageOf', () => {
   })
 
   it('takes encryptHistory from the layer, never from the page beneath it', async () => {
-    const app = await ported(page('Users/Index', '/users', { encryptHistory: true }), {
+    const app = await openApp(page('Users/Index', '/users', { encryptHistory: true }), {
       '/users/5/edit': edit({ encryptHistory: false }),
     })
 
@@ -121,7 +122,7 @@ describe('layerPageOf', () => {
   })
 
   it("reads the flash the layer itself carries, never the page's", async () => {
-    const app = await ported(page('Users/Index', '/users', { flash: { message: 'composite' } }), {
+    const app = await openApp(page('Users/Index', '/users', { flash: { message: 'composite' } }), {
       '/users/5/edit': edit({ flash: { message: 'layer' } }),
     })
 
@@ -134,7 +135,7 @@ describe('layerPageOf', () => {
 
   it("resolves a layer component with the layer's own page, not the whole page", async () => {
     const resolved: [string, Page | undefined][] = []
-    const app = await ported(
+    const app = await openApp(
       users,
       { '/users/5/edit': edit() },
       {

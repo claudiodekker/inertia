@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { page, scenario, settled, type Answer, type Route } from './support/a-support'
+import { openAppSentCall, type Route } from './support/app'
+import { page, settled, type Answer } from './support/browser'
 
 const users = page('Users/Index', '/users', {
   props: { users: [], errors: {} },
@@ -18,7 +19,7 @@ const teams = page('Teams/Show', '/teams/9', {
 })
 
 const open = async (initial: Answer = users, routes: Record<string, Route> = {}) => {
-  const app = await scenario(initial, {
+  const app = await openAppSentCall(initial, {
     '/users/5/edit': editLayerPage(),
     '/teams/9': teams,
     ...routes,
@@ -46,7 +47,7 @@ describe('resolving a page with layers', () => {
   })
 
   it('keeps the rest of the layer state beside the resolved component', async () => {
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       '/users/5/edit': page('Users/Edit', '/users/5/edit', {
         props: { user: { id: 5 }, errors: {} },
         layer: { key: 'Users/Edit', base: '/users' },
@@ -85,7 +86,7 @@ describe('resolving a page with layers', () => {
   })
 
   it('passes no layers for an ordinary page', async () => {
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       '/users/7': page('Users/Show', '/users/7'),
     })
 
@@ -100,7 +101,7 @@ describe('resolving a page with layers', () => {
 
 describe('an ordinary response', () => {
   it('is passed through untouched, with no layers key', async () => {
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       '/users/5': page('Users/Show', '/users/5'),
     })
 

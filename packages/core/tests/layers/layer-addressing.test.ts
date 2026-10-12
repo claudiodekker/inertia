@@ -1,8 +1,8 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
 import { addressOf } from '../../src/layers/entry'
-import { start } from './support/f-support'
-import { asPage, dashboard, edit, layerEntry, users } from './support/layers-fixtures'
-import { page, ported, settled } from './support/support'
+import { openAppSync, openApp } from './support/app'
+import { page, settled } from './support/browser'
+import { asPage, dashboard, edit, layerEntry, users } from './support/pages'
 
 const usersPage = () => page('Users/Index', '/users', { props: { errors: {}, users: [] } })
 
@@ -27,7 +27,7 @@ afterEach(() => {
 
 describe('withAddressHash', () => {
   it('writes it onto the topmost layer that has a url', async () => {
-    const app = await ported(usersPage(), {
+    const app = await openApp(usersPage(), {
       '/a': layer('A', '/a'),
       '/b': layer('B', '/b'),
     })
@@ -44,7 +44,7 @@ describe('withAddressHash', () => {
   })
 
   it('falls through a layer that has no url of its own', async () => {
-    const app = await ported(usersPage(), { '/a': layer('A', '/a') })
+    const app = await openApp(usersPage(), { '/a': layer('A', '/a') })
 
     app.router.visit('/a')
     await settled()
@@ -62,7 +62,7 @@ describe('openLayerFor', () => {
     const dashboard = page('Dashboard', '/dashboard', { props: { errors: {}, stats: 3 } })
     const panel = (url: string, base?: string) =>
       page('Panel', url, { props: { errors: {}, at: url }, layer: { key: 'Panel', base } })
-    const app = await ported(dashboard, {
+    const app = await openApp(dashboard, {
       '/go': panel('/panels/2', '/p1'),
       '/p1': panel('/panels/1', '/dashboard'),
       '/dashboard': dashboard,
@@ -82,11 +82,11 @@ describe('openLayerFor', () => {
 })
 
 describe('the address the events report', () => {
-  const eventDetail = (app: Awaited<ReturnType<typeof start>>, name: string) =>
+  const eventDetail = (app: Awaited<ReturnType<typeof openAppSync>>, name: string) =>
     app.fired.findLast((event) => event.type === `inertia:${name}`)!.detail
 
   it("gives inertia:navigate the layer's address, while the page it carries keeps its own url", async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     app.router.layer('/users/5/edit')
     await settled()
@@ -96,7 +96,7 @@ describe('the address the events report', () => {
   })
 
   it("gives inertia:navigate the page's own url when there are no layers", async () => {
-    const app = await start(usersIndex, { '/users/5': show })
+    const app = await openAppSync(usersIndex, { '/users/5': show })
 
     app.router.visit('/users/5')
     await settled()
@@ -105,7 +105,7 @@ describe('the address the events report', () => {
   })
 
   it('gives inertia:success the layer it landed in, address and page alike', async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -116,7 +116,7 @@ describe('the address the events report', () => {
   })
 
   it("hands onSuccess the layer's own props, not the page's beneath it", async () => {
-    const app = await start(usersIndex, { '/users/5/edit': editOverUsers })
+    const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
     const landed = await new Promise<{
       component: string
@@ -130,7 +130,7 @@ describe('the address the events report', () => {
   })
 
   it("gives inertia:success the page's own url when there are no layers", async () => {
-    const app = await start(usersIndex, { '/users/5': show })
+    const app = await openAppSync(usersIndex, { '/users/5': show })
 
     app.router.visit('/users/5')
     await settled()
@@ -144,7 +144,7 @@ describe('openLayerFor', () => {
     page('Panel', url, { props: { errors: {}, at: url }, layer: { key: 'Panel', base } })
 
   const twoPanels = async () => {
-    const app = await ported(dashboard, {
+    const app = await openApp(dashboard, {
       '/go': panel('/panels/2', '/p1'),
       '/p1': panel('/panels/1', '/dashboard'),
       '/dashboard': dashboard,
@@ -172,7 +172,7 @@ describe('openLayerFor', () => {
   })
 
   it('never matches a local layer', async () => {
-    const app = await ported(users, { '/panels/3': panel('/panels/3', '/users') })
+    const app = await openApp(users, { '/panels/3': panel('/panels/3', '/users') })
     const local = app.router.layer({ component: 'Panel' })
     await settled()
 
@@ -229,7 +229,7 @@ describe('addressOf', () => {
 
 describe('withAddressHash', () => {
   it('writes the hash onto the page url when there are no layers', async () => {
-    const app = await ported(users, {})
+    const app = await openApp(users, {})
 
     await app.anchor('/users#comments')
 
@@ -237,7 +237,7 @@ describe('withAddressHash', () => {
   })
 
   it('writes it onto the page url when no layer has one', async () => {
-    const app = await ported(users, {})
+    const app = await openApp(users, {})
     app.router.layer({ component: 'Prompt' })
     await settled()
 
@@ -248,7 +248,7 @@ describe('withAddressHash', () => {
   })
 
   it('replaces a hash the address already carries', async () => {
-    const app = await ported(page('Users/Index', '/users#top'), {}, { href: 'http://localhost/users#top' })
+    const app = await openApp(page('Users/Index', '/users#top'), {}, { href: 'http://localhost/users#top' })
 
     await app.anchor('/users#comments')
 
@@ -256,7 +256,7 @@ describe('withAddressHash', () => {
   })
 
   it('does not mutate the page it is given', async () => {
-    const app = await ported(users, { '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }) })
+    const app = await openApp(users, { '/a': page('A', '/a', { layer: { key: 'A', base: '/users' } }) })
     app.router.visit('/a')
     await settled()
     const before = structuredClone(app.views()[0].page)

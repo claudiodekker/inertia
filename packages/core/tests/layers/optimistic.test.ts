@@ -1,6 +1,6 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
-import { exitShells, held, page, scenario, settled, type App, type Route } from './support/a-support'
-import { start } from './support/f-support'
+import { exitShells, held, openAppSentCall, type SentCallApp, type Route, openAppSync } from './support/app'
+import { page, settled } from './support/browser'
 
 const index = (extra: Record<string, unknown> = {}) =>
   page('Users/Index', '/users', { props: { users: [], errors: {} }, ...extra })
@@ -13,7 +13,7 @@ const editWith = (extra: Record<string, unknown> = {}) =>
   })
 
 const open = async (initial: Record<string, unknown>, routes: Record<string, Route>, url = '/users/5/edit') => {
-  const app = await scenario(initial, routes)
+  const app = await openAppSentCall(initial, routes)
 
   app.router.visit(url)
   await settled()
@@ -21,17 +21,7 @@ const open = async (initial: Record<string, unknown>, routes: Record<string, Rou
   return app
 }
 
-const scopeOf = (app: App, index = 0) => app.router.layerHandle(app.layers()[index].id)!
-
-const inertia = (answer: Record<string, unknown>) => ({
-  status: 200,
-  data: JSON.stringify(answer),
-  headers: { 'x-inertia': 'true' },
-})
-
-const usersIndex = page('Users/Index', '/users', {
-  props: { errors: {}, users: [] },
-})
+const scopeOf = (app: SentCallApp, index = 0) => app.router.layerHandle(app.layers()[index].id)!
 
 const hold = () => new Promise<never>(() => {})
 
@@ -148,7 +138,7 @@ describe('per-layer optimistic updates', () => {
   })
 
   it('drops a closed layer optimistic state instead of rolling it into the base', async () => {
-    const app = await scenario(base(), {
+    const app = await openAppSentCall(base(), {
       '/users/5/edit': editWith({
         layer: { key: 'Users/Edit', base: '/users' },
         props: { user: { id: 5 }, todos: [1], errors: {} },
@@ -211,7 +201,7 @@ describe('a pending optimistic callback', () => {
     const edit = page('Users/Edit', '/users/5/edit', {
       layer: { key: 'Users/Edit', base: '/users' },
     })
-    const app = await start(page('Users/Index', '/users', { props: { errors: {}, likes: 0 } }), {
+    const app = await openAppSync(page('Users/Index', '/users', { props: { errors: {}, likes: 0 } }), {
       '/users/5/edit': edit,
       '/users': hold,
     })

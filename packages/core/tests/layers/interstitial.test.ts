@@ -1,17 +1,14 @@
 import { describe, expect, it } from 'vitest'
-import { bench, byPath, gate, page, settled, type Bench } from './support/e-support'
-import { base, counted, edit, ported } from './support/layer-handles-support'
+import { openApp, byPath, gate, type App } from './support/app'
+import { page, settled } from './support/browser'
+import { counted } from './support/handles'
+import { base, edit } from './support/pages'
 
 const plainUsers = page('Users/Index', '/users')
 
-const layerEdit = page('Users/Edit', '/users/5/edit', {
-  layer: { key: 'Users/Edit' },
-  props: { errors: {}, user: { id: 5 } },
-})
-
 const teamsIndex = page('Teams/Index', '/teams')
 
-const components = (app: Bench) => app.layers().map((layer) => layer.component)
+const components = (app: App) => app.layers().map((layer) => layer.component)
 
 describe('a detour', () => {
   const prompt = page('Auth/Confirm', '/confirm', { interstitial: true })
@@ -21,7 +18,7 @@ describe('a detour', () => {
 
   const detour = async (routes: Parameters<typeof byPath>[0] = {}) => {
     let asked = 0
-    const app = await bench(
+    const app = await openApp(
       plainUsers,
       byPath({
         '/users/5/edit': () => (asked++ === 0 ? prompt : card),
@@ -37,7 +34,7 @@ describe('a detour', () => {
     return { app, handle }
   }
 
-  const wrongPassword = async (app: Bench) => {
+  const wrongPassword = async (app: App) => {
     app.router.post('/confirm', { password: 'wrong' })
     await settled()
   }
@@ -180,7 +177,7 @@ describe('a layer open answered by an interstitial', () => {
   }
 
   it('keeps the handle open, since the prompt returns to it', async () => {
-    const app = await ported(base(), { '/users/5/edit': answering(prompt()) })
+    const app = await openApp(base(), { '/users/5/edit': answering(prompt()) })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -192,7 +189,7 @@ describe('a layer open answered by an interstitial', () => {
   })
 
   it('fires onClose when the layer the prompt returned to is closed', async () => {
-    const app = await ported(base(), { '/users/5/edit': answering(prompt(), edit()), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': answering(prompt(), edit()), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -214,7 +211,7 @@ describe('a layer open answered by an interstitial', () => {
   })
 
   it('keeps the handle open when the prompt answers its own submit', async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': answering(prompt(), edit()),
       'post /sudo': prompt({ props: { errors: { password: 'Wrong' } } }),
     })
@@ -237,7 +234,7 @@ describe('a layer open answered by an interstitial', () => {
   })
 
   it('fires onClose when a navigation away abandons the prompt', async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': answering(prompt()),
       '/dashboard': page('Dashboard', '/dashboard'),
     })
@@ -254,7 +251,7 @@ describe('a layer open answered by an interstitial', () => {
   })
 
   it('closes the handle when the response is an ordinary page rather than a prompt', async () => {
-    const app = await ported(base(), { '/users/5/edit': page('Auth/Login', '/login') })
+    const app = await openApp(base(), { '/users/5/edit': page('Auth/Login', '/login') })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -266,7 +263,7 @@ describe('a layer open answered by an interstitial', () => {
   })
 
   it('gives the returned layer the page it lands on as its owner [BEHAVIOUR CHANGED]', async () => {
-    const app = await ported(base(), { '/users/5/edit': answering(prompt(), edit()) })
+    const app = await openApp(base(), { '/users/5/edit': answering(prompt(), edit()) })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { bench, byPath, exitShells, page, settled, type Bench } from './support/e-support'
+import { openApp, byPath, exitShells, type App } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users', {
   props: { errors: {}, users: [] },
@@ -15,8 +16,8 @@ afterEach(() => {
 })
 
 describe('remembered state per layer', () => {
-  const opened = async (options: Parameters<Bench['router']['visit']>[1] = {}) => {
-    const app = await bench(users, byPath({ '/users/5/edit': editPage, '/users': users }))
+  const opened = async (options: Parameters<App['router']['visit']>[1] = {}) => {
+    const app = await openApp(users, byPath({ '/users/5/edit': editPage, '/users': users }))
 
     app.router.visit('/users/5/edit', options)
     await settled()
@@ -38,7 +39,7 @@ describe('remembered state per layer', () => {
   })
 
   it('a remember/restore with no layer open keeps the top-level bag it always used', async () => {
-    const app = await bench(users, byPath({}))
+    const app = await openApp(users, byPath({}))
 
     app.router.remember('typed', 'note')
 

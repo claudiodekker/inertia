@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { page, settled, exitShells, held, scenario, type App, type Route } from './support/a-support'
-import { bench, byPath } from './support/e-support'
+import { exitShells, held, openAppSentCall, type SentCallApp, type Route, openApp, byPath } from './support/app'
+import { page, settled } from './support/browser'
 
 const usersAt = (url = '/users') => page('Users/Index', url, { props: { errors: {}, users: [] } })
 
@@ -18,7 +18,7 @@ const editWith = (extra: Record<string, unknown> = {}) =>
   })
 
 const open = async (initial: Record<string, unknown>, routes: Record<string, Route>, url = '/users/5/edit') => {
-  const app = await scenario(initial, routes)
+  const app = await openAppSentCall(initial, routes)
 
   app.router.visit(url)
   await settled()
@@ -26,7 +26,7 @@ const open = async (initial: Record<string, unknown>, routes: Record<string, Rou
   return app
 }
 
-const scopeOf = (app: App, index = 0) => app.router.layerHandle(app.layers()[index].id)!
+const scopeOf = (app: SentCallApp, index = 0) => app.router.layerHandle(app.layers()[index].id)!
 
 const inertia = (answer: Record<string, unknown>) => ({
   status: 200,
@@ -36,8 +36,8 @@ const inertia = (answer: Record<string, unknown>) => ({
 
 describe('a placeholder whose component cannot be resolved', () => {
   it('opens no layer and closes the handle, and rejects as a page placeholder does', async () => {
-    const app = await bench(usersAt(), byPath({ '/users/5/edit': editOver('/users') }), {
-      resolve: (name) => (name === 'Missing' ? Promise.reject(new Error('Missing')) : { name }),
+    const app = await openApp(usersAt(), byPath({ '/users/5/edit': editOver('/users') }), {
+      resolveComponent: (name) => (name === 'Missing' ? Promise.reject(new Error('Missing')) : { name }),
     })
     const listeners = process.listeners('unhandledRejection')
     const rejections: unknown[] = []
@@ -263,7 +263,7 @@ describe('an instant visit that opens a layer or is made from one', () => {
 
   it('puts the placeholder up as a layer, leaving the page it opens on where it is', async () => {
     const next = held()
-    const app = await scenario(index(), {
+    const app = await openAppSentCall(index(), {
       '/users/5/edit': () => next.answer(),
     })
 
@@ -280,7 +280,7 @@ describe('an instant visit that opens a layer or is made from one', () => {
 
   it('lands the response on the placeholder an open put up, under the id it created', async () => {
     const next = held()
-    const app = await scenario(index(), {
+    const app = await openAppSentCall(index(), {
       '/users/5/edit': () => next.answer(),
     })
 

@@ -1,17 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
-import { exitShells, held, scenario, type App, type Route } from './support/a-support'
-import {
-  base,
-  edit,
-  holdBack,
-  layerAt,
-  openCold,
-  ported,
-  settled,
-  page,
-  counted,
-  veto,
-} from './support/layer-handles-support'
+import { exitShells, held, openAppSentCall, type SentCallApp, type Route, openApp } from './support/app'
+import { settled, page } from './support/browser'
+import { holdBack, openCold, counted, veto } from './support/handles'
+import { base, edit, layerAt } from './support/pages'
 
 const routes = () => ({
   '/users/5/edit': edit(),
@@ -31,7 +22,7 @@ const editWith = (extra: Record<string, unknown> = {}) =>
   })
 
 const open = async (initial: Record<string, unknown>, routes: Record<string, Route>, url = '/users/5/edit') => {
-  const app = await scenario(initial, routes)
+  const app = await openAppSentCall(initial, routes)
 
   app.router.visit(url)
   await settled()
@@ -39,11 +30,11 @@ const open = async (initial: Record<string, unknown>, routes: Record<string, Rou
   return app
 }
 
-const scopeOf = (app: App, index = 0) => app.router.layerHandle(app.layers()[index].id)!
+const scopeOf = (app: SentCallApp, index = 0) => app.router.layerHandle(app.layers()[index].id)!
 
 describe('closing a layer', () => {
   it('unwinds the steps taken over a cold layer before writing the page beneath it', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const cold = await openCold(app)
 
     app.router.layer('http://localhost/users/5/notes')
@@ -59,7 +50,7 @@ describe('closing a layer', () => {
   })
 
   it('counts a history entry an anchor pushed inside a layer', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -78,7 +69,7 @@ describe('closing a layer', () => {
   })
 
   it('closes every layer above the one it was asked to close', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const cold = await openCold(app)
 
     app.router.layer('http://localhost/users/5/notes')
@@ -105,7 +96,7 @@ describe('closing a layer', () => {
   })
 
   it('keeps a layer being closed out of the entry a write leaves behind', async () => {
-    const app = await ported(base(), { '/a': layerAt('Users/A', '/a'), '/b': layerAt('Users/B', '/b') })
+    const app = await openApp(base(), { '/a': layerAt('Users/A', '/a'), '/b': layerAt('Users/B', '/b') })
     const a = app.router.layer('http://localhost/a')
 
     await settled()
@@ -127,7 +118,7 @@ describe('closing a layer', () => {
   })
 
   it('does not put a standalone layer back on screen when the step back restores the entry holding it', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const cold = await openCold(app)
 
     app.router.layer('http://localhost/users/5/notes')
@@ -156,7 +147,7 @@ describe('closing a layer', () => {
   })
 
   const open = async (...urls: (string | [string, Record<string, unknown>])[]) => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const handles = []
 
     for (const url of urls) {
@@ -170,7 +161,7 @@ describe('closing a layer', () => {
   }
 
   it('resolves once the layer is off the screen, not when it starts closing', async () => {
-    const app = await ported(base(), {})
+    const app = await openApp(base(), {})
     const handle = app.router.layer({ component: 'Users/Notes' })
     let done = false
 
@@ -276,7 +267,7 @@ describe('closing a layer', () => {
   })
 
   it('records a step on a layer opened at the address the page beneath already has', async () => {
-    const app = await ported(base(), { '/users': layerAt('Users/Edit', '/users') })
+    const app = await openApp(base(), { '/users': layerAt('Users/Edit', '/users') })
 
     app.router.layer('http://localhost/users')
     await settled()
@@ -327,7 +318,7 @@ describe('closing a layer', () => {
   })
 
   it('pushes the page beneath a standalone layer, leaving the entry the layer arrived on', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const handle = await openCold(app)
 
     const go = app.go()
@@ -341,7 +332,7 @@ describe('closing a layer', () => {
   })
 
   it('leaves the page the stack was opened over in place', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const handle = await openCold(app)
 
     const over = app.current.get()
@@ -354,7 +345,7 @@ describe('closing a layer', () => {
   })
 
   it('does nothing when there is no stack to close', async () => {
-    const app = await ported(base(), routes())
+    const app = await openApp(base(), routes())
     const go = app.go()
     const writes = app.written().length
 
@@ -378,7 +369,7 @@ describe('closing a layer', () => {
   })
 
   it('closes a stack restored from history to the same place', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit({ encryptHistory: true }), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit({ encryptHistory: true }), '/users': base() })
 
     Object.assign(window, { crypto: globalThis.crypto })
 
@@ -399,7 +390,7 @@ describe('closing a layer', () => {
 
 describe('closing through the router', () => {
   it('closes the topmost layer when none is named', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
 
     app.router.layer('http://localhost/users/5/edit')
     await settled()
@@ -416,7 +407,7 @@ describe('closing through the router', () => {
   })
 
   it('closes the layer a shell names', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -435,7 +426,7 @@ describe('closing through the router', () => {
 
 describe('closing a layer that has a handle', () => {
   it('fires onClose once the removal and the refresh it triggered have settled, seeing the refreshed state', async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': edit(),
       '/users': base({ props: { users: [{ id: 9 }], errors: {} } }),
     })
@@ -456,7 +447,7 @@ describe('closing a layer that has a handle', () => {
   it('refreshes the layer beneath once, after the unwind settled, targeting the restored address', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': () => held.then(() => base()) })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': () => held.then(() => base()) })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -478,7 +469,7 @@ describe('closing a layer that has a handle', () => {
   })
 
   it('aims the refresh at the base when the layer it lands on has no url of its own', async () => {
-    const app = await ported(
+    const app = await openApp(
       base({
         props: { users: [], errors: {}, token: 'base value' },
         onceProps: { baseKey: { prop: 'token' } },
@@ -507,7 +498,7 @@ describe('closing a layer that has a handle', () => {
   it('completes the close itself when the browser never answers the step back', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': () => held.then(() => base()) })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': () => held.then(() => base()) })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -528,7 +519,7 @@ describe('closing a layer that has a handle', () => {
   })
 
   it('fires onClose when a before listener vetoes the refresh the close runs', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -549,7 +540,7 @@ describe('closing a layer that has a handle', () => {
   })
 
   it('carries preserveState on the refresh, for the state of the layer beneath', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -565,7 +556,7 @@ describe('closing a layer that has a handle', () => {
   })
 
   it('does not refresh when a restore drops the layer, since the restored entry already holds the base', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const calls = counted(handle)
 
@@ -582,7 +573,7 @@ describe('closing a layer that has a handle', () => {
   })
 
   it('does not refresh when the layer closed was standalone, since the blank recovery already fetches [BEHAVIOUR CHANGED]', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = await openCold(app)
     const calls = counted(handle)
 
@@ -597,7 +588,7 @@ describe('closing a layer that has a handle', () => {
   it('does not refresh when the layer closed was standalone over a base still blank, since the recovery already fetches', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': () => held.then(() => base()) })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': () => held.then(() => base()) })
     const handle = await openCold(app)
     const calls = counted(handle)
 
@@ -749,7 +740,7 @@ describe('a close: true response runs the close flow instead of installing', () 
   })
 
   it('refreshes the current page when close: true arrives with no layer open', async () => {
-    const app = await scenario(index({ props: { stats: [1], errors: {} } }), {
+    const app = await openAppSentCall(index({ props: { stats: [1], errors: {} } }), {
       'post /users': index({
         close: true,
         props: { stats: [9, 9, 9], errors: {} },

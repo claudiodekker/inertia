@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import Queue from '../../src/queue'
 import type { Page, PageProps } from '../../src/types'
-import { page, settled, start } from './support/f-support'
+import { openAppSync } from './support/app'
+import { page, settled } from './support/browser'
 
 afterEach(() => {
   vi.restoreAllMocks()
@@ -47,7 +48,7 @@ describe('clonePageProps', () => {
   })
 
   it('returns props the browser can store when the unstorable ones are on a layer', async () => {
-    const app = await start(page('Users/Index', '/users'), {})
+    const app = await openAppSync(page('Users/Index', '/users'), {})
     const handle = app.router.layer({
       component: 'Confirm',
       props: { message: 'Discard?', user: new Proxy({ id: 5 }, {}) },

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { page, runtime, settled } from './support/runtime'
+import { openApp } from './support/app'
+import { page, settled } from './support/browser'
 
 const users = page('Users/Index', '/users')
 const picker = page('Users/Pick', '/users/pick', { layer: { key: 'picker', base: '/users' } })
@@ -16,7 +17,7 @@ const counted = (handle: { onClose(listener: () => void): unknown }) => {
 }
 
 /** The shells report their exit as the adapters' dialogs do. */
-const exitShells = (app: Awaited<ReturnType<typeof runtime>>) =>
+const exitShells = (app: Awaited<ReturnType<typeof openApp>>) =>
   app
     .views()
     .filter((view) => !view.shell.open)
@@ -24,7 +25,7 @@ const exitShells = (app: Awaited<ReturnType<typeof runtime>>) =>
 
 describe('router.layer() with a url', () => {
   it('returns a pending handle that opens under its own id once the answer lands', async () => {
-    const app = await runtime(users, { '/users/pick': picker })
+    const app = await openApp(users, { '/users/pick': picker })
     const handle = app.router.layer('/users/pick')
     const id = handle.id
 
@@ -41,7 +42,7 @@ describe('router.layer() with a url', () => {
   })
 
   it('takes the id of the layer its answer rewrote', async () => {
-    const app = await runtime(users, {
+    const app = await openApp(users, {
       '/users/pick': picker,
       '/users/pick?page=2': { ...picker, url: '/users/pick?page=2' },
     })
@@ -62,7 +63,7 @@ describe('router.layer() with a url', () => {
   })
 
   it('hands a layer opened from the page to the top layer, and one opened from a layer to that layer', async () => {
-    const app = await runtime(users, { '/users/pick': picker, '/users/invite': invite, '/roles/pick': roles })
+    const app = await openApp(users, { '/users/pick': picker, '/users/invite': invite, '/roles/pick': roles })
 
     const first = app.router.layer('/users/pick')
     await settled()
@@ -84,7 +85,7 @@ describe('router.layer() with a url', () => {
 
 describe('onClose fires exactly once however the layer ends', () => {
   it('when onBefore refuses the open, with no request sent', async () => {
-    const app = await runtime(users, { '/users/pick': picker })
+    const app = await openApp(users, { '/users/pick': picker })
     const handle = app.router.layer('/users/pick', { onBefore: () => false })
     const calls = counted(handle)
 
@@ -96,7 +97,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when onBefore refuses an open that names a component to show at once, with no layer put up', async () => {
-    const app = await runtime(users, { '/users/pick': picker })
+    const app = await openApp(users, { '/users/pick': picker })
     const handle = app.router.layer('/users/pick', { component: 'Users/Pick', onBefore: () => false })
     const calls = counted(handle)
 
@@ -111,7 +112,7 @@ describe('onClose fires exactly once however the layer ends', () => {
 
   it('when the handle is closed while its request is out, which cancels the request', async () => {
     const cancelled: string[] = []
-    const app = await runtime(users, { '/users/pick': () => new Promise(() => {}) })
+    const app = await openApp(users, { '/users/pick': () => new Promise(() => {}) })
     const handle = app.router.layer('/users/pick', { onCancel: () => cancelled.push('cancelled') })
     const calls = counted(handle)
 
@@ -127,7 +128,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when router.cancelAll() cancels the open', async () => {
-    const app = await runtime(users, { '/users/pick': () => new Promise(() => {}) })
+    const app = await openApp(users, { '/users/pick': () => new Promise(() => {}) })
     const handle = app.router.layer('/users/pick')
     const calls = counted(handle)
 
@@ -140,7 +141,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when the answer is an ordinary page, which becomes the page', async () => {
-    const app = await runtime(users, { '/users/pick': page('Auth/Login', '/login') })
+    const app = await openApp(users, { '/users/pick': page('Auth/Login', '/login') })
     const handle = app.router.layer('/users/pick')
     const calls = counted(handle)
 
@@ -153,7 +154,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when the page beneath navigates away', async () => {
-    const app = await runtime(users, { '/users/pick': picker, '/dashboard': page('Dashboard', '/dashboard') })
+    const app = await openApp(users, { '/users/pick': picker, '/dashboard': page('Dashboard', '/dashboard') })
     const handle = app.router.layer('/users/pick')
     const calls = counted(handle)
 
@@ -167,7 +168,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when the handle closes the open layer, and a second close changes nothing', async () => {
-    const app = await runtime(users, { '/users/pick': picker, '/users': users })
+    const app = await openApp(users, { '/users/pick': picker, '/users': users })
     const handle = app.router.layer('/users/pick')
     const calls = counted(handle)
 
@@ -189,7 +190,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when Back leaves the entry the layer was pushed on', async () => {
-    const app = await runtime(users, { '/users/pick': picker })
+    const app = await openApp(users, { '/users/pick': picker })
     const handle = app.router.layer('/users/pick')
     const calls = counted(handle)
 
@@ -206,7 +207,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('when the server closes the layer', async () => {
-    const app = await runtime(users, {
+    const app = await openApp(users, {
       '/users/pick': picker,
       'post /users/pick': { ...users, close: true },
       '/users': users,
@@ -226,7 +227,7 @@ describe('onClose fires exactly once however the layer ends', () => {
   })
 
   it('at once for a listener added after the layer ended', async () => {
-    const app = await runtime(users, { '/users/pick': picker })
+    const app = await openApp(users, { '/users/pick': picker })
     const handle = app.router.layer('/users/pick', { onBefore: () => false })
 
     await settled()
@@ -243,7 +244,7 @@ describe('history traversal while a close refreshes the page beneath', () => {
   it('reopens the closed layer when its entry is restored before the refresh answers', async () => {
     let answerRefresh = () => {}
     const refresh = new Promise<void>((resolve) => (answerRefresh = resolve))
-    const app = await runtime(users, { '/users/pick': picker, '/users': () => refresh.then(() => users) })
+    const app = await openApp(users, { '/users/pick': picker, '/users': () => refresh.then(() => users) })
     const handle = app.router.layer('/users/pick')
     const calls = counted(handle)
 
@@ -272,7 +273,7 @@ describe('history traversal while a close refreshes the page beneath', () => {
 
 describe('messages', () => {
   it('reach the handle and the scope of the layer that opened the sender, and no layer further down', async () => {
-    const app = await runtime(users, { '/users/pick': picker, '/users/invite': invite, '/roles/pick': roles })
+    const app = await openApp(users, { '/users/pick': picker, '/users/invite': invite, '/roles/pick': roles })
     const heard: unknown[] = []
 
     const bottom = app.router.layer('/users/pick')
@@ -300,7 +301,7 @@ describe('messages', () => {
   })
 
   it('stop for a listener that was removed, and after the first one for once()', async () => {
-    const app = await runtime(users, { '/users/pick': picker, '/users/invite': invite })
+    const app = await openApp(users, { '/users/pick': picker, '/users/invite': invite })
     const heard: string[] = []
     const owner = app.router.layer('/users/pick')
     const stop = owner.on('saved', () => heard.push('on'))
@@ -324,7 +325,7 @@ describe('messages', () => {
 
 describe('router.layer() with a component', () => {
   it('opens a local layer with no request, as a history step on the address beneath', async () => {
-    const app = await runtime(users, {})
+    const app = await openApp(users, {})
     const handle = app.router.layer({ component: 'Confirm', props: { message: 'Discard?' } })
     const calls = counted(handle)
 
@@ -347,7 +348,7 @@ describe('router.layer() with a component', () => {
   })
 
   it('opens nothing when the handle was closed before the component resolved', async () => {
-    const app = await runtime(users, {})
+    const app = await openApp(users, {})
     const handle = app.router.layer({ component: 'Confirm' })
     const calls = counted(handle)
 
@@ -367,7 +368,7 @@ describe('error hand-back', () => {
   })
 
   it('lands the errors and flash on a layer that owns no address, and leaves the page beneath alone', async () => {
-    const app = await runtime(users, { '/users/invite': invite, 'post /users': rejected })
+    const app = await openApp(users, { '/users/invite': invite, 'post /users': rejected })
     const events: unknown[] = []
 
     app.router.visit('/users/invite', { preserveUrl: true })
@@ -395,7 +396,7 @@ describe('error hand-back', () => {
   })
 
   it('does not apply to a layer that owns the address: the answer navigates, and the errors show on the page', async () => {
-    const app = await runtime(users, { '/users/invite': invite, 'post /users': rejected })
+    const app = await openApp(users, { '/users/invite': invite, 'post /users': rejected })
 
     app.router.visit('/users/invite')
     await settled()
@@ -407,7 +408,7 @@ describe('error hand-back', () => {
   })
 
   it('does not apply to an answer without errors', async () => {
-    const app = await runtime(users, { '/users/invite': invite, 'post /users': users })
+    const app = await openApp(users, { '/users/invite': invite, 'post /users': users })
 
     app.router.visit('/users/invite', { preserveUrl: true })
     await settled()
@@ -425,7 +426,7 @@ describe('an interstitial prompt', () => {
 
   it('sets the page aside and brings it back under the layer with no request, in one replace of the prompt entry', async () => {
     const answers = [prompt, card]
-    const app = await runtime(users, { '/billing/card': () => Promise.resolve(answers.shift()!) })
+    const app = await openApp(users, { '/billing/card': () => Promise.resolve(answers.shift()!) })
     const handle = app.router.layer('/billing/card')
     const calls = counted(handle)
 
@@ -462,7 +463,7 @@ describe('an interstitial prompt', () => {
 
   it('is over once the page navigates away: the handle closes and the next layer opens over the page on screen', async () => {
     const answers = [prompt, card]
-    const app = await runtime(users, {
+    const app = await openApp(users, {
       '/billing/card': () => Promise.resolve(answers.shift()!),
       '/dashboard': page('Dashboard', '/dashboard'),
     })
@@ -485,7 +486,7 @@ describe('an interstitial prompt', () => {
 
   it('lets go of a handle closed while it shows: the layer answer after it still returns over the page set aside', async () => {
     const answers = [prompt, card]
-    const app = await runtime(users, { '/billing/card': () => Promise.resolve(answers.shift()!) })
+    const app = await openApp(users, { '/billing/card': () => Promise.resolve(answers.shift()!) })
     const handle = app.router.layer('/billing/card')
     const calls = counted(handle)
 
@@ -504,7 +505,7 @@ describe('an interstitial prompt', () => {
   })
 
   it('is over after Back: the handle closes and the page set aside is the one history restores', async () => {
-    const app = await runtime(users, { '/billing/card': prompt })
+    const app = await openApp(users, { '/billing/card': prompt })
     const handle = app.router.layer('/billing/card')
     const calls = counted(handle)
 

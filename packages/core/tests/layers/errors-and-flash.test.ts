@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { exitShells, page, scenario, settled, type App, type Route } from './support/a-support'
-import { bench, byPath, gate } from './support/e-support'
+import { exitShells, openAppSentCall, type SentCallApp, type Route, openApp, byPath, gate } from './support/app'
+import { page, settled } from './support/browser'
 
 const index = (extra: Record<string, unknown> = {}) =>
   page('Users/Index', '/users', { props: { users: [], errors: {} }, ...extra })
@@ -28,7 +28,7 @@ const teamsShow = page('Teams/Show', '/teams/9', {
 
 describe('a submit answered by the tier the layer stands on', () => {
   const openLocal = async (routes: Record<string, Route>) => {
-    const app = await scenario(index(), routes)
+    const app = await openAppSentCall(index(), routes)
     const handle = app.router.layer({
       component: 'Users/Confirm',
       props: { user: 5 },
@@ -40,7 +40,7 @@ describe('a submit answered by the tier the layer stands on', () => {
   }
 
   const openLocalOverALayer = async (routes: Record<string, Route>) => {
-    const app = await scenario(index(), { '/users/5/edit': editWith(), ...routes })
+    const app = await openAppSentCall(index(), { '/users/5/edit': editWith(), ...routes })
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -55,7 +55,7 @@ describe('a submit answered by the tier the layer stands on', () => {
     return { app, handle, editId: app.layers()[0].id }
   }
 
-  const submit = (app: App, id: string) =>
+  const submit = (app: SentCallApp, id: string) =>
     new Promise<unknown>((resolve) => {
       app.router.layerHandle(id)!.router.post('/users', {}, { onError: resolve, onSuccess: () => resolve({}) })
     })
@@ -190,7 +190,7 @@ describe("a layer response's errors", () => {
   }
 
   it("announces a layer response's errors through the layer's bag, not the page's", async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': rejected }))
+    const app = await openApp(users, byPath({ '/users/5/edit': rejected }))
     const { seen, callbacks } = observing()
 
     app.router.visit('/users/5/edit', callbacks)
@@ -206,7 +206,7 @@ describe("a layer response's errors", () => {
 
   it('announces the errors a rewrite of an open layer brings through that layer', async () => {
     let answers = [editPage, rejected]
-    const app = await bench(users, () => answers.shift()!)
+    const app = await openApp(users, () => answers.shift()!)
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -228,7 +228,7 @@ describe("a layer response's errors", () => {
   it('announces a rewrite of a non-top layer through that layer, not the top', async () => {
     const bare = { ...teamsShow, props: { team: { id: 9 } } }
     const answers = [editPage, bare, rejected]
-    const app = await bench(users, () => answers.shift()!)
+    const app = await openApp(users, () => answers.shift()!)
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -256,7 +256,7 @@ describe("a layer response's errors", () => {
   })
 
   it("a page response's errors announce exactly as they always have", async () => {
-    const app = await bench(
+    const app = await openApp(
       users,
       byPath({
         '/users': {
@@ -279,7 +279,7 @@ describe("a layer response's flash", () => {
   const saved = { ...editPage, flash: { message: 'Saved.' } }
 
   it("announces a layer response's flash through the layer, whose own page carries it", async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': saved }))
+    const app = await openApp(users, byPath({ '/users/5/edit': saved }))
     const announced: unknown[] = []
 
     app.router.visit('/users/5/edit', {
@@ -293,7 +293,7 @@ describe("a layer response's flash", () => {
   })
 
   it("strips a layer's flash from the history entry it leaves", async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': saved }))
+    const app = await openApp(users, byPath({ '/users/5/edit': saved }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -305,7 +305,7 @@ describe("a layer response's flash", () => {
   })
 
   it("a layer's live flash survives a history merge that does not touch it", async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': saved }))
+    const app = await openApp(users, byPath({ '/users/5/edit': saved }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -321,7 +321,7 @@ describe("a layer response's flash", () => {
 
   it("router.flash with no layer open fires onFlash with the page's flash", async () => {
     const baseFlashes: unknown[] = []
-    const app = await bench(users, byPath({}), {
+    const app = await openApp(users, byPath({}), {
       onFlash: (flash) => baseFlashes.push(flash),
     })
 
@@ -333,7 +333,7 @@ describe("a layer response's flash", () => {
 
   it("a flash written to a layer never reaches the page's own flash", async () => {
     const baseFlashes: unknown[] = []
-    const app = await bench(users, byPath({ '/users/5/edit': editPage }), {
+    const app = await openApp(users, byPath({ '/users/5/edit': editPage }), {
       onFlash: (flash) => baseFlashes.push(flash),
     })
 
@@ -347,7 +347,7 @@ describe("a layer response's flash", () => {
   })
 
   it('re-renders the layer a flash was written to, since no callback carries it', async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': editPage }))
+    const app = await openApp(users, byPath({ '/users/5/edit': editPage }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -364,7 +364,7 @@ describe("a layer response's flash", () => {
   })
 
   it("router.flash from inside a layer targets the layer's flash", async () => {
-    const app = await bench(users, byPath({ '/users/5/edit': editPage }))
+    const app = await openApp(users, byPath({ '/users/5/edit': editPage }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -379,7 +379,7 @@ describe("a layer response's flash", () => {
 
   it("a layer's deferred response keeps the flash the layer already had", async () => {
     const follow = gate()
-    const app = await bench(users, (request) =>
+    const app = await openApp(users, (request) =>
       request.headers['X-Inertia-Partial-Data'] === undefined
         ? {
             ...saved,

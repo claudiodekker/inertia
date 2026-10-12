@@ -1,9 +1,18 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
-import { held, scenario, type Answer, type App, type Route } from './support/a-support'
-import { bench, byPath, exitShells, gate, page, settled, type Bench } from './support/e-support'
-import { baseGen, cached, requestsOf, start } from './support/f-support'
-
-const plainUsers = page('Users/Index', '/users')
+import {
+  held,
+  openAppSentCall,
+  type SentCallApp,
+  type Route,
+  openApp,
+  byPath,
+  exitShells,
+  gate,
+  type App,
+  openAppSync,
+} from './support/app'
+import { type Answer, page, settled } from './support/browser'
+import { baseGen, cached, requestsOf } from './support/peek'
 
 const plainLogin = page('Auth/Login', '/login')
 
@@ -22,7 +31,7 @@ const teamsMembers = page('Teams/Members', '/teams/9/members', {
 
 const teamsIndex = page('Teams/Index', '/teams')
 
-const components = (app: Bench) => app.layers().map((layer) => layer.component)
+const components = (app: App) => app.layers().map((layer) => layer.component)
 
 const pw = (overrides: Answer = {}): Answer => ({
   component: 'Users/Index',
@@ -57,7 +66,7 @@ const teamsLayer = (overrides: Answer = {}): Answer =>
     ...overrides,
   })
 
-const visited = (app: App, url: string, options: Record<string, unknown> = {}): Promise<void> =>
+const visited = (app: SentCallApp, url: string, options: Record<string, unknown> = {}): Promise<void> =>
   new Promise((resolve) => {
     app.router.visit(url, {
       ...options,
@@ -66,7 +75,7 @@ const visited = (app: App, url: string, options: Record<string, unknown> = {}): 
     } as never)
   })
 
-const keys = (app: App) => app.layers().map((layer) => layer.key)
+const keys = (app: SentCallApp) => app.layers().map((layer) => layer.key)
 
 const users = page('Users/Index', '/users', {
   props: { users: [], errors: {} },
@@ -85,7 +94,7 @@ const teams = page('Teams/Show', '/teams/9', {
 })
 
 const open = async (initial: Answer = users, routes: Record<string, Route> = {}) => {
-  const app = await scenario(initial, {
+  const app = await openAppSentCall(initial, {
     '/users/5/edit': editLayerPage(),
     '/teams/9': teams,
     ...routes,
@@ -97,7 +106,7 @@ const open = async (initial: Answer = users, routes: Record<string, Route> = {})
   return app
 }
 
-const ids = (app: Awaited<ReturnType<typeof scenario>>) => app.layers().map((layer) => layer.id)
+const ids = (app: Awaited<ReturnType<typeof openAppSentCall>>) => app.layers().map((layer) => layer.id)
 
 const usersIndex = page('Users/Index', '/users', {
   props: { errors: {}, users: [] },
@@ -115,7 +124,7 @@ afterEach(() => {
 
 describe('whether a layer response composes over the captured base', () => {
   it('holds when the visit was dispatched toward the layer', async () => {
-    const app = await bench(plainLogin, byPath({ '/users/5/edit': layerEdit }))
+    const app = await openApp(plainLogin, byPath({ '/users/5/edit': layerEdit }))
 
     app.router.visit('/users/5/edit')
     await settled()
@@ -125,7 +134,7 @@ describe('whether a layer response composes over the captured base', () => {
   })
 
   it('holds when the layer is already open', async () => {
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/users/5/edit': layerEdit,
@@ -147,7 +156,7 @@ describe('whether a layer response composes over the captured base', () => {
   })
 
   it('holds when the layer it was dispatched from is still open', async () => {
-    const app = await bench(plainLogin, byPath({ '/teams/9': teamsShow, '/login': layerEdit }))
+    const app = await openApp(plainLogin, byPath({ '/teams/9': teamsShow, '/login': layerEdit }))
 
     app.router.visit('/teams/9')
     await settled()
@@ -164,7 +173,7 @@ describe('whether a layer response composes over the captured base', () => {
   })
 
   it('holds when the layer declares the page on screen as its base', async () => {
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/login': { ...layerEdit, layer: { key: 'Users/Edit', base: '/login' } },
@@ -180,7 +189,7 @@ describe('whether a layer response composes over the captured base', () => {
   })
 
   it('holds for an open, whatever the visit was dispatched toward', async () => {
-    const app = await bench(plainLogin, byPath({ '/login': layerEdit }))
+    const app = await openApp(plainLogin, byPath({ '/login': layerEdit }))
     const handle = app.router.layer('/login')
 
     await settled()
@@ -193,7 +202,7 @@ describe('whether a layer response composes over the captured base', () => {
 
   it('fails once the layer it was dispatched from has been closed', async () => {
     const held = gate()
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/teams/9': teamsShow,
@@ -224,7 +233,7 @@ describe('whether a layer response composes over the captured base', () => {
 
   it('fails when the layer it was dispatched from has been closed and another opened', async () => {
     const held = gate()
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/teams/9': teamsShow,
@@ -260,7 +269,7 @@ describe('whether a layer response composes over the captured base', () => {
   })
 
   it('fails for a layer returned through a login page', async () => {
-    const app = await bench(plainLogin, byPath({ '/login': layerEdit }))
+    const app = await openApp(plainLogin, byPath({ '/login': layerEdit }))
 
     app.router.visit('/login')
     await settled()
@@ -275,7 +284,7 @@ describe('whether a layer response composes over the captured base', () => {
 
   it('fails once the base it captured has been replaced, whatever else holds', async () => {
     const held = gate()
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/users/5/edit': () => held.opened.then(() => layerEdit),
@@ -298,7 +307,7 @@ describe('whether a layer response composes over the captured base', () => {
   })
 
   it('never composes a hop of a walk, which is fetching the base beneath', async () => {
-    const app = await bench(
+    const app = await openApp(
       plainLogin,
       byPath({
         '/login': { ...layerEdit, layer: { key: 'Users/Edit', base: '/users' } },
@@ -327,7 +336,7 @@ describe('whether a layer response composes over the captured base', () => {
 describe('the base a layer response composes onto', () => {
   it('composes onto the stack when the layer the visit was sent from is still open', async () => {
     const answer = held()
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users/5/edit/notes': notesLayer(),
       'post /users/5/promote': () => answer.answer(),
@@ -357,7 +366,7 @@ describe('the base a layer response composes onto', () => {
 
   it('promotes a layer when the page moved to another url of the same component while it was in flight', async () => {
     const answer = held()
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': () => answer.answer(),
       '/users?search=x': pw({
         url: '/users?search=x',
@@ -386,7 +395,7 @@ describe('the base a layer response composes onto', () => {
 
   it('composes a layer across a background reload that refreshes the base in place', async () => {
     const answer = held()
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': () => answer.answer(),
       '/users?page=2': pw({
         url: '/users?page=2',
@@ -416,7 +425,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('composes a layer opened by a visit that preserves the url', async () => {
-    const app = await scenario(pw(), { '/users/5/edit': editLayer() })
+    const app = await openAppSentCall(pw(), { '/users/5/edit': editLayer() })
 
     await visited(app, '/users/5/edit', { preserveUrl: true })
     await settled()
@@ -426,7 +435,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('gives a layer opened by a visit that preserves the url its own url, but not the address', async () => {
-    const app = await scenario(pw(), { '/users/5/edit': editLayer() })
+    const app = await openAppSentCall(pw(), { '/users/5/edit': editLayer() })
 
     await visited(app, '/users/5/edit', { preserveUrl: true })
     await settled()
@@ -441,7 +450,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('leaves an open layer the url it already had when a preserving reload rewrites it', async () => {
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users/5/edit?page=2': editLayer({
         url: '/users/5/edit?page=2',
@@ -469,7 +478,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('leaves the address on the layer beneath when a layer opens without moving the url', async () => {
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users/5/edit/notes': notesLayer(),
     })
@@ -502,7 +511,7 @@ describe('the base a layer response composes onto', () => {
 
   it('promotes a layer dispatched from a layer the user dismissed while it was in flight', async () => {
     const answer = held()
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users': pw(),
       'post /users/5/promote': () => answer.answer(),
@@ -531,7 +540,7 @@ describe('the base a layer response composes onto', () => {
 
   it('does not reopen a layer the user dismissed while a submit inside it was in flight', async () => {
     const answer = held()
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       '/users/5/edit': editLayer(),
       '/users': pw(),
       'post /users/5': () => answer.answer(),
@@ -562,7 +571,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('promotes a layer to a page when it comes back through a login page', async () => {
-    const app = await scenario(pw({ component: 'Auth/Login', url: '/login' }), {
+    const app = await openAppSentCall(pw({ component: 'Auth/Login', url: '/login' }), {
       'post /login': editLayer(),
     })
 
@@ -581,7 +590,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('composes a layer router.layer() asked for, whatever url the server answered from', async () => {
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       'post /users/5/edit-start': editLayer(),
     })
 
@@ -602,7 +611,7 @@ describe('the base a layer response composes onto', () => {
 
   it('promotes a layer router.layer() asked for when the page beneath it was replaced in flight', async () => {
     const answer = held()
-    const app = await scenario(pw(), {
+    const app = await openAppSentCall(pw(), {
       'post /users/5/edit-start': () => answer.answer(),
       '/users/archive': pw({
         component: 'Users/Archive',
@@ -630,7 +639,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('promotes a prefetched layer replayed onto a base an instant swap has since replaced', async () => {
-    const app = await scenario(pw(), { '/users/5/edit': editLayer() })
+    const app = await openAppSentCall(pw(), { '/users/5/edit': editLayer() })
 
     Object.assign(window, { setTimeout, clearTimeout })
     app.router.prefetch('/users/5/edit', {}, { cacheFor: '30s' })
@@ -668,7 +677,7 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('composes onto the page it names as its base, when a create redirects to the record', async () => {
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       'post /users': editLayerPage({
         layer: { key: 'Users/Edit', base: '/users' },
       }),
@@ -685,7 +694,7 @@ describe('the base a layer response composes onto', () => {
 
   it('walks a base back for a layer whose base is not the page on screen', async () => {
     const walk = held()
-    const app = await scenario(page('Auth/Login', '/login'), {
+    const app = await openAppSentCall(page('Auth/Login', '/login'), {
       'post /login': editLayerPage({
         layer: { key: 'Users/Edit', base: '/users' },
       }),
@@ -736,7 +745,7 @@ describe('the base a layer response composes onto', () => {
 
   it('composes onto a layer that opened while the visit was in flight', async () => {
     const post = held()
-    const app = await scenario(users, {
+    const app = await openAppSentCall(users, {
       'post /users/5': () => post.answer(),
       '/users/5/edit': editLayerPage(),
     })
@@ -769,7 +778,7 @@ describe('the base a layer response composes onto', () => {
 
 describe('the base a visit is dispatched from', () => {
   it('is the page on screen', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/archive': archive,
       '/users/5': hold,
     })
@@ -791,7 +800,7 @@ describe('the base a visit is dispatched from', () => {
   })
 
   it('is the base before an instant swap replaces it', async () => {
-    const app = await start(usersIndex, { '/users/5': hold })
+    const app = await openAppSync(usersIndex, { '/users/5': hold })
 
     app.router.visit('/users/5', { component: 'Users/Show' })
     await vi.waitFor(() => expect(requestsOf(app.router)).toHaveLength(1))
@@ -807,7 +816,7 @@ describe('the base a visit is dispatched from', () => {
   })
 
   it('is the page on screen when a prefetched response is replayed, not the one it was prefetched from', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5': plainShow,
       '/users/archive': archive,
     })
@@ -841,7 +850,7 @@ describe('the base a visit is dispatched from', () => {
   })
 
   it('is the base before an instant swap when the response was prefetched', async () => {
-    const app = await start(usersIndex, {
+    const app = await openAppSync(usersIndex, {
       '/users/5': plainShow,
       '/users/archive': archive,
     })

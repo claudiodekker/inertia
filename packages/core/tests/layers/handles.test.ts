@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { base, counted, edit, ported, settled, holdBack, page, notes, veto } from './support/layer-handles-support'
+import { openApp } from './support/app'
+import { settled, page } from './support/browser'
+import { counted, holdBack, veto } from './support/handles'
+import { base, edit, notes } from './support/pages'
 
 describe('a partial a layer made', () => {
   it("keeps a layer's handle when a partial it made is answered by a page that keeps the stack", async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': edit(),
       '/users?search=x': base({ url: '/users?search=x', props: { users: [{ id: 9 }], errors: {} } }),
     })
@@ -32,7 +35,7 @@ describe('a partial a layer made', () => {
 
 describe('the layer handle lookup', () => {
   it('keeps no handle when there is no browser, so a server render never shares one', async () => {
-    const app = await ported(base(), {})
+    const app = await openApp(base(), {})
     const browser = globalThis.window
 
     try {
@@ -50,7 +53,7 @@ describe('the layer handle lookup', () => {
   })
 
   it('hands back the handle written for a layer id', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -64,7 +67,7 @@ describe('the layer handle lookup', () => {
   })
 
   it('releases the handle of a layer once its removal has settled', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -85,7 +88,7 @@ describe('the layer handle lookup', () => {
   })
 
   it('releases the handle of a layer whose close is dropped', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users/5': page('Users/Show', '/users/5') })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users/5': page('Users/Show', '/users/5') })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -99,7 +102,7 @@ describe('the layer handle lookup', () => {
   })
 
   it('keeps the handle of a layer that is superseded under its own id', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -115,7 +118,7 @@ describe('the layer handle lookup', () => {
 
 describe('router.layer: the routed handle', () => {
   it('returns a handle that subscribes and closes', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -134,7 +137,7 @@ describe('router.layer: the routed handle', () => {
   })
 
   it('composes a warm layer under the id the handle was created with, and close() dismisses it', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users': base() })
     const handle = app.router.layer('http://localhost/users/5/edit')
     const go = app.go()
 
@@ -160,7 +163,7 @@ describe('router.layer: the routed handle', () => {
   it('closes the handle of an open whose base moved in flight, composing nothing [BEHAVIOUR CHANGED]', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': () => held.then(() => edit()),
       '/users/archive': page('Users/Archive', '/users/archive'),
     })
@@ -183,7 +186,7 @@ describe('router.layer: the routed handle', () => {
   it('re-keys the handle when the stack takes the id it was created with, and close() still works', async () => {
     let answer = () => {}
     const held = new Promise<void>((resolve) => (answer = resolve))
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': () => held.then(() => edit()),
       '/teams/9': page('Teams/Show', '/teams/9', { layer: { key: 'Teams/Show', base: '/users' } }),
       '/users': base(),
@@ -215,7 +218,7 @@ describe('router.layer: the routed handle', () => {
   })
 
   it('takes over the layer already open under the key, rather than opening another', async () => {
-    const app = await ported(base(), {
+    const app = await openApp(base(), {
       '/users/5/edit': edit({ props: { user: { id: 5, name: 'Renamed' }, errors: {} } }),
       '/users': base(),
     })
@@ -244,7 +247,7 @@ describe('router.layer: the routed handle', () => {
 
   it('keeps the first handle listening when a second open takes over the layer, and closes both', async () => {
     const answers = [edit(), edit({ props: { user: { id: 5, name: 'Renamed' }, errors: {} } })]
-    const app = await ported(base(), { '/users/5/edit': () => Promise.resolve(answers.shift()!), '/users': base() })
+    const app = await openApp(base(), { '/users/5/edit': () => Promise.resolve(answers.shift()!), '/users': base() })
     const first = app.router.layer('http://localhost/users/5/edit')
     const closed: string[] = []
 
@@ -265,7 +268,7 @@ describe('router.layer: the routed handle', () => {
   })
 
   it('makes the page the owner of a layer opened from it', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const handle = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -276,7 +279,7 @@ describe('router.layer: the routed handle', () => {
   })
 
   it('keeps the layer a vetoed link was sent from, and closes the handle of a vetoed open', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users/5/notes': notes() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users/5/notes': notes() })
     const opener = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -300,7 +303,7 @@ describe('router.layer: the routed handle', () => {
   })
 
   it('makes the layer a link was clicked in the owner of the layer it opens, keeping its handle', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users/5/notes': notes() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users/5/notes': notes() })
     const opener = app.router.layer('http://localhost/users/5/edit')
     const heard: unknown[] = []
 
@@ -324,7 +327,7 @@ describe('router.layer: the routed handle', () => {
   })
 
   it('makes a layer the owner of a layer opened from inside it', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit(), '/users/5/notes': notes() })
+    const app = await openApp(base(), { '/users/5/edit': edit(), '/users/5/notes': notes() })
     const opener = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -344,7 +347,7 @@ describe('local layers: router.layer({ component, props })', () => {
   const local = (props: Record<string, unknown> = { user: { id: 5 } }) => ({ component: 'Users/Notes', props })
 
   it('opens a local layer with no url of its own, owned by the topmost layer', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const opener = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -367,7 +370,7 @@ describe('local layers: router.layer({ component, props })', () => {
   })
 
   it('makes the page the owner of a local layer opened from it', async () => {
-    const app = await ported(base(), {})
+    const app = await openApp(base(), {})
     const handle = app.router.layer(local())
 
     await settled()
@@ -378,7 +381,7 @@ describe('local layers: router.layer({ component, props })', () => {
   })
 
   it('writes a history entry for a local open, at the address the stack already owns', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
 
     app.router.layer('http://localhost/users/5/edit')
     await settled()
@@ -393,7 +396,7 @@ describe('local layers: router.layer({ component, props })', () => {
   })
 
   it('serialises a local layer into an entry', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const routed = app.router.layer('http://localhost/users/5/edit')
 
     await settled()
@@ -412,7 +415,7 @@ describe('local layers: router.layer({ component, props })', () => {
   })
 
   it('drops a local layer on restore, firing its handle onClose once', async () => {
-    const app = await ported(base(), {})
+    const app = await openApp(base(), {})
     const handle = app.router.layer(local())
     const calls = counted(handle)
 
@@ -429,7 +432,7 @@ describe('local layers: router.layer({ component, props })', () => {
   })
 
   it('gives two local opens two ids and two handles, and closing one leaves the other', async () => {
-    const app = await ported(base(), { '/users': base() })
+    const app = await openApp(base(), { '/users': base() })
     const first = app.router.layer(local())
     await settled()
     const second = app.router.layer(local({ user: { id: 6 } }))
@@ -454,7 +457,7 @@ describe('local layers: router.layer({ component, props })', () => {
   })
 
   it('does not let a routed response rewrite an open local layer', async () => {
-    const app = await ported(base(), { '/users/5/edit': edit() })
+    const app = await openApp(base(), { '/users/5/edit': edit() })
     const open = app.router.layer({ component: 'Users/Edit', props: { user: { id: 5 } } })
 
     await settled()
