@@ -225,6 +225,8 @@ export type StackEvent =
   | { type: 'layerSwapped'; id: LayerId }
   /** Every popstate after decrypt and the 3.x version check. `entry.layers` is empty for a plain entry. */
   | { type: 'popstate'; entry: EntryFacts }
+  /** The browser refused the push `id` was charged for. */
+  | { type: 'writeRefused'; id: LayerId }
   /** A popstate with no state: the browser pushed an entry itself (an in-page anchor). */
   | { type: 'anchored' }
   | { type: 'unwindSettled'; token: Token; how: 'answered' | 'timeout' }
@@ -242,7 +244,8 @@ export type StackEffect =
   /** Publish views to the adapters. Emitted only while the gate is open; otherwise `paint.owed`. */
   | { type: 'paint' }
   /** history.writeEntry(the live composite, its address, mode). */
-  | { type: 'writeEntry'; mode: 'push' | 'replace' }
+  /** `charged`: the row that counted this push, told (`writeRefused`) when the browser refuses it. */
+  | { type: 'writeEntry'; mode: 'push' | 'replace'; charged?: LayerId }
   | { type: 'historyGo'; delta: number; token: Token }
   /** A visit the stack starts itself: through the base router (walk, recover) or a tier's router reload (refresh). */
   | { type: 'startVisit'; tag: VisitTag; via: Owner; url: string | null }

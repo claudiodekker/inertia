@@ -108,8 +108,13 @@ export class Stack implements StackPort {
         return this.paint()
       case 'writeEntry': {
         const { data, url } = this.compose(currentPage.getWithoutFlashData())
+        const { charged } = effect
 
-        return history.writeEntry(data, url, effect.mode)
+        return history.writeEntry(data, url, effect.mode).then((written) => {
+          if (!written && charged) {
+            this.dispatch({ type: 'writeRefused', id: charged })
+          }
+        })
       }
       case 'dispose':
         return effect.ids.forEach((id) => this.dispose(id))

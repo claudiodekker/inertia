@@ -210,25 +210,40 @@ class History {
     })
   }
 
-  public writeEntry(entry: Page, url: string, mode: 'push' | 'replace'): Promise<void> {
+  /** Resolves false when the browser refused a push (throttled or over quota), so no entry was added. */
+  public writeEntry(entry: Page, url: string, mode: 'push' | 'replace'): Promise<boolean> {
     if (isServer) {
-      return Promise.resolve()
+      return Promise.resolve(true)
     }
 
-    return queue.add(() => {
-      return this.getPageData(entry).then((data) => {
-        const doWrite = () =>
-          mode === 'push' ? this.doPushState({ page: data }, url) : this.doReplaceState({ page: data }, url)
+    let written = true
 
-        if (isChromeIOS) {
-          return new Promise((resolve) => {
-            setTimeout(() => doWrite().then(resolve))
-          })
-        }
+    return queue
+      .add(() => {
+        return this.getPageData(entry).then((data) => {
+          const doWrite = () => {
+            if (mode === 'replace') {
+              return this.doReplaceState({ page: data }, url)
+            }
 
-        return doWrite()
+            // A push the browser accepted leaves a new state object behind.
+            const before = window.history.state
+
+            return this.doPushState({ page: data }, url).then(() => {
+              written = window.history.state !== before
+            })
+          }
+
+          if (isChromeIOS) {
+            return new Promise<void>((resolve) => {
+              setTimeout(() => doWrite().then(resolve))
+            })
+          }
+
+          return doWrite()
+        })
       })
-    })
+      .then(() => written)
   }
 
   public go(delta: number): Promise<'answered' | 'timeout'> {

@@ -36,6 +36,7 @@ const kinds: [StackEvent['type'], number][] = [
   ['walkHopFailed', 1],
   ['restoredOnLoad', 1],
   ['anchored', 2],
+  ['writeRefused', 1],
 ]
 const wheel = kinds.flatMap(([kind, weight]) => Array<StackEvent['type']>(weight).fill(kind))
 
@@ -173,6 +174,8 @@ function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEven
       return { type: 'visitFinished', visit: someVisit() }
     case 'anchored':
       return { type: 'anchored' }
+    case 'writeRefused':
+      return { type: 'writeRefused', id: pick(anyId, a)! }
     case 'walkHopFailed':
       return { type: 'walkHopFailed', visit: s.walk?.visit && bit(0) ? s.walk.visit : visit(fresh('v')) }
     default:

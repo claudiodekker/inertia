@@ -66,6 +66,13 @@ export function reduce(s: StackState, e: StackEvent): Step {
       return popstate(s, e)
     case 'anchored':
       return anchored(s)
+    case 'writeRefused':
+      return run(s, (t) => {
+        const charged = row(t, e.id)
+
+        // An entry the browser refused to write is not one a close should step back over.
+        return charged ? setRow(t, { ...charged, entries: Math.max(0, charged.entries - 1) }) : t
+      })
     case 'unwindSettled':
       return run(s, (t, fx) =>
         t.expect?.kind === 'unwind' && t.expect.token === e.token ? completeUnwind(t, fx, t.expect.close) : t,
@@ -620,7 +627,7 @@ function layerCommitting(s: StackState, e: E<'layerCommitting'>): Step {
   return run(
     setRow(s, { ...target, phase: 'open', entries: target.entries + (mode === 'push' ? 1 : 0) }),
     (t, fx) => {
-      fx.push({ type: 'writeEntry', mode })
+      fx.push(mode === 'push' ? { type: 'writeEntry', mode, charged: e.id } : { type: 'writeEntry', mode })
 
       return t
     },

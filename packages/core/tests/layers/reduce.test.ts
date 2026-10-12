@@ -148,7 +148,7 @@ describe('opening over the page on screen', () => {
     const local = row('l', { type: 'local', key: 'Confirm', ownsAddress: false })
 
     expect(opened.state).toEqual(state({ rows: [local] }))
-    expect(opened.effects).toEqual([{ type: 'writeEntry', mode: 'push' }])
+    expect(opened.effects).toEqual([{ type: 'writeEntry', mode: 'push', charged: 'l' }])
 
     const back = reduce(opened.state, { type: 'popstate', entry: entry([]) })
 
@@ -184,7 +184,7 @@ describe('rewrites and refreshes', () => {
     ])
 
     expect(s).toEqual(state({ rows: [row('a', { key: 'step', entries: 2, renderKey: 1 })] }))
-    expect(effects).toEqual([{ type: 'writeEntry', mode: 'push' }])
+    expect(effects).toEqual([{ type: 'writeEntry', mode: 'push', charged: 'a' }])
   })
 
   it('L:818 L:105 L:476 a same-key answer that preserves state rewrites without a remount', () => {
@@ -298,7 +298,7 @@ describe('rewrites and refreshes', () => {
     expect(last.outcome).toEqual(landing('refresh', { id: 'a', remount: false }))
     expect(reduce(s, { type: 'layerCommitting', id: id('a'), requestedReplace: false, urlChanged: true })).toEqual({
       state: state({ rows: [row('a', { key: 'panel:first', entries: 2 })] }),
-      effects: [{ type: 'writeEntry', mode: 'push' }],
+      effects: [{ type: 'writeEntry', mode: 'push', charged: 'a' }],
       outcome: { kind: 'commit', decision: { kind: 'write', mode: 'push' } },
     })
     expect(effects).toEqual([])
@@ -324,7 +324,7 @@ describe('layer commits', () => {
   it('L:545 L:1491 the first commit of an opening row pushes and is charged one entry', () => {
     expect(committingA(state({ rows: [row('a', { phase: 'opening', entries: 0 })] }), false, false)).toEqual({
       state: state({ rows: [row('a')] }),
-      effects: [{ type: 'writeEntry', mode: 'push' }],
+      effects: [{ type: 'writeEntry', mode: 'push', charged: 'a' }],
       outcome: { kind: 'commit', decision: { kind: 'write', mode: 'push' } },
     })
   })
@@ -706,6 +706,17 @@ describe('the entries a restored row has pushed', () => {
 
     expect(step.state.rows).toEqual([row('a', { entries: 2 }), row('b')])
     expect(step.state.ghosts).toEqual(['c'])
+  })
+})
+
+describe('a push the browser refused', () => {
+  it('gives the entry back to the row that was charged for it, never below zero', () => {
+    const refused = { type: 'writeRefused', id: id('a') } as const
+    const s = state({ rows: [row('a', { entries: 1 }), row('b')] })
+
+    expect(script(s, [refused]).state).toEqual(state({ rows: [row('a', { entries: 0 }), row('b')] }))
+    expect(script(s, [refused, refused]).state).toEqual(state({ rows: [row('a', { entries: 0 }), row('b')] }))
+    expect(reduce(state(), refused)).toEqual({ state: state(), effects: [], outcome: none })
   })
 })
 
@@ -1237,7 +1248,7 @@ describe('hazards', () => {
     ])
 
     expect(s).toEqual(state({ rows: [row('a', { key: 'step', entries: 3 })], ghosts: [id('b')] }))
-    expect(effects).toEqual([{ type: 'paint' }, { type: 'writeEntry', mode: 'push' }, { type: 'paint' }])
+    expect(effects).toEqual([{ type: 'paint' }, { type: 'writeEntry', mode: 'push', charged: 'a' }, { type: 'paint' }])
     expect(reduce(s, { type: 'exited', id: id('b') }).effects).toEqual([
       { type: 'dispose', ids: ['b'], reason: 'closed' },
       { type: 'paint' },
