@@ -1,0 +1,23 @@
+// base id > survives a partial that moves the base while a layer stands on it   (PR layer-responses.test.ts:307)
+// PR: a base partial that lands on another url of the same component (layer composed onto the moved base) keeps the layer.
+// Rebuilt: the same visit pushes a base commit with a different url, so clearStack('navigated') drops the layer.
+// Observed: layers() === [], written() ends with ['push', '/users?search=x']. Only visit({replace: true}) keeps the layer.
+import { expect, it } from 'vitest'
+import { page, scenario, settled } from './a-support'
+
+it('survives a partial that moves the base while a layer stands on it', async () => {
+  const users = page('Users/Index', '/users', { props: { users: [], errors: {} } })
+  const app = await scenario(users, {
+    '/users/5/edit': page('Users/Edit', '/users/5/edit', { layer: { key: 'Users/Edit' } }),
+    '/users?search=x': page('Users/Index', '/users?search=x', { props: { users: [], errors: {} } }),
+  })
+
+  app.router.visit('/users/5/edit')
+  await settled()
+  const [first] = app.layers()
+
+  app.router.visit('/users?search=x', { only: ['users'], preserveState: true, async: true })
+  await settled()
+
+  expect(app.layers()).toEqual([first])
+})

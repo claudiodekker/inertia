@@ -1,0 +1,24 @@
+// FINDING: placeholder layer page has deferredProps and scrollProps undefined; PR asserted {} for both (props/onceProps/rescuedProps/flash match)
+// uses helpers from layer-responses-3.test.ts (index, edit, open, scopeOf, inertia, held, scenario)
+  it('drops the record the layer was showing rather than carrying it into the placeholder', async () => {
+    const { app } = await stood({
+      props: { user: { id: 5 }, errors: {} },
+      deferredProps: { default: ['history'] },
+      onceProps: { token: { prop: 'token' } },
+      scrollProps: { items: { pageName: 'page' } },
+      rescuedProps: ['history'],
+      flash: { message: 'Saved' },
+    })
+
+    scopeOf(app).router.visit('/users/9/edit', instant)
+    await settled()
+
+    expect(app.views()[0].page).toMatchObject({
+      props: { errors: {} },
+      deferredProps: {},
+      onceProps: {},
+      scrollProps: {},
+      rescuedProps: [],
+      flash: {},
+    })
+  })

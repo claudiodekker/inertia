@@ -1,0 +1,35 @@
+// FINDING a2-2: a partial answered by the cold layer, sent while the walk for its base is in flight, promotes the layer instead of merging into it.
+// PR (layer-responses.test.ts:1359): layers stay [layer.id]; layer props {user: {id: 5}, stats: [1, 2, 3]}.
+// Rebuilt: visiting '/users/5/edit' (only: ['stats'], async: true) over a cold layer whose walk hop GET /users is held: the walk is cancelled
+//   (3.x cancels in-flight requests aimed at the page being navigated away from, the blank base's url '/users'), walkFailed promotes the layer:
+//   app.layers() === [], basePage().component === 'Users/Edit' with props {user: {id: 5}}, the partial's onSuccess never fires (only onFinish).
+// Needs the helpers of layer-responses-2.test.ts (pw, editLayer, visited, scenario, held, settled).
+
+  const cold = async (layerProps: Record<string, unknown> = { user: { id: 5 } }) => {
+    const walk = held()
+    let hops = 0
+    const routes: Record<string, Route> = {
+      'post /login': editLayer({ layer: { key: 'Users/Edit', base: '/users' }, props: layerProps }),
+      '/users': (request) => (hops++ === 0 ? walk.answer() : Promise.resolve(pw())),
+    }
+    const app = await scenario(pw({ component: 'Auth/Login', url: '/login' }), routes)
+
+    await visited(app, '/login', { method: 'post' })
+    await settled()
+
+    expect((await app.basePage()).component).toBe('')
+
+    return { app, routes, walk, layer: app.layers()[0] }
+  }
+
+  it("merges a cold layer's props when a partial is answered by the layer, keeping its siblings", async () => {
+    const { app, routes, layer } = await cold({ user: { id: 5 } })
+
+    routes['/users/5/edit'] = editLayer({ layer: { key: 'Users/Edit', base: '/users' }, props: { stats: [1, 2, 3] } })
+    await visited(app, '/users/5/edit', { only: ['stats'], async: true })
+    await settled()
+
+    expect(app.layers().map((open) => open.id)).toEqual([layer.id])
+    expect(app.views()[0].page.props).toEqual({ user: { id: 5 }, stats: [1, 2, 3] })
+  })
+
