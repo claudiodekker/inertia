@@ -1,6 +1,6 @@
 import type { App } from './app'
 
-export const seedKeys = (app: App) => {
+export const storeKeys = (app: App) => {
   window.sessionStorage.setItem(app.historySessionStorageKeys.key, '[1,2,3]')
   window.sessionStorage.setItem(app.historySessionStorageKeys.iv, '[4,5,6]')
 }

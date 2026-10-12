@@ -48,10 +48,10 @@ const editLayer = (overrides: Answer = {}): Answer =>
 
 describe('a partial reload with a cold layer open', () => {
   it("merges a cold layer's props when a partial is answered by the layer, keeping its siblings", async () => {
-    const walk = held()
+    const baseFetch = held()
     const routes: Record<string, Route> = {
       'post /login': editLayerProps({ user: { id: 5 } }),
-      '/users': () => walk.answer(),
+      '/users': () => baseFetch.answer(),
     }
     const app = await openAppSentCall(usersAnswer({ component: 'Auth/Login', url: '/login' }), routes)
 
@@ -87,11 +87,11 @@ describe('a refresh of the page beneath an open stack', () => {
   }
 
   const cold = async () => {
-    const walk = held()
-    let hops = 0
+    const baseFetch = held()
+    let baseFetches = 0
     const routes: Record<string, Route> = {
       'post /login': editLayerProps({ user: { id: 5 } }),
-      '/users': () => (hops++ === 0 ? walk.answer() : Promise.resolve(usersAnswer())),
+      '/users': () => (baseFetches++ === 0 ? baseFetch.answer() : Promise.resolve(usersAnswer())),
     }
     const app = await openAppSentCall(usersAnswer({ component: 'Auth/Login', url: '/login' }), routes)
 

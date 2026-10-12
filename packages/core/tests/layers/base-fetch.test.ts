@@ -261,10 +261,10 @@ describe('a base fetch request landing', () => {
   const cold = { ...layerEdit, layer: { key: 'Users/Edit', base: '/users' } }
 
   it('fills in the blank base beneath the stack', async () => {
-    const walk = gate()
+    const baseGate = gate()
     const app = await openApp(
       plainLogin,
-      byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }),
+      byPath({ '/login': cold, '/users': () => baseGate.opened.then(() => plainUsers) }),
     )
 
     app.router.visit('/login')
@@ -274,7 +274,7 @@ describe('a base fetch request landing', () => {
 
     expect(await app.basePage()).toMatchObject({ component: '' })
 
-    walk.open()
+    baseGate.open()
     await settled()
 
     expect(await app.basePage()).toMatchObject({
@@ -289,13 +289,13 @@ describe('a base fetch request landing', () => {
   })
 
   it('inserts a base that is itself a layer beneath the stack and keeps fetching the base beneath it', async () => {
-    const walk = gate()
+    const baseGate = gate()
     const app = await openApp(
       plainLogin,
       byPath({
         '/login': cold,
         '/users': { ...plainUsers, layer: { key: 'Users/Index', base: '/' } },
-        '/': () => walk.opened.then(() => page('Home', '/')),
+        '/': () => baseGate.opened.then(() => page('Home', '/')),
       }),
     )
 
@@ -307,7 +307,7 @@ describe('a base fetch request landing', () => {
     expect(app.loadingFor).toEqual(['/users', '/'])
     expect(app.requests.map((request) => request.path)).toEqual(['/login', '/users', '/'])
 
-    walk.open()
+    baseGate.open()
     await settled()
 
     expect(components(app)).toEqual(['Users/Index', 'Users/Edit'])

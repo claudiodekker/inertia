@@ -691,12 +691,12 @@ describe('the base a layer response composes onto', () => {
   })
 
   it('fetches a base back for a layer whose base is not the page on screen', async () => {
-    const walk = held()
+    const baseFetch = held()
     const app = await openAppSentCall(page('Auth/Login', '/login'), {
       'post /login': editLayerPage({
         layer: { key: 'Users/Edit', base: '/users' },
       }),
-      '/users': () => walk.answer(),
+      '/users': () => baseFetch.answer(),
     })
 
     app.router.post('/login')
@@ -710,7 +710,7 @@ describe('the base a layer response composes onto', () => {
     })
     expect(app.sent()).toEqual(['post /login', 'get /users'])
 
-    walk.release(users)
+    baseFetch.release(users)
     await settled()
 
     expect((await app.basePage()).component).toBe('Users/Index')

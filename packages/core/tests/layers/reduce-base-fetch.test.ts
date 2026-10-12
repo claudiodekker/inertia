@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { reduce } from '../../src/layers/reduce'
-import { MAX_LAYER_CHAIN, type StackState } from '../../src/layers/state'
+import { MAX_LAYER_CHAIN } from '../../src/layers/state'
 import {
   arrival,
   arrived,
@@ -9,26 +9,16 @@ import {
   committing,
   entry,
   entryLayer,
+  fetchingBase,
   id,
+  landing,
+  none,
   row,
   script,
   state,
   visit,
   wid,
 } from './support/fixtures'
-
-const landing = (kind: string, extra: object = {}) => ({ kind: 'landing', landing: { kind, ...extra } })
-
-const none = { kind: 'none' }
-
-const walking = (overrides: Partial<StackState> = {}) =>
-  state({
-    rows: [row('a', { standalone: true, entries: 0 })],
-    base: { blank: true, gen: 0 },
-    baseFetch: { url: '/base', visit: visit('v1'), startOnSwap: false },
-    ops: new Map([[visit('v1'), { kind: 'fetchBase', inFlight: 1, landed: false }]]),
-    ...overrides,
-  })
 
 describe('cold boot and the base fetch', () => {
   it('a cold boot opens the layer on a blank base, fetches the base after the first swap, and that base fetch request lands it', () => {
@@ -70,10 +60,10 @@ describe('cold boot and the base fetch', () => {
   })
 
   it('a base fetch request answered by a layer with its own base goes beneath, and the base fetch goes on', () => {
-    const step = arrived(walking(), { visit: 'v1', layer: { key: 'inner', base: '/deeper' }, newId: 'inner' })
+    const step = arrived(fetchingBase(), { visit: 'v1', layer: { key: 'inner', base: '/deeper' }, newId: 'inner' })
 
     expect(step).toEqual({
-      state: walking({
+      state: fetchingBase({
         rows: [
           row('inner', { key: 'inner', standalone: true, phase: 'opening', entries: 0 }),
           row('a', { standalone: true, entries: 0 }),
@@ -90,7 +80,7 @@ describe('cold boot and the base fetch', () => {
   })
 
   it(`stops a base fetch whose next layer would make the stack ${MAX_LAYER_CHAIN} deep, landing the answer as the base with a warning`, () => {
-    const s = walking({
+    const s = fetchingBase({
       rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) =>
         row(`r${depth}`, { standalone: true, entries: 0 }),
       ),
@@ -111,12 +101,12 @@ describe('cold boot and the base fetch', () => {
 
   it('lands a base fetch request whose declared base cycles back to a live row as the base, without a warning', () => {
     expect(
-      arrived(walking(), { visit: 'v1', layer: { key: 'loop', base: '/panel' }, facts: { cycles: true } }).effects,
+      arrived(fetchingBase(), { visit: 'v1', layer: { key: 'loop', base: '/panel' }, facts: { cycles: true } }).effects,
     ).toEqual([])
   })
 
   it('a failed base fetch request promotes the deepest layer to the page, and the base swap paints its dialog away', () => {
-    const { state: s, effects } = script(walking(), [
+    const { state: s, effects } = script(fetchingBase(), [
       { type: 'baseFetchFailed', visit: visit('v1') },
       committing({ visit: visit('1'), mode: 'replace' }),
       { type: 'visitFinished', visit: visit('v1') },
@@ -132,7 +122,7 @@ describe('cold boot and the base fetch', () => {
   })
 
   it('a base fetch request that fails after its layer closed requests the base again, and that commit keeps the stack', () => {
-    const { state: s, effects } = script(walking({ rows: [] }), [
+    const { state: s, effects } = script(fetchingBase({ rows: [] }), [
       { type: 'baseFetchFailed', visit: visit('v1') },
       { type: 'visitFinished', visit: visit('v1') },
       { type: 'visitDispatched', visit: visit('v2'), tag: { kind: 'recover' } },
@@ -145,13 +135,13 @@ describe('cold boot and the base fetch', () => {
   })
 
   it('a base fetch request cancelled or answered by a location redirect (409) fails the base fetch at its finish', () => {
-    expect(reduce(walking({ rows: [] }), { type: 'visitFinished', visit: visit('v1') }).effects).toEqual([
+    expect(reduce(fetchingBase({ rows: [] }), { type: 'visitFinished', visit: visit('v1') }).effects).toEqual([
       { type: 'startVisit', tag: { kind: 'recover' }, via: 'base', url: '/base' },
     ])
   })
 
   it('closing a cold layer over the blank base pushes the placeholder and skips the refresh', () => {
-    const { state: s, effects } = script(walking(), [
+    const { state: s, effects } = script(fetchingBase(), [
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('a') },
     ])
@@ -163,7 +153,7 @@ describe('cold boot and the base fetch', () => {
       { type: 'dispose', ids: ['a'], reason: 'closed' },
       { type: 'settle', waiters: ['w1'], result: 'closed' },
     ])
-    expect(s).toEqual(walking({ rows: [] }))
+    expect(s).toEqual(fetchingBase({ rows: [] }))
   })
 
   it('Back onto a plain entry while the base is still out ends the base fetch, so no base fetch request or recovery lands on it', () => {
@@ -171,7 +161,7 @@ describe('cold boot and the base fetch', () => {
       state: s,
       effects,
       last,
-    } = script(walking({ rows: [] }), [
+    } = script(fetchingBase({ rows: [] }), [
       { type: 'popstate', entry: entry([], { url: '/layers/slow-base-panel', baseSame: false }) },
       { type: 'visitFinished', visit: visit('v1') },
     ])
@@ -179,15 +169,17 @@ describe('cold boot and the base fetch', () => {
     expect(effects).toEqual([])
     expect(last.outcome).toEqual(none)
     expect(s).toEqual(state({ base: { blank: false, gen: 1 }, paint: { gated: true, owed: true } }))
-    expect(reduce(walking({ rows: [] }), { type: 'popstate', entry: entry([], { baseSame: false }) }).outcome).toEqual({
+    expect(
+      reduce(fetchingBase({ rows: [] }), { type: 'popstate', entry: entry([], { baseSame: false }) }).outcome,
+    ).toEqual({
       kind: 'restore',
       restore: { kind: 'base' },
     })
   })
 
   it.each([
-    ['with nothing on it', walking({ rows: [] }), entry([], { url: '/base', blank: true })],
-    ['of another base', walking(), entry([], { url: '/other', blank: true, baseSame: false })],
+    ['with nothing on it', fetchingBase({ rows: [] }), entry([], { url: '/base', blank: true })],
+    ['of another base', fetchingBase(), entry([], { url: '/other', blank: true, baseSame: false })],
   ])('Back onto a blank placeholder %s fetches its page once: the recovery ends the base fetch', (_, from, blank) => {
     const { state: s, effects } = script(from, [
       { type: 'popstate', entry: blank },
@@ -202,7 +194,7 @@ describe('cold boot and the base fetch', () => {
   })
 
   it('a close during the base fetch landing sends the base fetch again, and the first commit to arrive lands the base', () => {
-    const closing = script(walking(), [
+    const closing = script(fetchingBase(), [
       arrival({ visit: 'v1' }),
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('a') },
@@ -225,7 +217,7 @@ describe('cold boot and the base fetch', () => {
   })
 
   it('the base fetch sent again lands the base when its answer commits first', () => {
-    const { state: s, last } = script(walking(), [
+    const { state: s, last } = script(fetchingBase(), [
       arrival({ visit: 'v1' }),
       { type: 'closeRequested', target: 'top', close: cid('c1'), waiter: wid('w1') },
       { type: 'exited', id: id('a') },

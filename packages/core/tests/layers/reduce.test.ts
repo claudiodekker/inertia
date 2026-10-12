@@ -11,8 +11,11 @@ import {
   committing,
   entry,
   entryLayer,
+  handled,
   id,
+  landing,
   layerOrigin,
+  none,
   row,
   script,
   state,
@@ -20,12 +23,6 @@ import {
   visit,
   wid,
 } from './support/fixtures'
-
-const landing = (kind: string, extra: object = {}) => ({ kind: 'landing', landing: { kind, ...extra } })
-
-const none = { kind: 'none' }
-
-const handled = { kind: 'restore', restore: { kind: 'handled' } }
 
 describe('opening over the page on screen', () => {
   it('a layer response the base visit was aimed at opens as an opening row owned by the base', () => {

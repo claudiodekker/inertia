@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { reduce } from '../../src/layers/reduce'
-import type { StackEvent, StackState } from '../../src/layers/state'
+import type { StackEvent } from '../../src/layers/state'
 import {
   arrival,
   arrived,
@@ -11,8 +11,12 @@ import {
   committing,
   entry,
   entryLayer,
+  fetchingBase,
   id,
+  interstitialOver,
+  landing,
   layerOrigin,
+  none,
   row,
   script,
   state,
@@ -20,28 +24,6 @@ import {
   visit,
   wid,
 } from './support/fixtures'
-
-const landing = (kind: string, extra: object = {}) => ({ kind: 'landing', landing: { kind, ...extra } })
-
-const none = { kind: 'none' }
-
-const walking = (overrides: Partial<StackState> = {}) =>
-  state({
-    rows: [row('a', { standalone: true, entries: 0 })],
-    base: { blank: true, gen: 0 },
-    baseFetch: { url: '/base', visit: visit('v1'), startOnSwap: false },
-    ops: new Map([[visit('v1'), { kind: 'fetchBase', inFlight: 1, landed: false }]]),
-    ...overrides,
-  })
-
-const pinnedOver = (overrides: Partial<StackState> = {}) =>
-  state({
-    base: { blank: false, gen: 1 },
-    nextToken: 2,
-    interstitial: { token: tok(1), gen: 1, pushes: 1, request: id('t1'), suspended: [row('a')] },
-    openRequests: new Map([[id('t1'), { id: id('t1'), owner: 'base', state: 'dispatched' }]]),
-    ...overrides,
-  })
 
 describe('open requests', () => {
   it('an open request’s answer opens with the request’s id, owned by its opener, and the request is done', () => {
@@ -109,10 +91,10 @@ describe('open requests', () => {
   })
 
   it('gives up an open request waiting on a prompt: the interstitial stays, and the layer answer after it returns under a fresh id', () => {
-    const givenUp = reduce(pinnedOver(), { type: 'openRefused', request: id('t1') })
+    const givenUp = reduce(interstitialOver(), { type: 'openRefused', request: id('t1') })
 
     expect(givenUp.effects).toEqual([{ type: 'refuse', request: 't1' }])
-    expect(givenUp.state).toEqual(pinnedOver({ openRequests: new Map() }))
+    expect(givenUp.state).toEqual(interstitialOver({ openRequests: new Map() }))
     expect(
       arrived(givenUp.state, { origin: baseOrigin({ gen: 1 }), layer: { key: 'guarded', base: '/layers/base' } })
         .outcome,
@@ -172,7 +154,7 @@ describe('an open that shows a component at once', () => {
 
 describe('interstitials', () => {
   it('a prompt holds the stack; the layer answer after it returns the held base with the layer, one replace', () => {
-    const pinned = script(state({ rows: [row('a')] }), [
+    const prompted = script(state({ rows: [row('a')] }), [
       { type: 'openRequested', request: id('t1'), owner: 'base' },
       { type: 'visitDispatched', visit: visit('v1'), tag: { kind: 'open', request: id('t1') } },
       committing({ visit: visit('v1'), mode: 'push', interstitial: true }),
@@ -180,8 +162,8 @@ describe('interstitials', () => {
       { type: 'baseSwapped' },
     ])
 
-    expect(pinned.effects).toEqual([{ type: 'holdBase', token: 1 }, { type: 'paint' }])
-    expect(pinned.state).toEqual(
+    expect(prompted.effects).toEqual([{ type: 'holdBase', token: 1 }, { type: 'paint' }])
+    expect(prompted.state).toEqual(
       state({
         nextToken: 2,
         base: { blank: false, gen: 1 },
@@ -194,7 +176,7 @@ describe('interstitials', () => {
       state: s,
       effects,
       last,
-    } = script(pinned.state, [
+    } = script(prompted.state, [
       arrival({ visit: 'v2', origin: baseOrigin({ gen: 1 }), layer: { key: 'guarded', base: '/layers/base' } }),
       { type: 'layerCommitting', id: id('t1'), requestedReplace: false, urlChanged: false },
       committing({ visit: visit('2'), mode: 'replace' }),
@@ -218,7 +200,7 @@ describe('interstitials', () => {
   it('a layer answer made while the prompt shows returns too, with a fresh id when no open request waits', () => {
     expect(
       arrived(
-        pinnedOver({
+        interstitialOver({
           openRequests: new Map(),
           interstitial: { token: tok(1), gen: 1, pushes: 1, request: null, suspended: [] },
         }),
@@ -231,7 +213,7 @@ describe('interstitials', () => {
   })
 
   it('the return ends the interstitial, so the next layer answer opens over the page on screen', () => {
-    const returned = arrived(pinnedOver(), {
+    const returned = arrived(interstitialOver(), {
       origin: baseOrigin({ gen: 1 }),
       layer: { key: 'guarded', base: '/base' },
     }).state
@@ -246,7 +228,7 @@ describe('interstitials', () => {
   })
 
   it('navigating away from the prompt ends it: suspended rows go, the open request is refused, the page released', () => {
-    expect(reduce(pinnedOver(), committing({ mode: 'push' }))).toEqual({
+    expect(reduce(interstitialOver(), committing({ mode: 'push' }))).toEqual({
       state: state({ nextToken: 2, base: { blank: false, gen: 2 }, paint: { gated: true, owed: false } }),
       effects: [
         { type: 'dispose', ids: ['a'], reason: 'navigated' },
@@ -258,7 +240,7 @@ describe('interstitials', () => {
   })
 
   it('a wrong-password re-render of the prompt keeps the interstitial and moves its gen', () => {
-    const step = reduce(pinnedOver(), committing({ mode: 'push', interstitial: true }))
+    const step = reduce(interstitialOver(), committing({ mode: 'push', interstitial: true }))
 
     expect(step.state.interstitial).toEqual({ token: 1, gen: 2, pushes: 2, request: 't1', suspended: [row('a')] })
     expect(step.state.base).toEqual({ blank: false, gen: 2 })
@@ -385,7 +367,7 @@ describe('hazards', () => {
   })
 
   it('Back clears the interstitial before anything else: suspended rows go, the open request is refused, the page released', () => {
-    expect(reduce(pinnedOver(), { type: 'popstate', entry: entry([]) })).toEqual({
+    expect(reduce(interstitialOver(), { type: 'popstate', entry: entry([]) })).toEqual({
       state: state({ nextToken: 2, base: { blank: false, gen: 1 } }),
       effects: [
         { type: 'dispose', ids: ['a'], reason: 'restored-away' },
@@ -424,7 +406,7 @@ describe('hazards', () => {
   })
 
   it('a stale base fetch request drops: its answer, its failure and its finish change nothing', () => {
-    const s = walking({
+    const s = fetchingBase({
       baseFetch: { url: '/base', visit: visit('v2'), startOnSwap: false },
       ops: new Map([
         [visit('v1'), { kind: 'fetchBase', inFlight: 1, landed: false }],

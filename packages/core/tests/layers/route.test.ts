@@ -3,7 +3,7 @@ import { classify } from '../../src/layers/route'
 import { MAX_LAYER_CHAIN, type Landing, type StackState } from '../../src/layers/state'
 import { arrival, baseOrigin, id, layerOrigin, row, state, tok, visit, type Arrival } from './support/fixtures'
 
-const walk = (overrides: Partial<StackState> = {}) =>
+const fetchingBase = (overrides: Partial<StackState> = {}) =>
   state({
     rows: [row('a', { standalone: true })],
     base: { blank: true, gen: 0 },
@@ -12,14 +12,14 @@ const walk = (overrides: Partial<StackState> = {}) =>
     ...overrides,
   })
 
-const ticketed = (overrides: Partial<StackState> = {}) =>
+const withOpenRequest = (overrides: Partial<StackState> = {}) =>
   state({
     openRequests: new Map([[id('t'), { id: id('t'), owner: 'base', state: 'dispatched' }]]),
     ops: new Map([[visit('v'), { kind: 'open', request: id('t'), inFlight: 1 }]]),
     ...overrides,
   })
 
-const pinned = state({
+const withInterstitial = state({
   base: { blank: false, gen: 2 },
   interstitial: { token: tok(1), gen: 2, pushes: 1, request: null, suspended: [row('a')] },
 })
@@ -30,37 +30,39 @@ const cases: [string, StackState, Arrival, Landing][] = [
   ['an idle base answer with no marks passes', state(), {}, { kind: 'pass' }],
   [
     'a base fetch request for the current base fetch lands as the base',
-    walk(),
+    fetchingBase(),
     { visit: 'w' },
     { kind: 'fetched-base' },
   ],
   [
     'a base fetch request with its own base goes beneath',
-    walk(),
+    fetchingBase(),
     { visit: 'w', layer: layer('inner', '/deeper') },
     { kind: 'fetched-beneath', id: id('new') },
   ],
   [
     'a base fetch request that would make the stack ten deep lands as the base',
-    walk({ rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) => row(`r${depth}`, { standalone: true })) }),
+    fetchingBase({
+      rows: Array.from({ length: MAX_LAYER_CHAIN - 1 }, (_, depth) => row(`r${depth}`, { standalone: true })),
+    }),
     { visit: 'w', layer: layer('deep', '/deeper') },
     { kind: 'fetched-base' },
   ],
   [
     'a base fetch request whose base cycles lands as the base',
-    walk(),
+    fetchingBase(),
     { visit: 'w', layer: layer('loop', '/loop'), facts: { cycles: true } },
     { kind: 'fetched-base' },
   ],
   [
     'a base fetch request of a superseded base fetch drops',
-    walk({ baseFetch: { url: '/base', visit: visit('w2'), startOnSwap: false } }),
+    fetchingBase({ baseFetch: { url: '/base', visit: visit('w2'), startOnSwap: false } }),
     { visit: 'w' },
     { kind: 'drop' },
   ],
   [
     'a base fetch request once the base is real drops',
-    walk({ base: { blank: false, gen: 0 } }),
+    fetchingBase({ base: { blank: false, gen: 0 } }),
     { visit: 'w' },
     { kind: 'drop' },
   ],
@@ -97,13 +99,13 @@ const cases: [string, StackState, Arrival, Landing][] = [
   ],
   [
     'a layer answer while the prompt is the base returns',
-    pinned,
+    withInterstitial,
     { origin: baseOrigin({ gen: 2 }), layer: layer('k') },
     { kind: 'return', id: id('new') },
   ],
   [
     'a layer answer after the prompt left does not return',
-    { ...pinned, base: { blank: false, gen: 3 } },
+    { ...withInterstitial, base: { blank: false, gen: 3 } },
     { origin: baseOrigin({ gen: 3 }), layer: layer('k'), facts: { aimed: true } },
     { kind: 'open', id: id('new'), owner: 'base' },
   ],
@@ -187,19 +189,19 @@ const cases: [string, StackState, Arrival, Landing][] = [
   ],
   [
     'a request’s answer opens with the request id and owner',
-    ticketed(),
+    withOpenRequest(),
     { layer: layer('k') },
     { kind: 'open', id: id('t'), owner: 'base' },
   ],
   [
     'a request whose owner left opens over the base',
-    ticketed({ openRequests: new Map([[id('t'), { id: id('t'), owner: id('gone'), state: 'dispatched' }]]) }),
+    withOpenRequest({ openRequests: new Map([[id('t'), { id: id('t'), owner: id('gone'), state: 'dispatched' }]]) }),
     { layer: layer('k') },
     { kind: 'open', id: id('t'), owner: 'base' },
   ],
   [
     'a request’s answer that cannot compose lands cold with the request id',
-    ticketed({ base: { blank: false, gen: 1 } }),
+    withOpenRequest({ base: { blank: false, gen: 1 } }),
     { origin: baseOrigin({ gen: 0, instantGen: 1 }), layer: layer('k') },
     { kind: 'cold', id: id('t') },
   ],

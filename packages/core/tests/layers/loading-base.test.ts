@@ -64,10 +64,10 @@ describe('resolveInitialPage', () => {
   })
 
   it('opens a layer loaded cold over a base that has not arrived yet', async () => {
-    const hop = heldRoute(users)
+    const baseFetch = heldRoute(users)
     const app = await openApp(
       layerAt('/users/5/edit', 'Users/Edit', '/users'),
-      { '/users': hop.route },
+      { '/users': baseFetch.route },
       { boot: true, swapsAs: 'resolved' },
     )
 

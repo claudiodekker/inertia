@@ -145,3 +145,29 @@ export function script(s: StackState, events: StackEvent[]): { state: StackState
 
   return { state: current, effects, last }
 }
+
+export const landing = (kind: string, extra: object = {}) => ({ kind: 'landing', landing: { kind, ...extra } })
+
+export const none = { kind: 'none' }
+
+export const handled = { kind: 'restore', restore: { kind: 'handled' } }
+
+/** A cold layer standing on a blank base, with the request for that base in flight. */
+export const fetchingBase = (overrides: Partial<StackState> = {}) =>
+  state({
+    rows: [row('a', { standalone: true, entries: 0 })],
+    base: { blank: true, gen: 0 },
+    baseFetch: { url: '/base', visit: visit('v1'), startOnSwap: false },
+    ops: new Map([[visit('v1'), { kind: 'fetchBase', inFlight: 1, landed: false }]]),
+    ...overrides,
+  })
+
+/** An interstitial prompt on screen over a stack, with the open request that led to it. */
+export const interstitialOver = (overrides: Partial<StackState> = {}) =>
+  state({
+    base: { blank: false, gen: 1 },
+    nextToken: 2,
+    interstitial: { token: tok(1), gen: 1, pushes: 1, request: id('t1'), suspended: [row('a')] },
+    openRequests: new Map([[id('t1'), { id: id('t1'), owner: 'base', state: 'dispatched' }]]),
+    ...overrides,
+  })

@@ -487,13 +487,13 @@ describe('composeLayer', () => {
     const cold = edit()
     const app = await openApp(cold, { '/users': users, '/users/5/edit': cold }, { boot: true })
     await settled()
-    const [seeded] = app.layers()
+    const [initialLayer] = app.layers()
 
     app.router.visit('/users/5/edit')
     await settled()
 
-    expect(app.layers().map((layer) => layer.id)).toEqual([seeded.id])
-    expect(app.entry().layers![0]).toMatchObject({ id: seeded.id, standalone: true })
+    expect(app.layers().map((layer) => layer.id)).toEqual([initialLayer.id])
+    expect(app.entry().layers![0]).toMatchObject({ id: initialLayer.id, standalone: true })
   })
 
   it('appends a second layer of the same component opened under another key', async () => {
@@ -575,7 +575,7 @@ describe('insertLayerBeneath', () => {
     layer: { key: 'Users/Index', base: '/dashboard' },
   })
 
-  const walk = async (routes: Record<string, Answer | (() => Promise<Answer>)> = {}) => {
+  const openAndFetchBase = async (routes: Record<string, Answer | (() => Promise<Answer>)> = {}) => {
     const app = await openApp(dashboard, { '/go': cold, '/users': fetched, '/dashboard': dashboard, ...routes })
 
     app.router.visit('/go')
@@ -585,7 +585,7 @@ describe('insertLayerBeneath', () => {
   }
 
   it('inserts the fetched base as the bottom layer', async () => {
-    const app = await walk()
+    const app = await openAndFetchBase()
 
     expect(app.entry().layers![0]).toMatchObject({
       key: 'Users/Index',
@@ -602,7 +602,7 @@ describe('insertLayerBeneath', () => {
   })
 
   it('keeps the page beneath the stack as the base', async () => {
-    const app = await walk()
+    const app = await openAndFetchBase()
 
     expect(app.entry()).toMatchObject({ component: 'Dashboard', url: '/dashboard', props: { errors: {}, stats: 3 } })
     expect(await app.basePage()).toMatchObject({
@@ -613,39 +613,39 @@ describe('insertLayerBeneath', () => {
   })
 
   it('strips the layer mark from the page', async () => {
-    const app = await walk()
+    const app = await openAndFetchBase()
 
     expect(app.entry()).not.toHaveProperty('layer')
     expect(await app.basePage()).not.toHaveProperty('layer')
   })
 
   it('leaves the layers above it exactly where they were', async () => {
-    const hop = heldRoute(page('Teams/Show', '/teams/1', { layer: { key: 'Teams/Show', base: '/dashboard' } }))
-    const app = await walk({
+    const baseFetch = heldRoute(page('Teams/Show', '/teams/1', { layer: { key: 'Teams/Show', base: '/dashboard' } }))
+    const app = await openAndFetchBase({
       '/users': { ...fetched, layer: { key: 'Users/Index', base: '/teams/1' } },
-      '/teams/1': hop.route,
+      '/teams/1': baseFetch.route,
     })
-    const hopped = app.layers()
+    const beforeBaseFetch = app.layers()
 
-    expect(hopped.map((layer) => layer.key)).toEqual(['Users/Index', 'Users/Edit'])
+    expect(beforeBaseFetch.map((layer) => layer.key)).toEqual(['Users/Index', 'Users/Edit'])
 
-    hop.release()
+    baseFetch.release()
     await settled()
 
-    const walked = app.layers()
+    const afterBaseFetch = app.layers()
 
-    expect(walked.map((layer) => layer.key)).toEqual(['Teams/Show', 'Users/Index', 'Users/Edit'])
-    expect(walked.slice(1)).toEqual(hopped)
+    expect(afterBaseFetch.map((layer) => layer.key)).toEqual(['Teams/Show', 'Users/Index', 'Users/Edit'])
+    expect(afterBaseFetch.slice(1)).toEqual(beforeBaseFetch)
   })
 
   it('marks the inserted layer standalone, like the ones above it', async () => {
-    const app = await walk()
+    const app = await openAndFetchBase()
 
     expect(app.entry().layers!.map((layer) => layer.standalone)).toEqual([true, true])
   })
 
   it('does not rewrite a layer already open under the same key', async () => {
-    const app = await walk({ '/users': { ...cold, layer: { key: 'Users/Edit', base: '/dashboard' } } })
+    const app = await openAndFetchBase({ '/users': { ...cold, layer: { key: 'Users/Edit', base: '/dashboard' } } })
 
     expect(app.entry().layers!.map((layer) => layer.key)).toEqual(['Users/Edit', 'Users/Edit'])
     expect(new Set(app.entry().layers!.map((layer) => layer.id)).size).toBe(2)
@@ -666,13 +666,13 @@ describe('composeColdLayer', () => {
   const cold = edit()
 
   const arrive = async (visit: Record<string, unknown> = {}, answer: Answer = cold) => {
-    const hop = heldRoute(users)
-    const app = await openApp(dashboard, { '/go': answer, '/users': hop.route })
+    const baseFetch = heldRoute(users)
+    const app = await openApp(dashboard, { '/go': answer, '/users': baseFetch.route })
 
     app.router.visit('/go', visit)
     await settled()
 
-    return { app, hop }
+    return { app, baseFetch }
   }
 
   it('leaves the page blank until the base beneath the layer is fetched', async () => {
@@ -689,9 +689,9 @@ describe('composeColdLayer', () => {
   })
 
   it('marks the layer standalone, since nothing was ever beneath it', async () => {
-    const { app, hop } = await arrive()
+    const { app, baseFetch } = await arrive()
 
-    hop.release()
+    baseFetch.release()
     await settled()
 
     expect(app.entry().layers).toEqual([

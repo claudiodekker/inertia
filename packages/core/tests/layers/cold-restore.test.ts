@@ -49,7 +49,7 @@ describe('the base fetch a cold layer sends for the base beneath it', () => {
     expect(base.component).toBe('Users/Index')
     expect(base.props).toEqual({ users: [] })
     expect(base.url).toBe('/users')
-    // The placeholder shows as the loading view while the page is fetched (a recorded difference).
+    // The placeholder shows as the loading view while the page is fetched.
     expect(w.swaps.slice(installed)).toEqual([
       { component: 'Blank', preserveState: false },
       { component: 'Users/Index', preserveState: true },

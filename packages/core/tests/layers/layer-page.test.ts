@@ -71,7 +71,7 @@ describe('LayerPage.set', () => {
   it('runs none of the global side effects of the base set()', async () => {
     const spies = spyOnGlobals()
     const reported: unknown[] = []
-    const port = {
+    const host = {
       layerCommitting: async (
         layer: InstanceType<Singletons['LayerInstance']>,
         page: { url: string },
@@ -91,7 +91,7 @@ describe('LayerPage.set', () => {
       close: async () => {},
       emit: () => {},
     }
-    const layer = new s.LayerInstance('layer-1' as never, 'routed', port, {
+    const layer = new s.LayerInstance('layer-1' as never, 'routed', host, {
       resolveComponent: () => ({ name: 'UsersEdit' }),
       version: null,
     })

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { openAppSync, openApp } from './support/app'
 import { page, settled, type Answer } from './support/browser'
 import { users } from './support/pages'
-import { keysHeld, seedKeys, cached } from './support/peek'
+import { keysHeld, storeKeys, cached } from './support/peek'
 
 const usersIndex = page('Users/Index', '/users', {
   props: { errors: {}, users: [] },
@@ -116,7 +116,7 @@ describe('clearing the history keys from a stack', () => {
       '/users/5/edit': { ...editOverUsers, clearHistory: true },
     })
 
-    seedKeys(app)
+    storeKeys(app)
     app.router.layer('/users/5/edit')
     await settled()
 
@@ -126,7 +126,7 @@ describe('clearing the history keys from a stack', () => {
   it('keeps them when neither the base nor the layer asks', async () => {
     const app = await openAppSync(usersIndex, { '/users/5/edit': editOverUsers })
 
-    seedKeys(app)
+    storeKeys(app)
     app.router.layer('/users/5/edit')
     await settled()
 
@@ -141,7 +141,7 @@ describe('clearing the history keys from a stack', () => {
 
     app.router.layer('/users/5/edit')
     await settled()
-    seedKeys(app)
+    storeKeys(app)
     app.router.layer('/teams/9')
     await settled()
 
@@ -156,7 +156,7 @@ describe('clearing the history keys from a stack', () => {
 
     app.router.layer('/users/5/edit')
     await settled()
-    seedKeys(app)
+    storeKeys(app)
 
     await new Promise<void>((resolve) => {
       app.router.replace({
@@ -252,7 +252,7 @@ describe('clearing history', () => {
   it('discards the keys when the page asks', async () => {
     const app = await openAppSync(usersIndex, { '/logout': logout })
 
-    seedKeys(app)
+    storeKeys(app)
     app.router.visit('/logout')
     await settled()
 
@@ -263,7 +263,7 @@ describe('clearing history', () => {
   it('keeps them when the page does not ask', async () => {
     const app = await openAppSync(usersIndex, { '/users/5': plainShow })
 
-    seedKeys(app)
+    storeKeys(app)
     app.router.visit('/users/5')
     await settled()
 
@@ -286,7 +286,7 @@ describe('clearing history', () => {
 
     app.router.visit('/logout')
     await settled()
-    seedKeys(app)
+    storeKeys(app)
 
     await new Promise<void>((resolve) => {
       app.router.replace({
@@ -309,7 +309,7 @@ describe('clearing history', () => {
 
     await visit()
     expect(cached(app)).toHaveLength(0)
-    seedKeys(app)
+    storeKeys(app)
     await visit()
 
     expect(app.sent).toEqual(['get /logout', 'get /logout'])

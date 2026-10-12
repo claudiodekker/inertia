@@ -170,10 +170,10 @@ describe('a layer response landing', () => {
   })
 
   it('stands a layer with nowhere valid to sit on a cold base and fetches the base', async () => {
-    const walk = gate()
+    const baseGate = gate()
     const app = await openApp(
       plainLogin,
-      byPath({ '/login': cold, '/users': () => walk.opened.then(() => plainUsers) }),
+      byPath({ '/login': cold, '/users': () => baseGate.opened.then(() => plainUsers) }),
     )
 
     app.router.visit('/login')
@@ -192,7 +192,7 @@ describe('a layer response landing', () => {
     expect(app.requests.map((request) => request.path)).toEqual(['/login', '/users'])
     expect(window.location.pathname).toBe('/users/5/edit')
 
-    walk.open()
+    baseGate.open()
     await settled()
 
     expect(await app.basePage()).toMatchObject({

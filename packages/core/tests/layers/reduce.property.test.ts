@@ -44,7 +44,7 @@ const wheel = kinds.flatMap(([kind, weight]) => Array<StackEvent['type']>(weight
 const pick = <T>(items: readonly T[], index: number): T | undefined =>
   items.length > 0 ? items[index % items.length] : undefined
 
-/** Interprets a random command against the current state, so the sequence reaches closes, walks, pins and unwinds. */
+/** Interprets a random command against the current state, so the sequence reaches closes, base fetches, interstitials and unwinds. */
 function eventFor(s: StackState, [k, a, b, c, f]: Command, n: number): StackEvent {
   const bit = (i: number) => ((f >> i) & 1) === 1
   const fresh = (prefix: string) => `${prefix}${n}`
@@ -220,7 +220,7 @@ function entryFor(s: StackState, a: number, b: number, c: number, f: number, n: 
     () => [...live, extra(1), ...(c % 2 ? [extra(2)] : [])],
     () => live.map((layer, i) => (i === live.length - 1 ? { ...layer, key: 'changed' } : layer)),
     () => [],
-    () => [...live.slice(0, -1), ...s.dismissed.map((ghost) => ({ ...extra(0), id: ghost }))],
+    () => [...live.slice(0, -1), ...s.dismissed.map((dismissed) => ({ ...extra(0), id: dismissed }))],
   ][a % 5]()
 
   return {
@@ -267,7 +267,7 @@ function violations(s: StackState, step: Step, event: StackEvent): string[] {
   const rowIds = s.rows.map((r) => r.id)
 
   if (s.baseFetch !== null && !s.base.blank) {
-    out.push('walk !== null but base is not blank')
+    out.push('baseFetch !== null but base is not blank')
   }
 
   for (const r of s.rows) {

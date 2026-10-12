@@ -175,12 +175,13 @@ describe('the handle of a layer open that never lands', () => {
 
   it('fires the handle of a layer opened cold exactly once when a back restore drops its stack, even if its base fetch then fails', async () => {
     let fail = (_response: ReturnType<typeof rawResponse>) => {}
-    const walk = new Promise<ReturnType<typeof rawResponse>>((resolve) => (fail = resolve))
+    const baseFetchAnswer = new Promise<ReturnType<typeof rawResponse>>((resolve) => (fail = resolve))
     const app = await openApp(
       page('Auth/Login', '/login'),
       { '/users/5/edit': edit() },
       {
-        intercept: (config) => (new URL(config.url, 'http://localhost').pathname === '/users' ? walk : undefined),
+        intercept: (config) =>
+          new URL(config.url, 'http://localhost').pathname === '/users' ? baseFetchAnswer : undefined,
       },
     )
 

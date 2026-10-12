@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { entryRows } from '../../src/layers/close'
 import { reduce } from '../../src/layers/reduce'
-import { cid, close, closes, entry, entryLayer, id, row, script, state, tok } from './support/fixtures'
-
-const none = { kind: 'none' }
-
-const handled = { kind: 'restore', restore: { kind: 'handled' } }
+import { cid, close, closes, entry, entryLayer, handled, id, none, row, script, state, tok } from './support/fixtures'
 
 describe('history', () => {
   it('Back off the top layer dismisses it through its exit, leaving the one beneath', () => {

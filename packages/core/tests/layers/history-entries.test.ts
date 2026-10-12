@@ -24,7 +24,7 @@ const notes = page('Users/Notes', '/users/5/notes', {
   props: { errors: {} },
 })
 
-const walkOnto = async (app: SyncApp, address: string) => {
+const moveBrowserTo = async (app: SyncApp, address: string) => {
   window.location.href = address
   app.popstate(null)
   await settled()
@@ -351,7 +351,7 @@ describe('a hash the browser wrote', () => {
 
     const before = app.written().length
 
-    await walkOnto(app, 'http://localhost/users/5/edit#comments')
+    await moveBrowserTo(app, 'http://localhost/users/5/edit#comments')
 
     expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']])
     expect(app.entry()).toMatchObject({ url: '/users', layers: [{ url: 'http://localhost/users/5/edit#comments' }] })
@@ -367,7 +367,7 @@ describe('a hash the browser wrote', () => {
 
     const before = app.written().length
 
-    await walkOnto(app, 'http://localhost/users/5/edit#comments')
+    await moveBrowserTo(app, 'http://localhost/users/5/edit#comments')
 
     expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users/5/edit#comments']])
     expect(app.entry()).toMatchObject({
@@ -471,7 +471,7 @@ describe('the base beneath a stack a restore moves', () => {
 })
 
 describe('the hash on an entry the browser wrote', () => {
-  const walkOnto = async (app: Awaited<ReturnType<typeof openAppSync>>, address: string) => {
+  const moveBrowserTo = async (app: Awaited<ReturnType<typeof openAppSync>>, address: string) => {
     window.location.href = address
     app.popstate(null)
     await settled()
@@ -482,7 +482,7 @@ describe('the hash on an entry the browser wrote', () => {
     const app = await openAppSync(usersIndex, {})
     const before = app.written().length
 
-    await walkOnto(app, 'http://localhost/users#comments')
+    await moveBrowserTo(app, 'http://localhost/users#comments')
 
     expect(app.written().slice(before)).toEqual([['replace', 'http://localhost/users#comments']])
     expect(app.entry().url).toBe('http://localhost/users#comments')
