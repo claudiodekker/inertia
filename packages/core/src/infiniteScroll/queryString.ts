@@ -1,8 +1,8 @@
-import { hrefToUrl, router, urlHasProtocol, urlToString } from '..'
+import { hrefToUrl, urlHasProtocol, urlToString } from '..'
 import debounce from '../debounce'
 import { getElementsInViewportFromCollection } from '../domUtils'
-import { page as currentPage } from './../page'
 import Queue from './../queue'
+import { InfiniteScrollScope } from '../types'
 import { getPageFromElement } from './elements'
 
 // Shared queue among all instances to ensure URL updates are processed sequentially
@@ -18,6 +18,7 @@ let initialUrlWasAbsolute: boolean | null = null
  * so that the URL reflects whichever page has the most visible items.
  */
 export const useInfiniteScrollQueryString = (options: {
+  scope: InfiniteScrollScope
   getPageName: () => string
   getItemsElement: () => HTMLElement
   shouldPreserveUrl: () => boolean
@@ -34,7 +35,7 @@ export const useInfiniteScrollQueryString = (options: {
           }
 
           if (!initialUrl || !payloadUrl) {
-            const currentPageUrl = currentPage.get().url
+            const currentPageUrl = options.scope.page.get().url
             initialUrl = hrefToUrl(currentPageUrl)
             payloadUrl = hrefToUrl(currentPageUrl)
             initialUrlWasAbsolute = urlHasProtocol(currentPageUrl)
@@ -62,7 +63,7 @@ export const useInfiniteScrollQueryString = (options: {
           initialUrlWasAbsolute !== null
         ) {
           // Update URL without triggering a page reload or affecting scroll position
-          router.replace({
+          options.scope.router.replace({
             url: urlToString(payloadUrl, initialUrlWasAbsolute),
             preserveScroll: true,
             preserveState: true,

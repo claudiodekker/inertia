@@ -4,6 +4,7 @@ import { useInfiniteScrollData } from './infiniteScroll/data'
 import { useInfiniteScrollElementManager } from './infiniteScroll/elements'
 import { useInfiniteScrollQueryString } from './infiniteScroll/queryString'
 import { useInfiniteScrollPreservation } from './infiniteScroll/scrollPreservation'
+import { page as currentPage } from './page'
 import { Page, ReloadOptions, UseInfiniteScrollOptions, UseInfiniteScrollProps } from './types'
 
 /**
@@ -16,7 +17,11 @@ import { Page, ReloadOptions, UseInfiniteScrollOptions, UseInfiniteScrollProps }
  * - Query string sync: Updates URL as user scrolls through pages
  * - Scroll preservation: Maintains scroll position during content updates
  */
-export default function useInfiniteScroll(options: UseInfiniteScrollOptions): UseInfiniteScrollProps {
+export default function useInfiniteScroll(
+  { scope = { router, page: currentPage }, ...rest }: UseInfiniteScrollOptions,
+): UseInfiniteScrollProps {
+  const options = { ...rest, scope }
+
   const queryStringManager = useInfiniteScrollQueryString({ ...options, getPageName: () => dataManager.getPageName() })
 
   // Create scroll preservation callbacks that capture and restore scroll position
@@ -95,7 +100,7 @@ export default function useInfiniteScroll(options: UseInfiniteScrollOptions): Us
     originalFetchPrevious(reloadOptions)
   }
 
-  const removeEventListener = router.on('success', () => requestAnimationFrame(elementManager.refreshTriggers, 2))
+  const removeEventListener = scope.router.on('success', () => requestAnimationFrame(elementManager.refreshTriggers, 2))
 
   return {
     dataManager,

@@ -4,11 +4,12 @@ import { eventHandler } from './eventHandler'
 import { fireNavigateEvent } from './events'
 import { history } from './history'
 import { prefetchedRequests } from './prefetched'
+import { stack } from './layers/stack'
 import { Scroll } from './scroll'
-import { Component, FlashData, Page, PageEvent, PageHandler, PageResolver, RouterInitParams, Visit } from './types'
+import { Component, FlashData, Page, PageEvent, PageHandler, PageResolver, RouterInitParams, ScrollRegion, Visit } from './types'
 import { hrefToUrl, isSameUrlWithoutHash } from './url'
 
-class CurrentPage {
+export class CurrentPage {
   protected page!: Page
   protected swapComponent!: PageHandler<any>
   protected resolveComponent!: PageResolver
@@ -82,10 +83,7 @@ class CurrentPage {
 
     const componentId = this.componentId
 
-    if (page.clearHistory) {
-      history.clear()
-      prefetchedRequests.removeAll()
-    }
+    this.clearHistoryFor(page)
 
     return this.resolve(page.component, page).then((component) => {
       if (componentId !== this.componentId) {
@@ -96,19 +94,14 @@ class CurrentPage {
       page.rememberedState ??= {}
 
       const isServer = typeof window === 'undefined'
-      const location = !isServer ? window.location : new URL(page.url)
+      const location = !isServer ? this.location(page) : new URL(page.url)
       const scrollRegions = !isServer && preserveScroll ? Scroll.getScrollRegions() : []
       replace = replace || isSameUrlWithoutHash(hrefToUrl(page.url), location)
 
       // Clear flash data from the page object, we don't want it when navigating back/forward...
       const pageForHistory = { ...page, flash: {} }
 
-      // A new page replaces the one we booted on, so restore() must stop falling back to its state
-      history.clearInitialState(history.rememberedState)
-
-      return new Promise<void>((resolve) =>
-        replace ? history.replaceState(pageForHistory, resolve) : history.pushState(pageForHistory, resolve),
-      ).then(() => {
+      return this.write(pageForHistory, replace, visitId, initialRender).then(() => {
         const isNewComponent = !this.isTheSame(page)
 
         if (!isNewComponent && Object.keys(page.props.errors || {}).length > 0) {
@@ -120,7 +113,7 @@ class CurrentPage {
         this.cleared = false
 
         if (this.hasOnceProps()) {
-          prefetchedRequests.updateCachedOncePropsFromCurrentPage()
+          this.onceChanged()
         }
 
         if (isNewComponent) {
@@ -147,31 +140,86 @@ class CurrentPage {
           viewTransition,
           initialRender,
         }).then(() => {
-          if (preserveScroll) {
-            // Scroll regions must be explicitly restored since the DOM elements are destroyed
-            // and recreated during the component 'swap'. Document scroll is naturally
-            // preserved as the document element itself persists across navigations.
-            window.requestAnimationFrame(() => Scroll.restoreScrollRegions(scrollRegions))
-          } else {
-            Scroll.reset()
-          }
-
-          if (
-            this.pendingDeferredProps &&
-            this.pendingDeferredProps.component === page.component &&
-            this.pendingDeferredProps.url === page.url
-          ) {
-            eventHandler.fireInternalEvent('loadDeferredProps', this.pendingDeferredProps.deferredProps)
-          }
-
-          this.pendingDeferredProps = null
-
-          if (!replace) {
-            fireNavigateEvent(page, { type: 'visit', cached, visitId })
-          }
+          this.swapped()
+          this.settle(page, { preserveScroll, scrollRegions, replace, cached, visitId })
         })
       })
     })
+  }
+
+  protected clearHistoryFor(page: Page): void {
+    if (page.clearHistory) {
+      history.clear()
+      prefetchedRequests.removeAll()
+    }
+  }
+
+  protected location(_page: Page): URL | Location {
+    return stack.baseLocation() ?? window.location
+  }
+
+  protected write(
+    pageForHistory: Page,
+    replace: boolean,
+    visitId?: string,
+    initialRender = false,
+  ): Promise<void> {
+    // A new page replaces the one we booted on, so restore() must stop falling back to its state
+    history.clearInitialState(history.rememberedState)
+
+    stack.baseCommitting(pageForHistory, replace, visitId, initialRender)
+
+    return new Promise<void>((resolve) =>
+      replace ? history.replaceState(pageForHistory, resolve) : history.pushState(pageForHistory, resolve),
+    )
+  }
+
+  protected onceChanged(): void {
+    prefetchedRequests.updateCachedOncePropsFromCurrentPage()
+  }
+
+  protected swapped(): void {
+    stack.baseSwapped()
+  }
+
+  protected settle(
+    page: Page,
+    {
+      preserveScroll,
+      scrollRegions,
+      replace,
+      cached,
+      visitId,
+    }: {
+      preserveScroll: boolean
+      scrollRegions: ScrollRegion[]
+      replace: boolean
+      cached: boolean
+      visitId?: string
+    },
+  ): void {
+    if (preserveScroll) {
+      // Scroll regions must be explicitly restored since the DOM elements are destroyed
+      // and recreated during the component 'swap'. Document scroll is naturally
+      // preserved as the document element itself persists across navigations.
+      window.requestAnimationFrame(() => Scroll.restoreScrollRegions(scrollRegions))
+    } else {
+      Scroll.reset()
+    }
+
+    if (
+      this.pendingDeferredProps &&
+      this.pendingDeferredProps.component === page.component &&
+      this.pendingDeferredProps.url === page.url
+    ) {
+      eventHandler.fireInternalEvent('loadDeferredProps', this.pendingDeferredProps.deferredProps)
+    }
+
+    this.pendingDeferredProps = null
+
+    if (!replace) {
+      fireNavigateEvent(page, { type: 'visit', cached, visitId })
+    }
   }
 
   public setQuietly(
@@ -189,7 +237,12 @@ class CurrentPage {
       this.page = page
       this.cleared = false
       history.setCurrent(page)
-      return this.swap({ component, page, preserveState, viewTransition: false })
+      const swapped = this.swap({ component, page, preserveState, viewTransition: false })
+      swapped.then(
+        () => this.swapped(),
+        () => {},
+      )
+      return swapped
     })
   }
 

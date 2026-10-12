@@ -1,6 +1,7 @@
 import { eventHandler } from './eventHandler'
 import { fireFlashEvent, fireNavigateEvent } from './events'
 import { history } from './history'
+import { stack } from './layers/stack'
 import { navigationType } from './navigationType'
 import { page as currentPage } from './page'
 import { Scroll } from './scroll'
@@ -38,6 +39,8 @@ export class InitialVisit {
           this.handleDefault()
           return
         }
+
+        data = stack.restoreOnLoad(data)
 
         const visitId = uid()
 

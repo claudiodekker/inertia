@@ -112,3 +112,54 @@ describe('createHeadManager', () => {
     })
   })
 })
+
+describe('createHeadManager provider order', () => {
+  const setup = () => {
+    const collected: string[][] = []
+    const manager = createHeadManager(
+      true,
+      (title) => title,
+      (elements) => collected.push(elements),
+    )
+
+    return { manager, last: () => collected[collected.length - 1] }
+  }
+
+  it('keeps provider creation order when no provider has a rank', () => {
+    const { manager, last } = setup()
+    const first = manager.createProvider()
+    const second = manager.createProvider()
+    const third = manager.createProvider()
+
+    third.update(['<meta name="c">'])
+    first.update(['<meta name="a">'])
+    second.update(['<meta name="b">'])
+
+    expect(last()).toEqual(['<meta name="a">', '<meta name="b">', '<meta name="c">'])
+  })
+
+  it('orders ranked providers by rank and leaves unranked ones at rank zero', () => {
+    const { manager, last } = setup()
+    const unranked = manager.createProvider()
+    const high = manager.createProvider(() => 2)
+    const low = manager.createProvider(() => 1)
+
+    unranked.update(['<meta name="unranked">'])
+    high.update(['<meta name="high">'])
+    low.update(['<meta name="low">'])
+
+    expect(last()).toEqual(['<meta name="unranked">', '<meta name="low">', '<meta name="high">'])
+  })
+
+  it('stops ranking a provider once it disconnects', () => {
+    const { manager, last } = setup()
+    const ranked = manager.createProvider(() => 5)
+    const other = manager.createProvider()
+
+    ranked.update(['<meta name="ranked">'])
+    other.update(['<meta name="other">'])
+    ranked.disconnect()
+
+    expect(last()).toEqual(['<meta name="other">'])
+  })
+})

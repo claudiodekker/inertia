@@ -101,6 +101,7 @@ export default function createHeadManager(
     ? { [serverHeadProviderId]: initialServerHead }
     : {}
   let lastProviderId = 0
+  const ranks: Record<string, () => number> = {}
 
   function connect(): string {
     const id = (lastProviderId += 1)
@@ -114,6 +115,7 @@ export default function createHeadManager(
     }
 
     delete states[id]
+    delete ranks[id]
     commit()
   }
 
@@ -146,6 +148,7 @@ export default function createHeadManager(
     const serverHead = states[serverHeadProviderId] || []
     const providerHead = Object.keys(states)
       .filter((id) => id !== serverHeadProviderId)
+      .sort((a, b) => (ranks[a]?.() ?? 0) - (ranks[b]?.() ?? 0))
       .flatMap((id) => states[id])
 
     const defaults: Record<string, string> = {
@@ -187,8 +190,12 @@ export default function createHeadManager(
   return {
     forceUpdate: commit,
     updateServerHead,
-    createProvider: function () {
+    createProvider: function (rank?: () => number) {
       const id = connect()
+
+      if (rank) {
+        ranks[id] = rank
+      }
 
       return {
         reconnect: () => reconnect(id),

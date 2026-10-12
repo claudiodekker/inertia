@@ -2,6 +2,7 @@ import { NamedInputEvent, ValidationConfig, Validator } from 'laravel-precogniti
 import type { HttpCancelledError, HttpNetworkError, HttpResponseError } from './httpErrors'
 import { InfiniteScrollOnCompleteDetails, InfiniteScrollPageIdentifier } from './infiniteScroll/data'
 import { Response } from './response'
+import type { Router } from './router'
 
 export type HttpRequestHeaders = Record<string, unknown>
 
@@ -660,7 +661,7 @@ export type HeadManagerOnUpdateCallback = (elements: string[]) => void
 export type HeadManager = {
   forceUpdate: () => void
   updateServerHead: (elements?: string[]) => void
-  createProvider: () => {
+  createProvider: (rank?: () => number) => {
     reconnect: () => void
     update: HeadManagerOnUpdateCallback
     disconnect: () => void
@@ -878,7 +879,13 @@ export type FormComponentSlotProps<TForm extends object = Record<string, any>> =
 
 export type FormComponentRef<TForm extends object = Record<string, any>> = FormComponentSlotProps<TForm>
 
+export interface InfiniteScrollScope {
+  router: Router
+  page: { get(): Page }
+}
+
 export interface UseInfiniteScrollOptions {
+  scope?: InfiniteScrollScope
   // Core data
   getPropName: () => string
   inReverseMode: () => boolean

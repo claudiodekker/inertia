@@ -1,6 +1,6 @@
 import { router } from '..'
 import { history } from '../history'
-import { page } from '../page'
+import { page, type CurrentPage } from '../page'
 import type { Response } from '../response'
 import type { Router } from '../router'
 import type { Page, PendingVisit } from '../types'
@@ -17,7 +17,7 @@ export interface HistoryPort {
 }
 
 export interface PageScope {
-  readonly page: typeof page
+  readonly page: CurrentPage
   readonly history: HistoryPort
   readonly router: Router
   reloadUrl(): string

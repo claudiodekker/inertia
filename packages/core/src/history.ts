@@ -14,7 +14,9 @@ class History {
   public rememberedState = 'rememberedState' as const
   public scrollRegions = 'scrollRegions' as const
   public preserveUrl = false
+  public composer: { compose(page: Page): { data: Page; url: string } } | null = null
   protected current: Partial<Page> = {}
+  protected goAnswer: (() => void) | null = null
   // We need initialState for `restore`
   protected initialState: Partial<Page> | null = null
 
@@ -48,11 +50,13 @@ class History {
 
     this.current = page
 
+    const { data: entry, url } = this.composer?.compose(page) ?? { data: page, url: page.url }
+
     queue.add(() => {
-      return this.getPageData(page).then((data) => {
+      return this.getPageData(entry).then((data) => {
         // Defer history.pushState to the next event loop tick to prevent timing conflicts.
         // Ensure any previous history.replaceState completes before pushState is executed.
-        const doPush = () => this.doPushState({ page: data }, page.url).then(() => cb?.())
+        const doPush = () => this.doPushState({ page: data }, url).then(() => cb?.())
 
         if (isChromeIOS) {
           return new Promise((resolve) => {
@@ -79,11 +83,13 @@ class History {
     }
   }
 
-  protected getPageData(page: Page): Promise<Page | ArrayBuffer> {
-    const pageWithClonedProps = this.clonePageProps(page)
+  protected getPageData(page: Page & { layers?: Page[] }): Promise<Page | ArrayBuffer> {
+    const pageWithClonedProps = page.layers
+      ? { ...this.clonePageProps(page), layers: page.layers.map((layer) => this.clonePageProps(layer)) }
+      : this.clonePageProps(page)
 
     return new Promise((resolve) => {
-      return page.encryptHistory ? encryptHistory(pageWithClonedProps).then(resolve) : resolve(pageWithClonedProps)
+      return page.encryptHistory || page.layers?.some((layer) => layer.encryptHistory) ? encryptHistory(pageWithClonedProps).then(resolve) : resolve(pageWithClonedProps)
     })
   }
 
@@ -185,11 +191,13 @@ class History {
 
     this.current = page
 
+    const { data: entry, url } = this.composer?.compose(page) ?? { data: page, url: page.url }
+
     queue.add(() => {
-      return this.getPageData(page).then((data) => {
+      return this.getPageData(entry).then((data) => {
         // Defer history.replaceState to the next event loop tick to prevent timing conflicts.
         // Ensure any previous history.pushState completes before replaceState is executed.
-        const doReplace = () => this.doReplaceState({ page: data }, page.url).then(() => cb?.())
+        const doReplace = () => this.doReplaceState({ page: data }, url).then(() => cb?.())
 
         if (isChromeIOS) {
           return new Promise((resolve) => {
@@ -200,6 +208,50 @@ class History {
         return doReplace()
       })
     })
+  }
+
+  public writeEntry(entry: Page, url: string, mode: 'push' | 'replace'): Promise<void> {
+    if (isServer) {
+      return Promise.resolve()
+    }
+
+    return queue.add(() => {
+      return this.getPageData(entry).then((data) => {
+        const doWrite = () =>
+          mode === 'push' ? this.doPushState({ page: data }, url) : this.doReplaceState({ page: data }, url)
+
+        if (isChromeIOS) {
+          return new Promise((resolve) => {
+            setTimeout(() => doWrite().then(resolve))
+          })
+        }
+
+        return doWrite()
+      })
+    })
+  }
+
+  public go(delta: number): Promise<'answered' | 'timeout'> {
+    return new Promise((resolve) => {
+      queue.add(
+        () =>
+          new Promise<void>((release) => {
+            const finish = (how: 'answered' | 'timeout') => {
+              clearTimeout(timer)
+              this.goAnswer = null
+              resolve(how)
+              release()
+            }
+            const timer = setTimeout(() => finish('timeout'), 1000)
+            this.goAnswer = () => finish('answered')
+            window.history.go(delta)
+          }),
+      )
+    })
+  }
+
+  public answerGo(): void {
+    this.goAnswer?.()
   }
 
   protected isHistoryThrottleError(error: unknown): error is Error & { name: 'SecurityError' } {

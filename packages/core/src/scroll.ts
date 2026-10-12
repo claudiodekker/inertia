@@ -1,5 +1,6 @@
 import { requestAnimationFrame } from './domUtils'
 import { history } from './history'
+import { stack } from './layers/stack'
 import { ScrollRegion } from './types'
 
 const isServer = typeof window === 'undefined'
@@ -17,8 +18,8 @@ export class Scroll {
     }))
   }
 
-  protected static regions(): NodeListOf<Element> {
-    return document.querySelectorAll('[scroll-region]')
+  protected static regions(): Element[] {
+    return Array.from(document.querySelectorAll('[scroll-region]')).filter((el) => !stack.scopeOf(el))
   }
 
   public static scrollToTop(): void {

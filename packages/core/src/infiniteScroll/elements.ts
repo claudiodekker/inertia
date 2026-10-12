@@ -1,7 +1,6 @@
-import { router } from '..'
 import debounce from '../debounce'
 import { useIntersectionObservers } from '../intersectionObservers'
-import { UseInfiniteScrollElementManager } from '../types'
+import { InfiniteScrollScope, UseInfiniteScrollElementManager } from '../types'
 
 const INFINITE_SCROLL_PAGE_KEY = 'infiniteScrollPage'
 const INFINITE_SCROLL_IGNORE_KEY = 'infiniteScrollIgnore'
@@ -15,6 +14,7 @@ export const getPageFromElement = (element: HTMLElement): string | undefined =>
   element.dataset[INFINITE_SCROLL_PAGE_KEY]
 
 export const useInfiniteScrollElementManager = (options: {
+  scope: InfiniteScrollScope
   shouldFetchNext: () => boolean
   shouldFetchPrevious: () => boolean
   getTriggerMargin: () => number
@@ -196,13 +196,13 @@ export const useInfiniteScrollElementManager = (options: {
       }
     }
 
-    router.remember(pageElementRange, getElementsRememberKey())
+    options.scope.router.remember(pageElementRange, getElementsRememberKey())
   }
 
   const rememberElementsDebounced = debounce(rememberElements, 250)
 
   const restoreElements = (): boolean => {
-    const pageElementRange = router.restore(getElementsRememberKey()) as Record<string, ElementRange> | undefined
+    const pageElementRange = options.scope.router.restore(getElementsRememberKey()) as Record<string, ElementRange> | undefined
 
     if (!pageElementRange || typeof pageElementRange !== 'object') {
       return false

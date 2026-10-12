@@ -3,6 +3,7 @@ import debounce from './debounce'
 import { fireNavigateEvent } from './events'
 import { history } from './history'
 import { router } from './index'
+import { stack } from './layers/stack'
 import { page as currentPage } from './page'
 import { Scroll } from './scroll'
 import { GlobalEvent, GlobalEventNames, GlobalEventResult, InternalEvent } from './types'
@@ -102,6 +103,14 @@ class EventHandler {
           this.onMissingHistoryItem()
           return
         }
+
+        const restored = stack.popstate(data)
+
+        if (restored === null) {
+          return
+        }
+
+        data = restored
 
         // Cancel ongoing requests except prefetch requests
         router.cancelAll({ prefetch: false })
