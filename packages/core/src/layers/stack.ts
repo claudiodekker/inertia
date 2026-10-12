@@ -433,6 +433,11 @@ export class Stack implements StackPort {
 
     instance.historyPage = page
 
+    // One asset version for the whole document: the page's next request sends the one this layer arrived on.
+    if (page.version !== currentPage.get().version) {
+      currentPage.merge({ version: page.version })
+    }
+
     const { outcome, waits } = this.dispatch({
       type: 'layerCommitting',
       id: instance.id,
