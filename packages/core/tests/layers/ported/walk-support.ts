@@ -1,80 +1,66 @@
-import { vi } from "vitest";
-import type { HttpRequestConfig, HttpResponse, Page } from "../../../src/types";
-import { fakeBrowser, settled } from "../runtime";
+import { vi } from 'vitest'
+import type { HttpRequestConfig, HttpResponse, Page } from '../../../src/types'
+import { fakeBrowser, settled } from '../runtime'
 
-export type Answer = Partial<Page> & Record<string, unknown>;
+export type Answer = Partial<Page> & Record<string, unknown>
 
 export const pageWith = (overrides: Answer = {}): Answer => ({
-  component: "Users/Index",
+  component: 'Users/Index',
   props: { users: [] },
-  url: "/users",
+  url: '/users',
   version: null,
   rescuedProps: [],
   flash: {},
   rememberedState: {},
   ...overrides,
-});
+})
 
-export const layerAt = (
-  url: string,
-  component: string,
-  base?: string,
-): Answer =>
-  pageWith({ component, url, layer: { key: component, base }, props: {} });
+export const layerAt = (url: string, component: string, base?: string): Answer =>
+  pageWith({ component, url, layer: { key: component, base }, props: {} })
 
 export const errorPage: HttpResponse = {
   status: 500,
-  data: "<html>Server Error</html>",
+  data: '<html>Server Error</html>',
   headers: {},
-};
+}
 
 export const elsewhere: HttpResponse = {
   status: 409,
-  data: "",
+  data: '',
   headers: {
-    "x-inertia-location": "http://localhost/elsewhere",
-    "x-inertia-version": "v2",
+    'x-inertia-location': 'http://localhost/elsewhere',
+    'x-inertia-version': 'v2',
   },
-};
+}
 
-type Route =
-  | Answer
-  | HttpResponse
-  | ((config: HttpRequestConfig) => Promise<Answer | HttpResponse>);
+type Route = Answer | HttpResponse | ((config: HttpRequestConfig) => Promise<Answer | HttpResponse>)
 
 const isRaw = (route: unknown): route is HttpResponse =>
-  typeof route === "object" &&
-  route !== null &&
-  "status" in route &&
-  "headers" in route &&
-  "data" in route;
+  typeof route === 'object' && route !== null && 'status' in route && 'headers' in route && 'data' in route
 
 export interface Swap {
-  component: string;
-  preserveState: boolean;
+  component: string
+  preserveState: boolean
 }
 
 export async function world(options: {
-  href: string;
-  routes?: Record<string, Route | "hold">;
-  component?: (name: string) => unknown;
+  href: string
+  routes?: Record<string, Route | 'hold'>
+  component?: (name: string) => unknown
 }) {
-  vi.resetModules();
-  fakeBrowser(options.href);
+  vi.resetModules()
+  fakeBrowser(options.href)
 
-  const events: string[] = [];
-  const popstate: ((event: { state: unknown }) => void)[] = [];
-  const listeners = new Map<string, ((event: Event) => void)[]>();
+  const events: string[] = []
+  const popstate: ((event: { state: unknown }) => void)[] = []
+  const listeners = new Map<string, ((event: Event) => void)[]>()
   const writes: {
-    mode: "push" | "replace";
-    url: string;
-    state: { page: Page & { layers?: Record<string, unknown>[] } };
-  }[] = [];
-  const history = window.history as unknown as Record<
-    string,
-    (...args: unknown[]) => void
-  >;
-  const session = new Map<string, string>();
+    mode: 'push' | 'replace'
+    url: string
+    state: { page: Page & { layers?: Record<string, unknown>[] } }
+  }[] = []
+  const history = window.history as unknown as Record<string, (...args: unknown[]) => void>
+  const session = new Map<string, string>()
 
   Object.assign(window, {
     sessionStorage: {
@@ -82,127 +68,112 @@ export async function world(options: {
       setItem: (key: string, value: string) => session.set(key, value),
       removeItem: (key: string) => session.delete(key),
     },
-  });
+  })
 
-  const originalAdd = window.addEventListener.bind(window);
+  const originalAdd = window.addEventListener.bind(window)
 
-  window.addEventListener = ((
-    type: string,
-    listener: (event: { state: unknown }) => void,
-  ) => {
-    if (type === "popstate") {
-      popstate.push(listener);
+  window.addEventListener = ((type: string, listener: (event: { state: unknown }) => void) => {
+    if (type === 'popstate') {
+      popstate.push(listener)
     }
 
-    originalAdd(type, listener as never);
-  }) as never;
+    originalAdd(type, listener as never)
+  }) as never
 
   for (const [method, mode] of [
-    ["pushState", "push"],
-    ["replaceState", "replace"],
+    ['pushState', 'push'],
+    ['replaceState', 'replace'],
   ] as const) {
-    const original = history[method].bind(history);
+    const original = history[method].bind(history)
 
     history[method] = (state: unknown, title: unknown, url: unknown) => {
       writes.push({
         mode,
         url: url as string,
         state: structuredClone(state) as never,
-      });
-      original(state, title, url);
-    };
+      })
+      original(state, title, url)
+    }
   }
 
-  document.addEventListener = ((
-    type: string,
-    listener: (event: Event) => void,
-  ) => {
-    listeners.set(type, [...(listeners.get(type) ?? []), listener]);
-  }) as never;
-  document.removeEventListener = ((
-    type: string,
-    listener: (event: Event) => void,
-  ) => {
+  document.addEventListener = ((type: string, listener: (event: Event) => void) => {
+    listeners.set(type, [...(listeners.get(type) ?? []), listener])
+  }) as never
+  document.removeEventListener = ((type: string, listener: (event: Event) => void) => {
     listeners.set(
       type,
       (listeners.get(type) ?? []).filter((known) => known !== listener),
-    );
-  }) as never;
+    )
+  }) as never
   document.dispatchEvent = ((event: Event) => {
-    events.push(event.type);
-    listeners.get(event.type)?.forEach((listener) => listener(event));
+    events.push(event.type)
+    listeners.get(event.type)?.forEach((listener) => listener(event))
 
-    return true;
-  }) as never;
+    return true
+  }) as never
 
-  const core = await import("../../../src");
-  const { HttpCancelledError } = await import("../../../src/httpErrors");
-  const { default: dialog } = await import("../../../src/dialog");
-  const overlay = vi.spyOn(dialog, "show").mockImplementation(() => {});
+  const core = await import('../../../src')
+  const { HttpCancelledError } = await import('../../../src/httpErrors')
+  const { default: dialog } = await import('../../../src/dialog')
+  const overlay = vi.spyOn(dialog, 'show').mockImplementation(() => {})
 
-  const requested: string[] = [];
-  const headers = new Map<string, Record<string, string>>();
-  const routes = new Map<string, Route | "hold">(
-    Object.entries(options.routes ?? {}),
-  );
+  const requested: string[] = []
+  const headers = new Map<string, Record<string, string>>()
+  const routes = new Map<string, Route | 'hold'>(Object.entries(options.routes ?? {}))
   const held = new Map<
     string,
     {
-      resolve: (response: HttpResponse) => void;
-      reject: (error: Error) => void;
+      resolve: (response: HttpResponse) => void
+      reject: (error: Error) => void
     }
-  >();
+  >()
 
   const inertia = (answer: Answer): HttpResponse => ({
     status: 200,
-    headers: { "x-inertia": "true" },
+    headers: { 'x-inertia': 'true' },
     data: JSON.stringify(answer),
-  });
+  })
 
   core.http.setClient({
     request: (config: HttpRequestConfig): Promise<HttpResponse> => {
-      const url = new URL(config.url, "http://localhost");
-      const path = url.pathname;
-      const route = routes.get(path);
+      const url = new URL(config.url, 'http://localhost')
+      const path = url.pathname
+      const route = routes.get(path)
 
-      requested.push(path);
-      headers.set(path, (config.headers ?? {}) as Record<string, string>);
+      requested.push(path)
+      headers.set(path, (config.headers ?? {}) as Record<string, string>)
 
       if (route === undefined) {
-        throw new Error(`No route for ${config.method} ${path}`);
+        throw new Error(`No route for ${config.method} ${path}`)
       }
 
-      if (route === "hold") {
+      if (route === 'hold') {
         return new Promise((resolve, reject) => {
-          config.signal?.addEventListener("abort", () =>
-            reject(new HttpCancelledError()),
-          );
-          held.set(path, { resolve, reject });
-        });
+          config.signal?.addEventListener('abort', () => reject(new HttpCancelledError()))
+          held.set(path, { resolve, reject })
+        })
       }
 
-      if (typeof route === "function") {
-        return route(config).then((answer) =>
-          isRaw(answer) ? answer : inertia(answer),
-        );
+      if (typeof route === 'function') {
+        return route(config).then((answer) => (isRaw(answer) ? answer : inertia(answer)))
       }
 
-      return Promise.resolve(isRaw(route) ? route : inertia(route));
+      return Promise.resolve(isRaw(route) ? route : inertia(route))
     },
-  });
+  })
 
-  const swaps: Swap[] = [];
-  const resolved: string[] = [];
-  const Blank = { name: "Blank" };
+  const swaps: Swap[] = []
+  const resolved: string[] = []
+  const Blank = { name: 'Blank' }
   const resolve = core.layerSlot.wrapResolver(
     (name: string) => {
-      resolved.push(name);
+      resolved.push(name)
 
-      return options.component ? options.component(name) : { name };
+      return options.component ? options.component(name) : { name }
     },
     undefined,
     Blank as { name: string },
-  );
+  )
 
   const initialise = (initialPage: Answer) =>
     core.router.init({
@@ -213,18 +184,12 @@ export async function world(options: {
         ...initialPage,
       } as Page,
       resolveComponent: resolve as never,
-      swapComponent: (async ({
-        component,
-        preserveState,
-      }: {
-        component: unknown;
-        preserveState: boolean;
-      }) =>
+      swapComponent: (async ({ component, preserveState }: { component: unknown; preserveState: boolean }) =>
         swaps.push({
           component: (component as { name: string }).name,
           preserveState,
         })) as never,
-    });
+    })
 
   return {
     core,
@@ -239,12 +204,12 @@ export async function world(options: {
     routes,
     held,
     session,
-    errors: await import("../../../src/httpErrors"),
+    errors: await import('../../../src/httpErrors'),
     begin: async (initialPage: Answer) => {
-      initialise(initialPage);
-      await settled();
+      initialise(initialPage)
+      await settled()
     },
-    boot: async (response: Answer, hash = "") => {
+    boot: async (response: Answer, hash = '') => {
       const plan = core.layerSlot.planBoot(
         {
           flash: {},
@@ -253,36 +218,35 @@ export async function world(options: {
           ...response,
         } as Page,
         hash,
-      );
+      )
 
       core.layerSlot.boot(
         plan,
         plan.seeds.map((seed) => ({ name: seed.page.component })),
-      );
-      initialise(plan.base);
-      await settled();
+      )
+      initialise(plan.base)
+      await settled()
 
-      return plan;
+      return plan
     },
-    base: async () => (await import("../../../src/page")).page.get(),
+    base: async () => (await import('../../../src/page')).page.get(),
     entry: () =>
       (
         window.history.state as {
-          page: Page & { layers?: Record<string, unknown>[] };
+          page: Page & { layers?: Record<string, unknown>[] }
         }
       ).page,
     layers: () => core.layerSlot.info(),
     keys: () => core.layerSlot.info().map((layer) => layer.key),
     urls: () => core.layerSlot.info().map((layer) => layer.url),
-    popstate: (state: unknown) =>
-      popstate.forEach((listener) => listener({ state })),
+    popstate: (state: unknown) => popstate.forEach((listener) => listener({ state })),
     answer: async (path: string, answer: Answer | HttpResponse) => {
-      held.get(path)!.resolve(isRaw(answer) ? answer : inertia(answer));
-      await settled();
+      held.get(path)!.resolve(isRaw(answer) ? answer : inertia(answer))
+      await settled()
     },
     refuse: async (path: string, error: Error) => {
-      held.get(path)!.reject(error);
-      await settled();
+      held.get(path)!.reject(error)
+      await settled()
     },
     exit: () =>
       core.layerSlot
@@ -290,20 +254,20 @@ export async function world(options: {
         .filter((view) => !view.shell.open)
         .forEach((view) => view.shell.done()),
     dismiss: async () => {
-      const closed = core.router.close();
+      const closed = core.router.close()
 
-      await settled();
+      await settled()
       core.layerSlot
         .views()
         .filter((view) => !view.shell.open)
-        .forEach((view) => view.shell.done());
-      await closed;
-      await settled();
+        .forEach((view) => view.shell.done())
+      await closed
+      await settled()
     },
     open: async (response: Answer, visit: Record<string, unknown> = {}) => {
-      routes.set("/login", response);
-      core.router.visit("/login", { method: "post", ...visit });
-      await settled();
+      routes.set('/login', response)
+      core.router.visit('/login', { method: 'post', ...visit })
+      await settled()
     },
-  };
+  }
 }
