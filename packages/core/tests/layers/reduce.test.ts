@@ -492,18 +492,20 @@ describe('cold boot and the walk', () => {
     ).toEqual([])
   })
 
-  it('L:1037 a failed hop promotes the deepest layer to the page, with no error overlay and no dialog', () => {
+  it('L:1037 a failed hop promotes the deepest layer to the page, and the base swap paints its dialog away', () => {
     const { state: s, effects } = script(walking(), [
       { type: 'walkHopFailed', visit: visit('v1') },
       committing({ visit: visit('1'), mode: 'replace' }),
       { type: 'visitFinished', visit: visit('v1') },
+      { type: 'baseSwapped' },
     ])
 
     expect(effects).toEqual([
       { type: 'installBase', token: 1, source: { kind: 'promote', layer: 'a' }, mode: 'replace' },
       { type: 'dispose', ids: ['a'], reason: 'closed' },
+      { type: 'paint' },
     ])
-    expect(s).toEqual(state({ nextToken: 2, paint: { gated: true, owed: false } }))
+    expect(s).toEqual(state({ nextToken: 2, paint: { gated: false, owed: false } }))
   })
 
   it('L:1047 a hop that fails after its layer closed requests the base again, and that commit keeps the stack', () => {
@@ -539,6 +541,25 @@ describe('cold boot and the walk', () => {
       { type: 'settle', waiters: ['w1'], result: 'closed' },
     ])
     expect(s).toEqual(walking({ rows: [] }))
+  })
+
+  it('L:1090 Back onto a plain entry while the base is still out ends the walk, so no hop or recovery lands on it', () => {
+    const {
+      state: s,
+      effects,
+      last,
+    } = script(walking({ rows: [] }), [
+      { type: 'popstate', entry: entry([], { url: '/layers/slow-base-panel', baseSame: false }) },
+      { type: 'visitFinished', visit: visit('v1') },
+    ])
+
+    expect(effects).toEqual([])
+    expect(last.outcome).toEqual(none)
+    expect(s).toEqual(state({ base: { blank: false, gen: 1 }, paint: { gated: true, owed: true } }))
+    expect(reduce(walking({ rows: [] }), { type: 'popstate', entry: entry([], { baseSame: false }) }).outcome).toEqual({
+      kind: 'restore',
+      restore: { kind: 'base' },
+    })
   })
 
   it('L:2165 a close during the walk landing still lets the walk commit land the base', () => {

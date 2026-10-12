@@ -245,7 +245,7 @@ function walkFailed(s: StackState, fx: Fx): StackState {
       ...minted,
       rows: withoutRows(minted.rows, [bottom.id]),
       expect: { kind: 'base', token, mode: 'replace', layer: bottom.id, source: { kind: 'promote', layer: bottom.id } },
-      paint: { ...minted.paint, gated: true },
+      paint: { gated: true, owed: true },
     }
   }
 

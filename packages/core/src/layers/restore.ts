@@ -25,11 +25,16 @@ export function planRestore(s: StackState, entry: EntryFacts): RestorePlan {
   const { rows } = s
   const target = entry.layers
 
-  if (target.length === 0 && rows.length === 0 && s.ghosts.length === 0) {
-    return entry.blank ? { kind: 'recover', url: entry.url } : { kind: 'pass' }
-  }
-
   const plan = { kind: 'restore' as const, base: false, dismiss: null, drop: [], rewind: [], reopen: [] }
+
+  if (target.length === 0 && rows.length === 0 && s.ghosts.length === 0) {
+    if (entry.blank) {
+      return { kind: 'recover', url: entry.url }
+    }
+
+    // A real page restored over a blank base ends the wait for the base: nothing still out may land on it.
+    return s.base.blank ? { ...plan, base: true } : { kind: 'pass' }
+  }
 
   if (!entry.baseSame) {
     return { ...plan, base: true, drop: rows.map((row) => row.id), reopen: target.map((layer) => layer.id) }

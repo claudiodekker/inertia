@@ -24,6 +24,12 @@ describe('planRestore', () => {
     })
   })
 
+  it('restores a plain entry as the base while the base on screen is still the blank placeholder', () => {
+    expect(planRestore(state({ base: { blank: true, gen: 0 } }), entry([], { baseSame: false }))).toEqual(
+      plan({ base: true }),
+    )
+  })
+
   it('does not pass while a ghost still exits', () => {
     expect(planRestore(state({ ghosts: [id('g')] }), entry([]))).toEqual(plan())
   })
